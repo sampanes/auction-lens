@@ -1,19 +1,38 @@
+"""A read-only JSON API described entirely in configuration.
+
+Most price APIs differ only in their URL and in where the numbers sit in the
+response, so this adapter takes both as settings. That keeps a new authorized
+source a TOML edit rather than a new Python module.
+"""
+
 from __future__ import annotations
 
-import hashlib
 import json
 import os
-import time
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
 from typing import Any, Callable
-from urllib.parse import quote_plus, urlsplit
+from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
 
 from ..config import ValuationSourceConfig
-from ..models import Listing, ValuationObservation, money, parse_datetime
+from ..fields import parse_money, parse_utc_datetime
+from ..models import Listing, ValuationObservation
 from .base import SourceResult
+from .http_cache import JsonResponseCache
+from .json_path import read_optional_path, read_path
+from .templates import fill_template
+from .throttle import RequestThrottle
+
+DEFAULT_CACHE_DIR = "private/valuation-cache"
+DEFAULT_CACHE_HOURS = 24
+DEFAULT_TIMEOUT_SECONDS = 20
+DEFAULT_MAX_REQUESTS_PER_RUN = 20
+DEFAULT_MINIMUM_INTERVAL_SECONDS = 1
+
+ENVIRONMENT_PREFIX = "env:"
+REQUIRED_FIELD = "typical"
 
 
 class HttpJsonAdapter:
@@ -24,104 +43,80 @@ class HttpJsonAdapter:
         config: ValuationSourceConfig,
         *,
         opener: Callable[..., Any] = urlopen,
-        now: Callable[[], datetime] = lambda: datetime.now(timezone.utc),
-        monotonic: Callable[[], float] = time.monotonic,
-        sleeper: Callable[[float], None] = time.sleep,
+        clock: Callable[[], datetime] = lambda: datetime.now(timezone.utc),
+        throttle: RequestThrottle | None = None,
     ):
         self.config = config
+        self.settings = config.settings
         self.opener = opener
-        self.now = now
-        self.monotonic = monotonic
-        self.sleeper = sleeper
-        self._last_request_at: float | None = None
-        self._request_count = 0
+        self.cache = JsonResponseCache(
+            directory=Path(str(self.settings.get("cache_dir", DEFAULT_CACHE_DIR))),
+            source_id=config.source_id,
+            lifetime=timedelta(hours=float(self.settings.get("cache_hours", DEFAULT_CACHE_HOURS))),
+            clock=clock,
+        )
+        self.throttle = throttle or RequestThrottle(
+            max_requests=int(
+                self.settings.get("max_requests_per_run", DEFAULT_MAX_REQUESTS_PER_RUN)
+            ),
+            minimum_interval_seconds=float(
+                self.settings.get("minimum_interval_seconds", DEFAULT_MINIMUM_INTERVAL_SECONDS)
+            ),
+        )
 
     def collect(self, listing: Listing) -> SourceResult:
-        endpoint = self._endpoint(listing)
-        payload = self._load_payload(endpoint)
-        rows = _read_path(payload, str(self.config.settings.get("items_path", "")))
+        """Query the configured endpoint and map every returned row."""
+        fields = self.settings.get("fields", {})
+        if not isinstance(fields, dict) or REQUIRED_FIELD not in fields:
+            raise ValueError("fields.typical is required for an HTTP JSON source")
+        payload = self._payload(self._endpoint(listing))
+        rows = read_path(payload, str(self.settings.get("items_path", "")))
         if not isinstance(rows, list):
             rows = [rows]
-        fields = self.config.settings.get("fields", {})
-        if not isinstance(fields, dict) or "typical" not in fields:
-            raise ValueError("fields.typical is required for an HTTP JSON source")
-        observations = tuple(self._observation(row, fields) for row in rows)
-        return SourceResult(observations=observations)
+        return SourceResult(observations=tuple(self._observation(row, fields) for row in rows))
 
     def _endpoint(self, listing: Listing) -> str:
-        template = str(self.config.settings.get("endpoint", ""))
-        query = " ".join(value for value in (listing.brand, listing.model) if value) or listing.title
-        values = {
-            "query": query,
-            "brand": listing.brand,
-            "model": listing.model,
-            "category": listing.category,
-        }
-        endpoint = template
-        for name, value in values.items():
-            endpoint = endpoint.replace("{" + name + "}", quote_plus(value))
+        endpoint = fill_template(str(self.settings.get("endpoint", "")), listing)
         parsed = urlsplit(endpoint)
         if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password:
-            raise ValueError("HTTP JSON endpoints must be public HTTPS URLs without URL credentials")
+            raise ValueError(
+                "HTTP JSON endpoints must be public HTTPS URLs without URL credentials"
+            )
         return endpoint
 
-    def _load_payload(self, endpoint: str) -> Any:
-        cache_dir = Path(str(self.config.settings.get("cache_dir", "private/valuation-cache")))
-        cache_key = hashlib.sha256(endpoint.encode("utf-8")).hexdigest()
-        cache_file = cache_dir / f"{self.config.source_id}-{cache_key}.json"
-        cache_hours = Decimal(str(self.config.settings.get("cache_hours", 24)))
-        if cache_file.is_file():
-            modified = datetime.fromtimestamp(cache_file.stat().st_mtime, tz=timezone.utc)
-            if self.now() - modified <= timedelta(hours=float(cache_hours)):
-                return json.loads(cache_file.read_text(encoding="utf-8"))
-
+    def _payload(self, endpoint: str) -> Any:
+        """Reuse a fresh cached response; otherwise take a turn and request one."""
+        cached = self.cache.read_fresh(endpoint)
+        if cached is not None:
+            return cached
         headers = self._headers()
-        maximum = int(self.config.settings.get("max_requests_per_run", 20))
-        if self._request_count >= maximum:
-            raise RuntimeError(f"max_requests_per_run ({maximum}) reached")
-        minimum_interval = float(self.config.settings.get("minimum_interval_seconds", 1))
-        if minimum_interval < 0:
-            raise ValueError("minimum_interval_seconds cannot be negative")
-        if self._last_request_at is not None:
-            remaining = minimum_interval - (self.monotonic() - self._last_request_at)
-            if remaining > 0:
-                self.sleeper(remaining)
+        self.throttle.take_turn()
         request = Request(endpoint, headers=headers, method="GET")
-        timeout = int(self.config.settings.get("timeout_seconds", 20))
-        self._last_request_at = self.monotonic()
-        self._request_count += 1
+        timeout = int(self.settings.get("timeout_seconds", DEFAULT_TIMEOUT_SECONDS))
         with self.opener(request, timeout=timeout) as response:
             body = response.read()
         payload = json.loads(body.decode("utf-8"))
-        cache_dir.mkdir(parents=True, exist_ok=True)
-        temporary = cache_file.with_suffix(".tmp")
-        temporary.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
-        temporary.replace(cache_file)
+        self.cache.store(endpoint, payload)
         return payload
 
     def _headers(self) -> dict[str, str]:
-        configured = self.config.settings.get("headers", {})
+        """Resolve configured headers, reading env: values from the environment."""
+        configured = self.settings.get("headers", {})
         if not isinstance(configured, dict):
             raise ValueError("headers must be a TOML table")
         headers = {"Accept": "application/json"}
-        for name, configured_value in configured.items():
-            value = str(configured_value)
-            if value.startswith("env:"):
-                variable = value.removeprefix("env:")
-                value = os.getenv(variable, "")
-                if not value:
-                    raise RuntimeError(f"required environment variable {variable!r} is empty")
-            headers[str(name)] = value
+        for name, raw_value in configured.items():
+            headers[str(name)] = _resolved_header(str(raw_value))
         return headers
 
     def _observation(self, row: Any, fields: dict[str, Any]) -> ValuationObservation:
-        typical = money(_read_path(row, str(fields["typical"])), field_name="typical")
-        low = money(_optional_path(row, fields.get("low"), typical), field_name="low")
-        high = money(_optional_path(row, fields.get("high"), typical), field_name="high")
+        typical = parse_money(read_path(row, str(fields[REQUIRED_FIELD])), field_name="typical")
+        low = parse_money(_field(row, fields, "low", typical), field_name="low")
+        high = parse_money(_field(row, fields, "high", typical), field_name="high")
         if not low <= typical <= high:
             raise ValueError("HTTP valuation requires low <= typical <= high")
-        basis = str(_optional_path(row, fields.get("basis"), self.config.settings.get("basis", "used_sold")))
-        currency = str(_optional_path(row, fields.get("currency"), self.config.settings.get("currency", "USD")))
+        basis = str(_field(row, fields, "basis", self.settings.get("basis", "used_sold")))
+        currency = str(_field(row, fields, "currency", self.settings.get("currency", "USD")))
         return ValuationObservation(
             source_id=self.config.source_id,
             basis=basis.lower(),
@@ -129,23 +124,25 @@ class HttpJsonAdapter:
             typical=typical,
             high=high,
             currency=currency.upper(),
-            sample_size=max(1, int(_optional_path(row, fields.get("sample_size"), 1))),
-            confidence=Decimal(str(_optional_path(row, fields.get("confidence"), 1))),
-            observed_at=parse_datetime(_optional_path(row, fields.get("observed_at"), None)),
-            url=str(_optional_path(row, fields.get("url"), "")),
-            notes=str(_optional_path(row, fields.get("notes"), "")),
+            sample_size=max(1, int(_field(row, fields, "sample_size", 1))),
+            confidence=Decimal(str(_field(row, fields, "confidence", 1))),
+            observed_at=parse_utc_datetime(_field(row, fields, "observed_at", None)),
+            url=str(_field(row, fields, "url", "")),
+            notes=str(_field(row, fields, "notes", "")),
         )
 
 
-def _optional_path(value: Any, path: Any, default: Any) -> Any:
-    return default if path in (None, "") else _read_path(value, str(path))
+def _field(row: Any, fields: dict[str, Any], name: str, default: Any) -> Any:
+    """Read one mapped field from a row, or fall back to the source default."""
+    return read_optional_path(row, fields.get(name), default)
 
 
-def _read_path(value: Any, path: str) -> Any:
-    """Read a deliberately small dotted path language: results.0.price.value."""
-    current = value
-    if not path:
-        return current
-    for part in path.split("."):
-        current = current[int(part)] if isinstance(current, list) else current[part]
-    return current
+def _resolved_header(value: str) -> str:
+    """Read a header value, or the environment variable it names."""
+    if not value.startswith(ENVIRONMENT_PREFIX):
+        return value
+    variable = value[len(ENVIRONMENT_PREFIX) :]
+    resolved = os.getenv(variable, "")
+    if not resolved:
+        raise RuntimeError(f"required environment variable {variable!r} is empty")
+    return resolved
