@@ -1,0 +1,107 @@
+[provider]
+id = "nellis"
+display_name = "Nellis Auction"
+enabled = true
+
+[provider.acquisition]
+mode = "authorized_http"
+
+[economics]
+# Listing-level values override this event-dependent fallback.
+default_buyer_premium = 0.15
+premium_is_taxable = true
+sales_tax_rate = 0.0 # Set locally; taxes vary by jurisdiction.
+processing_fee = 0.0
+
+[locations]
+# Empty means any location. Values are case-insensitive substrings.
+allowed = []
+
+[logistics]
+# Large items remain eligible, but the report asks about unresolved handling.
+# Seller-provided loading assistance removes only the origin-loading question.
+large_item_policy = "ask"
+manual_handling_limit_lb = 75
+large_dimension_threshold_in = 60
+
+[conditions]
+# Reserve global rejection for conditions that are unacceptable for every use.
+# Functional defects belong to an individual interest: broken can be useful salvage.
+reject = []
+
+[conditions.penalties]
+# As with rejection, keep only penalties that apply to every possible purpose.
+
+[condition_profiles.ready_to_use]
+allow_unknown = true
+reject = ["not functional", "parts only"]
+
+[condition_profiles.ready_to_use.penalties]
+"missing parts" = 45
+"major damage" = 45
+"untested" = 22
+"minor damage" = 12
+"used" = 4
+
+[condition_profiles.salvage]
+allow_unknown = true
+reject = []
+
+[scoring]
+anomaly_minimum_retail = 100
+anomaly_maximum_ratio = 0.20
+minimum_report_score = 70
+ending_soon_minutes = 20
+anomaly_condition_profile = "ready_to_use"
+
+[[interests]]
+name = "soundbar"
+purpose = "use"
+condition_profile = "ready_to_use"
+any_terms = ["soundbar", "sound bar"]
+max_total_cost = 50
+minimum_score = 70
+
+[[interests]]
+name = "monitor"
+purpose = "use"
+condition_profile = "ready_to_use"
+any_terms = ["monitor"]
+max_total_cost = 80
+minimum_score = 70
+
+[valuation]
+enabled = true
+currency = "USD"
+
+# Sources are data, not code. Add, remove, disable, or reweight them here.
+[[valuation.sources]]
+id = "reviewed-comps"
+label = "Reviewed comparable sales"
+adapter = "xml_catalog"
+path = "fixtures/synthetic/valuations.xml"
+weight = 1.0
+
+[[valuation.sources]]
+id = "general-sold-research"
+label = "General sold-price research"
+adapter = "reference"
+url_template = "https://example.invalid/sold-research?q={query}"
+
+[[valuation.sources]]
+id = "music-gear-research"
+label = "Music gear price guide"
+adapter = "reference"
+categories = ["guitar", "music gear"]
+url_template = "https://example.invalid/music-price-guide?q={query}"
+
+[reports.email]
+enabled = false
+subject = "Auction Lens: {{ match_count }} promising listings"
+host_env = "AUCTION_LENS_SMTP_HOST"
+port = 465
+security = "ssl"
+username_env = "AUCTION_LENS_SMTP_USERNAME"
+password_env = "AUCTION_LENS_SMTP_PASSWORD"
+sender_env = "AUCTION_LENS_EMAIL_FROM"
+recipient_env = "AUCTION_LENS_EMAIL_TO"

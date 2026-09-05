@@ -1,0 +1,15 @@
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.coverage
+dist/
+build/
+*.egg-info/
+*.sqlite3
+*.db
+.env
+config/local.toml
+data/inbox/*
+!data/inbox/.gitkeep
+private/

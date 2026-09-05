@@ -1,0 +1,36 @@
+{
+  "listings": [
+    {
+      "source": "nellis",
+      "listing_id": "synthetic-001",
+      "title": "Example 2.1 Channel Sound Bar with ARC",
+      "brand": "Example",
+      "model": "SB21",
+      "category": "soundbar",
+      "url": "https://example.invalid/auction/synthetic-001",
+      "current_bid": "18.00",
+      "estimated_retail": "129.00",
+      "bid_count": 4,
+      "location": "Example Warehouse",
+      "conditions": ["used"],
+      "buyer_premium_rate": "0.15",
+      "observed_at": "2026-09-04T18:00:00Z"
+    },
+    {
+      "source": "nellis",
+      "listing_id": "synthetic-002",
+      "title": "Example Laser Level Kit",
+      "brand": "Example",
+      "model": "LL100",
+      "category": "tools",
+      "url": "https://example.invalid/auction/synthetic-002",
+      "current_bid": "11.00",
+      "estimated_retail": "229.00",
+      "bid_count": 3,
+      "location": "Example Warehouse",
+      "conditions": [],
+      "buyer_premium_rate": "0.15",
+      "observed_at": "2026-09-04T18:00:00Z"
+    }
+  ]
+}
