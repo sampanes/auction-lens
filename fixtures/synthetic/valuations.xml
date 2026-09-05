@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<valuations>
+  <!-- Human-reviewed evidence can be edited directly or exported by another tool. -->
+  <entry brand="Example" model="SB21" category="soundbar">
+    <price basis="new_street" low="105.00" typical="119.00" high="129.00"
+           currency="USD" sample_size="3" confidence="0.90"
+           observed_at="2026-09-04T18:00:00Z"
+           url="https://example.invalid/research/example-sb21-new" />
+    <price basis="used_sold" low="55.00" typical="68.00" high="82.00"
+           currency="USD" sample_size="8" confidence="0.85"
+           observed_at="2026-09-04T18:00:00Z"
+           url="https://example.invalid/research/example-sb21-used" />
+  </entry>
+</valuations>

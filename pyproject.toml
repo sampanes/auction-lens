@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "auction-lens"
+version = "0.3.0"
+description = "Provider-agnostic auction scoring, configurable market valuation, and reporting."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.scripts]
+auction-lens = "auction_lens.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
