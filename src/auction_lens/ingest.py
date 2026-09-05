@@ -16,8 +16,9 @@ from .models import Listing
 
 LISTINGS_KEY = "listings"
 
-# Excel writes a byte-order mark ahead of the first CSV header.
-CSV_ENCODING = "utf-8-sig"
+# Excel, Notepad, and PowerShell all write a byte-order mark ahead of the first
+# character. Reading as utf-8-sig accepts a file with or without one.
+INPUT_ENCODING = "utf-8-sig"
 
 
 def load_listings(path: str | Path) -> list[Listing]:
@@ -35,14 +36,14 @@ def load_listings(path: str | Path) -> list[Listing]:
 
 def _read_json_rows(source: Path) -> list[dict[str, Any]]:
     """Accept either a bare list of listings or an object wrapping one."""
-    with source.open("r", encoding="utf-8") as handle:
+    with source.open("r", encoding=INPUT_ENCODING) as handle:
         payload = json.load(handle)
-    rows = payload[LISTINGS_KEY] if isinstance(payload, dict) else payload
+    rows = payload.get(LISTINGS_KEY) if isinstance(payload, dict) else payload
     if not isinstance(rows, list):
         raise ValueError("JSON input must be a list or contain a 'listings' list")
     return rows
 
 
 def _read_csv_rows(source: Path) -> list[dict[str, Any]]:
-    with source.open("r", encoding=CSV_ENCODING, newline="") as handle:
+    with source.open("r", encoding=INPUT_ENCODING, newline="") as handle:
         return list(csv.DictReader(handle))

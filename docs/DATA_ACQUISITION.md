@@ -18,6 +18,15 @@ The authorized HTTP fetcher supports configurable request limits, identifies the
 operator via User-Agent, uses conditional cache headers when available, and records
 attempts before connecting so a failed job cannot retry rapidly.
 
+A fetch happens only when all four of these hold, and is refused with a specific
+error otherwise:
+
+1. `[provider] enabled = true`;
+2. `[provider.acquisition] mode = "authorized_http"` and a public HTTPS `url`
+   carrying no credentials;
+3. the configured User-Agent variable is set and contains a contact address; and
+4. the request is within the configured limits for the run mode.
+
 Its two explicit modes control request cadence:
 
 - `production`: a set number of provider-local daily runs with configurable spacing;

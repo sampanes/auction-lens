@@ -17,7 +17,7 @@ from .labels import EMPTY_REPORT, by_score, change_label, decision_key, readable
 def render_text(candidates: list[Candidate]) -> str:
     """Render every candidate, grouped by category and ordered by score."""
     if not candidates:
-        return EMPTY_REPORT
+        return EMPTY_REPORT + "\n"
     lines = [f"Auction Lens found {len(candidates)} match(es)."]
     for category, items in _grouped_by_category(candidates).items():
         lines.extend(("", category.upper()))

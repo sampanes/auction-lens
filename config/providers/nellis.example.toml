@@ -4,6 +4,8 @@ display_name = "Nellis Auction"
 enabled = true
 
 [provider.acquisition]
+# See docs/DATA_ACQUISITION.md for everything a fetch requires. A live
+# deployment also sets url, timezone, and the request limits here.
 mode = "authorized_http"
 
 [economics]

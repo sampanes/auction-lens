@@ -68,6 +68,13 @@ class Section:
         except (InvalidOperation, TypeError, ValueError) as exc:
             raise ValueError(f"{self._label(key)} must be a number") from exc
 
+    def non_negative_decimal(self, key: str, default: Any) -> Decimal:
+        """Read a number that would be meaningless below zero, such as a fee."""
+        value = self.decimal(key, default)
+        if value < 0:
+            raise ValueError(f"{self._label(key)} cannot be negative")
+        return value
+
     def optional_decimal(self, key: str) -> Decimal | None:
         return self.decimal(key, 0) if self.contains(key) else None
 

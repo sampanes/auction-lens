@@ -57,6 +57,14 @@ class ConfigValidationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "renamed to"):
             self._load_variant("[[interests]]", "[[wanted]]")
 
+    def test_a_negative_fee_is_rejected_by_the_key_that_holds_it(self):
+        with self.assertRaisesRegex(ValueError, "economics.processing_fee cannot be negative"):
+            self._load_variant("processing_fee = 0.0", "processing_fee = -5")
+
+    def test_a_setting_of_the_wrong_type_names_its_key(self):
+        with self.assertRaisesRegex(ValueError, "scoring.minimum_report_score"):
+            self._load_variant("minimum_report_score = 70", 'minimum_report_score = "high"')
+
     def _load_variant(self, original: str, replacement: str):
         """Load the example configuration with one setting changed."""
         source = EXAMPLE_CONFIG.read_text(encoding="utf-8")
