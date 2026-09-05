@@ -25,12 +25,12 @@ canonical JSON or CSV, live HTTP sources, or a combination of both.
 
 Python 3.11 or newer is required. The runtime has no third-party dependencies.
 
-```powershell
+```cmd
 python -m venv .venv
-.\.venv\Scripts\python -m pip install -e .
-.\.venv\Scripts\auction-lens run `
-  --input fixtures\synthetic\listings.json `
-  --config config\providers\nellis.example.toml `
+.venv\Scripts\python -m pip install -e .
+.venv\Scripts\auction-lens run ^
+  --input fixtures\synthetic\listings.json ^
+  --config config\providers\nellis.example.toml ^
   --database data\auction-lens.sqlite3
 ```
 
@@ -39,7 +39,7 @@ the Nellis-shaped configuration without accessing Nellis Auction.
 
 A live deployment can fetch configured pages with:
 
-```powershell
+```cmd
 auction-lens fetch --config config\local.toml
 ```
 
@@ -58,7 +58,7 @@ By default the CLI loads non-empty values from an ignored `.env` file in the
 working directory. Existing process environment variables take precedence. Gmail
 accounts normally require an app password rather than the ordinary account password.
 
-```powershell
+```cmd
 auction-lens run --input listings.json --config config\local.toml --email
 ```
 
@@ -132,12 +132,12 @@ blanket rejection.
 
 Save a decision for one listing in the same ignored SQLite database:
 
-```powershell
-auction-lens logistics `
-  --source provider-id `
-  --listing-id stable-id `
-  --status feasible `
-  --added-cost 25 `
+```cmd
+auction-lens logistics ^
+  --source provider-id ^
+  --listing-id stable-id ^
+  --status feasible ^
+  --added-cost 25 ^
   --note "Handling arranged"
 ```
 
@@ -157,7 +157,14 @@ describes the supported acquisition paths.
 
 ## Development
 
-```powershell
-$env:PYTHONPATH = "src"
+Run the test suite from the repository root. Nothing in it touches the network,
+an SMTP server, or a real provider.
+
+```cmd
+set PYTHONPATH=src
 python -m unittest discover -s tests -v
 ```
+
+`docs/ARCHITECTURE.md` is the map: which module answers which question, the
+direction dependencies are allowed to run, and where a new setting, scoring
+signal, valuation source, or command is supposed to go.

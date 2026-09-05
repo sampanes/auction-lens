@@ -1,54 +1,34 @@
+"""The domain model every other module speaks.
+
+These records are immutable and free of behavior on purpose: acquisition,
+scoring, valuation, storage, and reporting all pass them around, so the model
+stays the one thing in the project with no dependencies of its own.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 from typing import Any
 
+from .fields import (
+    is_absent,
+    parse_dimensions,
+    parse_labels,
+    parse_money,
+    parse_optional_money,
+    parse_optional_rate,
+    parse_utc_datetime,
+)
 
-def money(value: Any, *, field_name: str) -> Decimal:
-    try:
-        amount = Decimal(str(value))
-    except (InvalidOperation, TypeError, ValueError) as exc:
-        raise ValueError(f"{field_name} must be a number") from exc
-    if amount < 0:
-        raise ValueError(f"{field_name} cannot be negative")
-    return amount.quantize(Decimal("0.01"))
-
-
-def parse_datetime(value: Any) -> datetime | None:
-    if value in (None, ""):
-        return None
-    text = str(value).strip().replace("Z", "+00:00")
-    parsed = datetime.fromisoformat(text)
-    if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=timezone.utc)
-    return parsed.astimezone(timezone.utc)
-
-
-def parse_conditions(value: Any) -> tuple[str, ...]:
-    if value in (None, ""):
-        return ()
-    values = value if isinstance(value, list) else str(value).split("|")
-    return tuple(sorted({str(item).strip().lower() for item in values if str(item).strip()}))
-
-
-def optional_decimal(value: Any, *, field_name: str) -> Decimal | None:
-    return None if value in (None, "") else money(value, field_name=field_name)
-
-
-def parse_dimensions(value: Any) -> tuple[Decimal, ...]:
-    if value in (None, ""):
-        return ()
-    values = value if isinstance(value, list) else str(value).lower().replace("×", "x").split("x")
-    dimensions = tuple(money(item, field_name="package_dimensions_in") for item in values)
-    if len(dimensions) not in {2, 3}:
-        raise ValueError("package_dimensions_in must contain two or three dimensions")
-    return dimensions
+REQUIRED_LISTING_FIELDS = ("source", "listing_id", "title", "url", "current_bid")
 
 
 @dataclass(frozen=True)
 class Listing:
+    """One auction lot as the provider described it at one moment in time."""
+
     source: str
     listing_id: str
     title: str
@@ -71,39 +51,44 @@ class Listing:
 
     @classmethod
     def from_mapping(cls, data: dict[str, Any]) -> "Listing":
-        required = ("source", "listing_id", "title", "url", "current_bid")
-        missing = [key for key in required if data.get(key) in (None, "")]
+        """Build a listing from one canonical JSON object or CSV row."""
+        missing = [key for key in REQUIRED_LISTING_FIELDS if is_absent(data.get(key))]
         if missing:
             raise ValueError(f"missing required listing fields: {', '.join(missing)}")
-        retail = data.get("estimated_retail")
-        premium = data.get("buyer_premium_rate")
         return cls(
-            source=str(data["source"]).strip(),
-            listing_id=str(data["listing_id"]).strip(),
-            title=str(data["title"]).strip(),
-            url=str(data["url"]).strip(),
-            current_bid=money(data["current_bid"], field_name="current_bid"),
-            estimated_retail=None if retail in (None, "") else money(retail, field_name="estimated_retail"),
+            source=_text(data, "source"),
+            listing_id=_text(data, "listing_id"),
+            title=_text(data, "title"),
+            url=_text(data, "url"),
+            current_bid=parse_money(data["current_bid"], field_name="current_bid"),
+            estimated_retail=parse_optional_money(
+                data.get("estimated_retail"), field_name="estimated_retail"
+            ),
             bid_count=int(data.get("bid_count") or 0),
-            ends_at=parse_datetime(data.get("ends_at")),
-            location=str(data.get("location") or "").strip(),
-            conditions=parse_conditions(data.get("conditions")),
-            image_url=str(data.get("image_url") or "").strip(),
-            buyer_premium_rate=None if premium in (None, "") else Decimal(str(premium)),
-            brand=str(data.get("brand") or "").strip(),
-            model=str(data.get("model") or "").strip(),
-            category=str(data.get("category") or "").strip().lower(),
-            handling_weight_lb=optional_decimal(
+            ends_at=parse_utc_datetime(data.get("ends_at")),
+            location=_text(data, "location"),
+            conditions=parse_labels(data.get("conditions")),
+            image_url=_text(data, "image_url"),
+            buyer_premium_rate=parse_optional_rate(
+                data.get("buyer_premium_rate"), field_name="buyer_premium_rate"
+            ),
+            brand=_text(data, "brand"),
+            model=_text(data, "model"),
+            category=_text(data, "category").lower(),
+            handling_weight_lb=parse_optional_money(
                 data.get("handling_weight_lb"), field_name="handling_weight_lb"
             ),
             package_dimensions_in=parse_dimensions(data.get("package_dimensions_in")),
-            loading_assistance=parse_conditions(data.get("loading_assistance")),
-            observed_at=parse_datetime(data.get("observed_at")) or datetime.now(timezone.utc),
+            loading_assistance=parse_labels(data.get("loading_assistance")),
+            observed_at=parse_utc_datetime(data.get("observed_at"))
+            or datetime.now(timezone.utc),
         )
 
 
 @dataclass(frozen=True)
 class ObservationChange:
+    """What the stored history says about a listing seen again."""
+
     is_new: bool
     price_changed: bool
     previous_bid: Decimal | None = None
@@ -111,6 +96,8 @@ class ObservationChange:
 
 @dataclass(frozen=True)
 class LogisticsDecision:
+    """An operator's saved answer to a handling question for one listing."""
+
     status: str
     added_cost: Decimal = Decimal("0")
     note: str = ""
@@ -118,6 +105,8 @@ class LogisticsDecision:
 
 @dataclass(frozen=True)
 class LogisticsAssessment:
+    """What handling stages are still unresolved for one listing."""
+
     status: str
     questions: tuple[str, ...] = ()
     added_cost: Decimal = Decimal("0")
@@ -143,6 +132,8 @@ class ValuationObservation:
 
 @dataclass(frozen=True)
 class ValuationBand:
+    """Several observations of one basis, combined into a single range."""
+
     basis: str
     low: Decimal
     typical: Decimal
@@ -153,6 +144,8 @@ class ValuationBand:
 
 @dataclass(frozen=True)
 class ResearchLink:
+    """A place for a person to check value; nothing is fetched from it."""
+
     source_id: str
     label: str
     url: str
@@ -160,6 +153,8 @@ class ResearchLink:
 
 @dataclass(frozen=True)
 class ValuationSummary:
+    """Everything the valuation fan-out learned about one listing."""
+
     bands: tuple[ValuationBand, ...] = ()
     observations: tuple[ValuationObservation, ...] = ()
     research_links: tuple[ResearchLink, ...] = ()
@@ -168,6 +163,8 @@ class ValuationSummary:
 
 @dataclass(frozen=True)
 class Candidate:
+    """One listing that matched one rule, with the evidence for reporting it."""
+
     listing: Listing
     category: str
     rule_name: str
@@ -178,3 +175,7 @@ class Candidate:
     change: ObservationChange
     valuation: ValuationSummary | None = None
     logistics: LogisticsAssessment | None = None
+
+
+def _text(data: dict[str, Any], key: str) -> str:
+    return str(data.get(key) or "").strip()

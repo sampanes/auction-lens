@@ -1,3 +1,6 @@
+# Scheduled daily run: read the ignored inbox file, update SQLite, email the report.
+# Register with Windows Task Scheduler; it exits non-zero if anything fails.
+
 $ErrorActionPreference = "Stop"
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
@@ -13,7 +16,7 @@ if (-not (Test-Path -LiteralPath $inputPath)) {
 
 Push-Location $repoRoot
 try {
-    & $python -m auction_lens.cli run `
+    & $python -m auction_lens run `
         --input $inputPath `
         --config "config\local.toml" `
         --database "data\auction-lens.sqlite3" `
