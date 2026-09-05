@@ -34,6 +34,10 @@ DEFAULT_MINIMUM_INTERVAL_SECONDS = 1
 ENVIRONMENT_PREFIX = "env:"
 REQUIRED_FIELD = "typical"
 
+# This adapter is the only one that contacts a third party, so the operator has
+# to state in configuration that the source permits this use.
+AUTHORIZATION_SETTING = "authorization_confirmed"
+
 
 class HttpJsonAdapter:
     """Map a read-only HTTPS JSON API into valuation observations declaratively."""
@@ -66,6 +70,11 @@ class HttpJsonAdapter:
 
     def collect(self, listing: Listing) -> SourceResult:
         """Query the configured endpoint and map every returned row."""
+        if self.settings.get(AUTHORIZATION_SETTING) is not True:
+            raise ValueError(
+                f"valuation source {self.config.source_id!r} needs "
+                f"{AUTHORIZATION_SETTING} = true before it may be queried"
+            )
         fields = self.settings.get("fields", {})
         if not isinstance(fields, dict) or REQUIRED_FIELD not in fields:
             raise ValueError("fields.typical is required for an HTTP JSON source")

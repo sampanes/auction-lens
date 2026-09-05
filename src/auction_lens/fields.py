@@ -47,6 +47,20 @@ def parse_optional_money(value: Any, *, field_name: str) -> Decimal | None:
     return None if is_absent(value) else parse_money(value, field_name=field_name)
 
 
+def parse_optional_decimal(value: Any, *, field_name: str) -> Decimal | None:
+    return None if is_absent(value) else parse_decimal(value, field_name=field_name)
+
+
+def parse_whole_number(value: Any, *, field_name: str) -> int:
+    """Read a count, such as how many bids a listing has received."""
+    if is_absent(value):
+        return 0
+    try:
+        return int(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{field_name} must be a whole number") from exc
+
+
 def parse_rate(value: Any, *, field_name: str) -> Decimal:
     """Read a proportion such as a 0.15 buyer premium; a rate is not cents."""
     return parse_decimal(value, field_name=field_name)
@@ -56,12 +70,15 @@ def parse_optional_rate(value: Any, *, field_name: str) -> Decimal | None:
     return None if is_absent(value) else parse_rate(value, field_name=field_name)
 
 
-def parse_utc_datetime(value: Any) -> datetime | None:
+def parse_utc_datetime(value: Any, *, field_name: str = "timestamp") -> datetime | None:
     """Accept ISO-8601 text with or without a zone and normalize it to UTC."""
     if is_absent(value):
         return None
     text = str(value).strip().replace("Z", "+00:00")
-    parsed = datetime.fromisoformat(text)
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError as exc:
+        raise ValueError(f"{field_name} must be an ISO-8601 timestamp") from exc
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=timezone.utc)
     return parsed.astimezone(timezone.utc)
@@ -80,7 +97,11 @@ def parse_labels(value: Any) -> tuple[str, ...]:
 
 
 def parse_dimensions(value: Any) -> tuple[Decimal, ...]:
-    """Read two or three package dimensions in inches, in the given order."""
+    """Read two or three package dimensions in inches, in the given order.
+
+    Dimensions keep the precision they were written with. Rounding them to
+    cents the way money is rounded would print "70.00 in" in a report.
+    """
     if is_absent(value):
         return ()
     if isinstance(value, list):
@@ -88,7 +109,7 @@ def parse_dimensions(value: Any) -> tuple[Decimal, ...]:
     else:
         text = str(value).lower().replace(MULTIPLICATION_SIGN, DIMENSION_SEPARATOR)
         values = text.split(DIMENSION_SEPARATOR)
-    dimensions = tuple(parse_money(item, field_name="package_dimensions_in") for item in values)
+    dimensions = tuple(parse_decimal(item, field_name="package_dimensions_in") for item in values)
     if len(dimensions) not in {2, 3}:
         raise ValueError("package_dimensions_in must contain two or three dimensions")
     return dimensions

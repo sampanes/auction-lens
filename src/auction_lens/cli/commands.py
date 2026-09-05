@@ -46,12 +46,13 @@ def fetch(args: argparse.Namespace) -> int:
     """Fetch one authorized page and report what happened to the cache."""
     config = load_config(args.config)
     result = fetch_authorized_page(config.provider, config.acquisition)
+    provider = config.provider.display_name or config.provider.provider_id
     outcome = (
         "cached response reused"
         if result.reused_cache
         else f"{result.bytes_received} bytes cached"
     )
-    print(f"Provider returned HTTP {result.status}; {outcome} at {result.cache_path}")
+    print(f"{provider} returned HTTP {result.status}; {outcome} at {result.cache_path}")
     return SUCCESS
 
 

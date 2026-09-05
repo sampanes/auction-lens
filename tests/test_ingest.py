@@ -31,6 +31,27 @@ class JsonIngestTests(unittest.TestCase):
             path.write_text(json.dumps([MINIMAL_LISTING]), encoding="utf-8")
             self.assertEqual(load_listings(path)[0].listing_id, "row-1")
 
+    def test_a_file_saved_with_a_byte_order_mark_still_loads(self):
+        with temporary_directory() as directory:
+            path = directory / "listings.json"
+            path.write_text(json.dumps([MINIMAL_LISTING]), encoding="utf-8-sig")
+            self.assertEqual(load_listings(path)[0].listing_id, "row-1")
+
+    def test_an_object_without_a_listings_list_is_explained(self):
+        with temporary_directory() as directory:
+            path = directory / "listings.json"
+            path.write_text(json.dumps({"items": [MINIMAL_LISTING]}), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "'listings' list"):
+                load_listings(path)
+
+    def test_an_unreadable_timestamp_names_the_field(self):
+        broken = {**MINIMAL_LISTING, "ends_at": "next Tuesday"}
+        with temporary_directory() as directory:
+            path = directory / "listings.json"
+            path.write_text(json.dumps([broken]), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "ends_at must be an ISO-8601 timestamp"):
+                load_listings(path)
+
     def test_a_missing_required_field_names_it(self):
         incomplete = {key: value for key, value in MINIMAL_LISTING.items() if key != "url"}
         with temporary_directory() as directory:
@@ -53,8 +74,7 @@ class CsvIngestTests(unittest.TestCase):
             listing = load_listings(path)[0]
         self.assertEqual(listing.conditions, ("untested", "used"))
         self.assertEqual(
-            listing.package_dimensions_in,
-            (Decimal("70.00"), Decimal("31.00"), Decimal("45.00")),
+            [str(value) for value in listing.package_dimensions_in], ["70", "31", "45"]
         )
 
 

@@ -17,9 +17,11 @@ from .fields import (
     parse_dimensions,
     parse_labels,
     parse_money,
+    parse_optional_decimal,
     parse_optional_money,
     parse_optional_rate,
     parse_utc_datetime,
+    parse_whole_number,
 )
 
 REQUIRED_LISTING_FIELDS = ("source", "listing_id", "title", "url", "current_bid")
@@ -64,8 +66,8 @@ class Listing:
             estimated_retail=parse_optional_money(
                 data.get("estimated_retail"), field_name="estimated_retail"
             ),
-            bid_count=int(data.get("bid_count") or 0),
-            ends_at=parse_utc_datetime(data.get("ends_at")),
+            bid_count=parse_whole_number(data.get("bid_count"), field_name="bid_count"),
+            ends_at=parse_utc_datetime(data.get("ends_at"), field_name="ends_at"),
             location=_text(data, "location"),
             conditions=parse_labels(data.get("conditions")),
             image_url=_text(data, "image_url"),
@@ -75,12 +77,12 @@ class Listing:
             brand=_text(data, "brand"),
             model=_text(data, "model"),
             category=_text(data, "category").lower(),
-            handling_weight_lb=parse_optional_money(
+            handling_weight_lb=parse_optional_decimal(
                 data.get("handling_weight_lb"), field_name="handling_weight_lb"
             ),
             package_dimensions_in=parse_dimensions(data.get("package_dimensions_in")),
             loading_assistance=parse_labels(data.get("loading_assistance")),
-            observed_at=parse_utc_datetime(data.get("observed_at"))
+            observed_at=parse_utc_datetime(data.get("observed_at"), field_name="observed_at")
             or datetime.now(timezone.utc),
         )
 

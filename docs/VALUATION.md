@@ -74,6 +74,10 @@ The `http_json` adapter supports read-only JSON APIs without source-specific
 Python. It uses GET only, requires HTTPS, rejects URL credentials, and caches
 responses locally.
 
+It is the only adapter that contacts a third party, so it refuses to run until
+the configuration states `authorization_confirmed = true`. That line is the
+operator asserting the source permits this use; nothing else can check it.
+
 ```toml
 [[valuation.sources]]
 id = "authorized-value-api"

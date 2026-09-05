@@ -33,6 +33,12 @@ class LogisticsAssessmentTests(unittest.TestCase):
         self.assertIn("destination unloading", questions)
         self.assertNotIn("origin loading", questions)
 
+    def test_question_states_dimensions_the_way_they_were_given(self):
+        listing = replace(self.listing, **HEAVY_AND_LARGE)
+        questions = " ".join(assess_logistics(listing, self.config).questions)
+        self.assertIn("70 x 31 x 45 in item", questions)
+        self.assertIn("148 lb", questions)
+
     def test_unassisted_heavy_item_asks_about_both_ends(self):
         listing = replace(self.listing, **HEAVY_AND_LARGE)
         questions = " ".join(assess_logistics(listing, self.config).questions).lower()

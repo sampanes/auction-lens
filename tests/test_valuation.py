@@ -117,6 +117,14 @@ class HttpJsonAdapterTests(unittest.TestCase):
                 HttpJsonAdapter(source, opener=opener).collect(self.listing)
         self.assertEqual(opener.request_count, 0)
 
+    def test_an_unconfirmed_source_is_never_queried(self):
+        opener = RecordingOpener(FakeResponse(API_BODY))
+        with temporary_directory() as directory:
+            source = self._source(directory, authorization_confirmed=False)
+            with self.assertRaisesRegex(ValueError, "authorization_confirmed = true"):
+                HttpJsonAdapter(source, opener=opener).collect(self.listing)
+        self.assertEqual(opener.request_count, 0)
+
     def test_the_per_run_request_budget_is_enforced(self):
         opener = RecordingOpener(FakeResponse(API_BODY))
         with temporary_directory() as directory:
@@ -129,6 +137,7 @@ class HttpJsonAdapterTests(unittest.TestCase):
 
     def _source(self, directory, **overrides) -> ValuationSourceConfig:
         settings = {
+            "authorization_confirmed": True,
             "endpoint": "https://example.invalid/value?q={query}",
             "items_path": "results",
             "basis": "used_sold",

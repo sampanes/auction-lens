@@ -68,17 +68,16 @@ def _provider(section: Section) -> ProviderConfig:
 
 def _economics(section: Section) -> EconomicsConfig:
     return EconomicsConfig(
-        buyer_premium_rate=section.decimal("default_buyer_premium", 0),
+        buyer_premium_rate=section.non_negative_decimal("default_buyer_premium", 0),
         premium_is_taxable=section.flag("premium_is_taxable", True),
-        sales_tax_rate=section.decimal("sales_tax_rate", 0),
-        processing_fee=section.decimal("processing_fee", 0),
+        sales_tax_rate=section.non_negative_decimal("sales_tax_rate", 0),
+        processing_fee=section.non_negative_decimal("processing_fee", 0),
     )
 
 
 def _acquisition(section: Section) -> AcquisitionConfig:
     return AcquisitionConfig(
         mode=section.text("mode", "manual"),
-        authorization_required=section.flag("authorization_required", True),
         url=section.text("url"),
         user_agent_env=section.text("user_agent_env", DEFAULT_USER_AGENT_ENV),
         timezone=section.text("timezone", "UTC"),
@@ -96,8 +95,8 @@ def _acquisition(section: Section) -> AcquisitionConfig:
 
 def _scoring(section: Section, conditions: Section, profiles: Section) -> ScoringConfig:
     return ScoringConfig(
-        anomaly_minimum_retail=section.decimal("anomaly_minimum_retail", 100),
-        anomaly_maximum_ratio=section.decimal("anomaly_maximum_ratio", "0.20"),
+        anomaly_minimum_retail=section.non_negative_decimal("anomaly_minimum_retail", 100),
+        anomaly_maximum_ratio=section.non_negative_decimal("anomaly_maximum_ratio", "0.20"),
         minimum_report_score=section.integer("minimum_report_score", 70),
         ending_soon_minutes=section.integer("ending_soon_minutes", 20),
         condition_penalties=conditions.integer_map("penalties"),
@@ -168,15 +167,13 @@ def _reject_unusable_sources(sources: tuple[ValuationSourceConfig, ...]) -> None
 def _logistics(section: Section) -> LogisticsConfig:
     config = LogisticsConfig(
         large_item_policy=section.text("large_item_policy", "ask").lower(),
-        manual_handling_limit_lb=section.decimal("manual_handling_limit_lb", 75),
-        large_dimension_threshold_in=section.decimal("large_dimension_threshold_in", 60),
+        manual_handling_limit_lb=section.non_negative_decimal("manual_handling_limit_lb", 75),
+        large_dimension_threshold_in=section.non_negative_decimal(
+            "large_dimension_threshold_in", 60
+        ),
     )
     if config.large_item_policy not in LARGE_ITEM_POLICIES:
         raise ValueError("large_item_policy must be ask, allow, or reject")
-    if config.manual_handling_limit_lb < 0:
-        raise ValueError("manual_handling_limit_lb cannot be negative")
-    if config.large_dimension_threshold_in < 0:
-        raise ValueError("large_dimension_threshold_in cannot be negative")
     return config
 
 

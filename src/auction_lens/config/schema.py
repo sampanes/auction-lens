@@ -44,7 +44,6 @@ class AcquisitionConfig:
     """How, and how often, the fetcher may contact the provider."""
 
     mode: str = "manual"
-    authorization_required: bool = True
     url: str = ""
     user_agent_env: str = DEFAULT_USER_AGENT_ENV
     timezone: str = "UTC"
