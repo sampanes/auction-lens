@@ -149,6 +149,8 @@ def _valuation_html(candidate: Candidate) -> str:
 
 
 def send_email(candidates: list[Candidate], config: EmailConfig) -> None:
+    if config.security not in {"ssl", "starttls"}:
+        raise ValueError("email security must be 'ssl' or 'starttls'")
     values = {
         "host": os.getenv(config.host_env),
         "username": os.getenv(config.username_env),
