@@ -38,6 +38,13 @@ and condition.
 The Watchlist is not a discovery feed, so it cannot power broad anomaly detection by
 itself. Comprehensive daily discovery uses the live HTTP fetch path.
 
+As of the 2026-09-05 acquisition check, the public browse entry point is
+`/browse`; the older parameterized `/search` GET route returns 404. The initial
+browse response is a server-rendered navigation shell, while listing discovery
+is loaded through the site's public client-side search integration. A reduced,
+redacted shell fixture is retained under `fixtures/nellis/`; verbatim captures
+remain ignored under `private/cache/`.
+
 Official references:
 
 - [How do I save an item for later?](https://nellisauction-help.freshdesk.com/support/solutions/articles/68000007628-how-do-i-save-an-item-for-later-)

@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Nellis browse response fixture</title>
+  </head>
+  <body>
+    <!--
+      Reduced and redacted from the public /browse response captured 2026-09-05.
+      Personal values and live public-service identifiers have been replaced.
+      The response is a navigation shell; it does not contain listing records.
+    -->
+    <header>
+      <form method="post" action="/search" data-ax="header-search-form">
+        <input aria-label="Search items" type="search" name="query" value="">
+        <button type="submit" name="_action" value="catalog-search">EXPLORE</button>
+      </form>
+    </header>
+    <main>
+      <h2>States</h2>
+      <ul>
+        <li><a data-discover="true" href="/browse/az">AZ</a></li>
+        <li><a data-discover="true" href="/browse/nv">NV</a></li>
+      </ul>
+    </main>
+    <script>
+      window.ENV = {
+        "APP_PUBLIC_ALGOLIA_API_KEY": "REDACTED",
+        "APP_PUBLIC_ALGOLIA_ID": "REDACTED",
+        "APP_PUBLIC_ALGOLIA_INDEX": "nellisauction-prd",
+        "APP_PUBLIC_BUYER_FRONTEND_URL": "https://www.nellisauction.com"
+      };
+    </script>
+    <script>
+      window.__remixContext = {"basename":"/","isSpaMode":false};
+    </script>
+    <script>
+      window.__remixContext.streamController = {"enqueue": function () {}};
+      window.__remixContext.streamController.enqueue(
+        "[{\"loaderData\":{\"routes/browse._index\":null}}]"
+      );
+    </script>
+  </body>
+</html>

@@ -226,6 +226,19 @@ def load_config(path: str | Path) -> AppConfig:
         raise ValueError("manual_handling_limit_lb cannot be negative")
     if logistics_config.large_dimension_threshold_in < 0:
         raise ValueError("large_dimension_threshold_in cannot be negative")
+    email_config = EmailConfig(
+        enabled=bool(email.get("enabled", False)),
+        host_env=str(email.get("host_env", "AUCTION_LENS_SMTP_HOST")),
+        port=int(email.get("port", 465)),
+        security=str(email.get("security", "ssl")).lower(),
+        username_env=str(email.get("username_env", "AUCTION_LENS_SMTP_USERNAME")),
+        password_env=str(email.get("password_env", "AUCTION_LENS_SMTP_PASSWORD")),
+        sender_env=str(email.get("sender_env", "AUCTION_LENS_EMAIL_FROM")),
+        recipient_env=str(email.get("recipient_env", "AUCTION_LENS_EMAIL_TO")),
+        subject=str(email.get("subject", "Auction Lens report")),
+    )
+    if email_config.security not in {"ssl", "starttls"}:
+        raise ValueError("email security must be 'ssl' or 'starttls'")
     return AppConfig(
         provider=provider_config,
         scoring=scoring_config,
@@ -236,17 +249,7 @@ def load_config(path: str | Path) -> AppConfig:
             sources=valuation_sources,
         ),
         logistics=logistics_config,
-        email=EmailConfig(
-            enabled=bool(email.get("enabled", False)),
-            host_env=str(email.get("host_env", "AUCTION_LENS_SMTP_HOST")),
-            port=int(email.get("port", 465)),
-            security=str(email.get("security", "ssl")).lower(),
-            username_env=str(email.get("username_env", "AUCTION_LENS_SMTP_USERNAME")),
-            password_env=str(email.get("password_env", "AUCTION_LENS_SMTP_PASSWORD")),
-            sender_env=str(email.get("sender_env", "AUCTION_LENS_EMAIL_FROM")),
-            recipient_env=str(email.get("recipient_env", "AUCTION_LENS_EMAIL_TO")),
-            subject=str(email.get("subject", "Auction Lens report")),
-        ),
+        email=email_config,
         allowed_locations=tuple(str(value).lower() for value in locations.get("allowed", [])),
     )
 

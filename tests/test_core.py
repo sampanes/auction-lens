@@ -23,6 +23,7 @@ from auction_lens.valuation.http_json import HttpJsonAdapter
 ROOT = Path(__file__).resolve().parents[1]
 CONFIG = ROOT / "config" / "providers" / "nellis.example.toml"
 FIXTURE = ROOT / "fixtures" / "synthetic" / "listings.json"
+NELLIS_BROWSE_FIXTURE = ROOT / "fixtures" / "nellis" / "browse-shell.html"
 
 
 class AuctionLensTests(unittest.TestCase):
@@ -217,6 +218,25 @@ class AuctionLensTests(unittest.TestCase):
         smtp_ssl.assert_called_once_with("smtp.example.invalid", 465, timeout=30)
         smtp_ssl.return_value.__enter__.return_value.send_message.assert_called_once()
 
+    @patch("auction_lens.reporting.smtplib.SMTP")
+    @patch("auction_lens.reporting.smtplib.SMTP_SSL")
+    def test_email_rejects_unknown_security_without_connecting(self, smtp_ssl, smtp):
+        with self.assertRaisesRegex(ValueError, "email security must be"):
+            send_email([], replace(self.config.email, security="starttlz"))
+        smtp.assert_not_called()
+        smtp_ssl.assert_not_called()
+
+        with tempfile.TemporaryDirectory() as directory:
+            invalid_config = Path(directory) / "invalid-email-security.toml"
+            invalid_config.write_text(
+                CONFIG.read_text(encoding="utf-8").replace(
+                    'security = "ssl"', 'security = "starttlz"'
+                ),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "email security must be"):
+                load_config(invalid_config)
+
     def test_env_file_loads_values_without_overriding_existing_environment(self):
         with tempfile.TemporaryDirectory() as directory:
             env_file = Path(directory) / ".env"
@@ -225,6 +245,14 @@ class AuctionLensTests(unittest.TestCase):
                 load_env_file(env_file)
                 self.assertEqual(__import__("os").environ["NEW_SETTING"], "from-file")
                 self.assertEqual(__import__("os").environ["EXISTING_SETTING"], "from-process")
+
+    def test_redacted_nellis_browse_fixture_preserves_acquisition_boundaries(self):
+        fixture = NELLIS_BROWSE_FIXTURE.read_text(encoding="utf-8")
+        self.assertIn('action="/search"', fixture)
+        self.assertIn('href="/browse/az"', fixture)
+        self.assertIn("window.__remixContext", fixture)
+        self.assertIn('"APP_PUBLIC_ALGOLIA_API_KEY": "REDACTED"', fixture)
+        self.assertNotIn("@", fixture)
 
     def test_authorized_fetch_identifies_caches_and_rate_limits(self):
         class FakeResponse:
