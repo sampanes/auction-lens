@@ -7,9 +7,9 @@ source, or an SMTP server.
 from __future__ import annotations
 
 import tempfile
+from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Iterator
 
 from auction_lens.config import AppConfig, load_config
 from auction_lens.ingest import load_listings
@@ -56,7 +56,7 @@ class FakeResponse:
         self.status = status
         self.headers = headers or {}
 
-    def __enter__(self) -> "FakeResponse":
+    def __enter__(self) -> FakeResponse:
         return self
 
     def __exit__(self, *_args) -> bool:

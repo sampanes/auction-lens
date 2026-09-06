@@ -6,11 +6,17 @@ gates come before scores so that a rejection is cheap and obvious to explain.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from ..config import AppConfig
-from ..logistics import INFEASIBLE, assess_logistics
-from ..models import Candidate, Listing, LogisticsDecision, ObservationChange
+from ..logistics import assess_logistics
+from ..models import (
+    Candidate,
+    Listing,
+    LogisticsDecision,
+    LogisticsStatus,
+    ObservationChange,
+)
 from .anomaly import score_retail_anomaly
 from .conditions import penalty_for
 from .context import ScoringContext
@@ -35,7 +41,7 @@ def evaluate(
         config,
         change or FIRST_OBSERVATION,
         logistics_decision=logistics_decision,
-        now=now or datetime.now(timezone.utc),
+        now=now or datetime.now(UTC),
     )
     if context is None:
         return []
@@ -59,7 +65,7 @@ def build_context(
     if not _is_allowed_location(listing, config.allowed_locations):
         return None
     logistics = assess_logistics(listing, config.logistics, logistics_decision)
-    if logistics.status == INFEASIBLE:
+    if logistics.status == LogisticsStatus.INFEASIBLE:
         return None
     conditions = frozenset(listing.conditions)
     if conditions & config.scoring.rejected_conditions:

@@ -11,13 +11,14 @@ import smtplib
 from dataclasses import dataclass
 from email.message import EmailMessage
 
-from ..config import EMAIL_SECURITY_MODES, SSL, STARTTLS, EmailConfig
+from ..config import EmailConfig, EmailSecurity
 from ..models import Candidate
 from .html import render_html
 from .text import render_text
 
 SMTP_TIMEOUT_SECONDS = 30
 MATCH_COUNT_PLACEHOLDER = "{{ match_count }}"
+
 
 @dataclass(frozen=True)
 class MailAccount:
@@ -32,14 +33,13 @@ class MailAccount:
 
 def send_email(candidates: list[Candidate], config: EmailConfig) -> None:
     """Send one report as a text message with an HTML alternative."""
-    if config.security not in EMAIL_SECURITY_MODES:
-        raise ValueError("email security must be 'ssl' or 'starttls'")
     account = _account_from_environment(config)
     message = _build_message(candidates, config, account)
 
-    transport = smtplib.SMTP_SSL if config.security == SSL else smtplib.SMTP
+    is_implicit_tls = config.security == EmailSecurity.SSL
+    transport = smtplib.SMTP_SSL if is_implicit_tls else smtplib.SMTP
     with transport(account.host, config.port, timeout=SMTP_TIMEOUT_SECONDS) as smtp:
-        if config.security == STARTTLS:
+        if config.security == EmailSecurity.STARTTLS:
             smtp.starttls()
         smtp.login(account.username, account.password)
         smtp.send_message(message)

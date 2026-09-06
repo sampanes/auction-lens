@@ -1,16 +1,20 @@
-"""Coercion helpers that turn loosely typed input into strict domain values.
+"""The vocabulary of what a value is allowed to be.
 
-Listing data arrives from JSON, CSV, XML, and TOML, so any single field may be a
-string, a number, a list, or absent. Every conversion lives here so that "what
-does this raw value mean" has exactly one answer, and so that a failure names the
-field the operator has to fix.
+Two kinds of input reach this project. Listing data arrives from JSON, CSV, and
+XML, where any field may be a string, a number, or absent, so it has to be
+coerced. Configuration arrives from TOML, which is already typed, so it only has
+to be checked. Both use the words below, which is why an operator sees the same
+sentence for the same mistake no matter which file it was in.
+
+Every function names the field it is unhappy about, because the person reading
+the error is the person who has to go and edit that field.
 """
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
-from typing import Any
+from typing import Any, TypeVar
 
 CENTS = Decimal("0.01")
 
@@ -20,6 +24,52 @@ MULTIPLICATION_SIGN = "\u00d7"
 
 # Several list-shaped fields also arrive as one pipe-delimited string.
 LABEL_SEPARATOR = "|"
+
+Number = TypeVar("Number", int, Decimal)
+
+
+# --------------------------------------------------------------------------
+# Requirements. These check a value that is already the right type, and return
+# it so they can be chained onto a parse or used alone in a __post_init__.
+# --------------------------------------------------------------------------
+
+
+def require_finite(value: Decimal, *, field_name: str) -> Decimal:
+    """Reject the infinities and NaN that Decimal accepts but arithmetic cannot."""
+    if not value.is_finite():
+        raise ValueError(f"{field_name} must be a finite number")
+    return value
+
+
+def require_not_negative(value: Number, *, field_name: str) -> Number:
+    """For a quantity whose meaning reverses below zero, such as a fee."""
+    if value < 0:
+        raise ValueError(f"{field_name} cannot be negative")
+    return value
+
+
+def require_at_least(value: Number, minimum: Number, *, field_name: str) -> Number:
+    if value < minimum:
+        raise ValueError(f"{field_name} must be at least {minimum}")
+    return value
+
+
+def require_at_most(value: Number, maximum: Number, *, field_name: str) -> Number:
+    if value > maximum:
+        raise ValueError(f"{field_name} cannot exceed {maximum}")
+    return value
+
+
+def require_within(value: Number, *, low: Number, high: Number, field_name: str) -> Number:
+    if not low <= value <= high:
+        raise ValueError(f"{field_name} must be between {low} and {high}")
+    return value
+
+
+# --------------------------------------------------------------------------
+# Coercions. These turn a loosely typed value from a listing file into a
+# strict one, applying the requirements above on the way.
+# --------------------------------------------------------------------------
 
 
 def is_absent(value: Any) -> bool:
@@ -33,11 +83,8 @@ def parse_decimal(value: Any, *, field_name: str) -> Decimal:
         amount = Decimal(str(value))
     except (InvalidOperation, TypeError, ValueError) as exc:
         raise ValueError(f"{field_name} must be a number") from exc
-    if not amount.is_finite():
-        raise ValueError(f"{field_name} must be a finite number")
-    if amount < 0:
-        raise ValueError(f"{field_name} cannot be negative")
-    return amount
+    require_finite(amount, field_name=field_name)
+    return require_not_negative(amount, field_name=field_name)
 
 
 def parse_money(value: Any, *, field_name: str) -> Decimal:
@@ -63,9 +110,7 @@ def parse_whole_number(value: Any, *, field_name: str) -> int:
         raise ValueError(f"{field_name} must be a whole number") from exc
     if not number.is_finite() or number != number.to_integral_value():
         raise ValueError(f"{field_name} must be a whole number")
-    if number < 0:
-        raise ValueError(f"{field_name} cannot be negative")
-    return int(number)
+    return int(require_not_negative(number, field_name=field_name))
 
 
 def parse_rate(value: Any, *, field_name: str) -> Decimal:
@@ -87,8 +132,8 @@ def parse_utc_datetime(value: Any, *, field_name: str = "timestamp") -> datetime
     except ValueError as exc:
         raise ValueError(f"{field_name} must be an ISO-8601 timestamp") from exc
     if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=timezone.utc)
-    return parsed.astimezone(timezone.utc)
+        parsed = parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
 
 
 def parse_labels(value: Any) -> tuple[str, ...]:
@@ -116,7 +161,9 @@ def parse_dimensions(value: Any) -> tuple[Decimal, ...]:
     else:
         text = str(value).lower().replace(MULTIPLICATION_SIGN, DIMENSION_SEPARATOR)
         values = text.split(DIMENSION_SEPARATOR)
-    dimensions = tuple(parse_decimal(item, field_name="package_dimensions_in") for item in values)
+    dimensions = tuple(
+        parse_decimal(item, field_name="package_dimensions_in") for item in values
+    )
     if len(dimensions) not in {2, 3}:
         raise ValueError("package_dimensions_in must contain two or three dimensions")
     return dimensions

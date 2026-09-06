@@ -7,11 +7,17 @@ computed once and handed to both.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Sequence
 
-from ..models import Candidate, Listing, LogisticsAssessment, ObservationChange
+from ..models import (
+    Candidate,
+    CandidateCategory,
+    Listing,
+    LogisticsAssessment,
+    ObservationChange,
+)
 
 
 @dataclass(frozen=True)
@@ -42,7 +48,7 @@ class ScoringContext:
     def candidate(
         self,
         *,
-        category: str,
+        category: CandidateCategory,
         rule_name: str,
         score: int,
         reasons: Sequence[str],

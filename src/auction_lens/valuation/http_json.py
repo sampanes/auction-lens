@@ -9,10 +9,11 @@ from __future__ import annotations
 
 import json
 import os
-from datetime import datetime, timedelta, timezone
+from collections.abc import Callable
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
 
@@ -47,16 +48,17 @@ class HttpJsonAdapter:
         config: ValuationSourceConfig,
         *,
         opener: Callable[..., Any] = urlopen,
-        clock: Callable[[], datetime] = lambda: datetime.now(timezone.utc),
+        clock: Callable[[], datetime] = lambda: datetime.now(UTC),
         throttle: RequestThrottle | None = None,
     ):
         self.config = config
         self.settings = config.settings
         self.opener = opener
+        cache_hours = float(self.settings.get("cache_hours", DEFAULT_CACHE_HOURS))
         self.cache = JsonResponseCache(
             directory=Path(str(self.settings.get("cache_dir", DEFAULT_CACHE_DIR))),
             source_id=config.source_id,
-            lifetime=timedelta(hours=float(self.settings.get("cache_hours", DEFAULT_CACHE_HOURS))),
+            lifetime=timedelta(hours=cache_hours),
             clock=clock,
         )
         self.throttle = throttle or RequestThrottle(
@@ -87,7 +89,8 @@ class HttpJsonAdapter:
     def _endpoint(self, listing: Listing) -> str:
         endpoint = fill_template(str(self.settings.get("endpoint", "")), listing)
         parsed = urlsplit(endpoint)
-        if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password:
+        is_public = parsed.scheme == "https" and parsed.hostname
+        if not is_public or parsed.username or parsed.password:
             raise ValueError(
                 "HTTP JSON endpoints must be public HTTPS URLs without URL credentials"
             )
@@ -122,8 +125,6 @@ class HttpJsonAdapter:
         typical = parse_money(read_path(row, str(fields[REQUIRED_FIELD])), field_name="typical")
         low = parse_money(_field(row, fields, "low", typical), field_name="low")
         high = parse_money(_field(row, fields, "high", typical), field_name="high")
-        if not low <= typical <= high:
-            raise ValueError("HTTP valuation requires low <= typical <= high")
         basis = str(_field(row, fields, "basis", self.settings.get("basis", "used_sold")))
         currency = str(_field(row, fields, "currency", self.settings.get("currency", "USD")))
         return ValuationObservation(
@@ -133,7 +134,7 @@ class HttpJsonAdapter:
             typical=typical,
             high=high,
             currency=currency.upper(),
-            sample_size=max(1, int(_field(row, fields, "sample_size", 1))),
+            sample_size=int(_field(row, fields, "sample_size", 1)),
             confidence=Decimal(str(_field(row, fields, "confidence", 1))),
             observed_at=parse_utc_datetime(_field(row, fields, "observed_at", None)),
             url=str(_field(row, fields, "url", "")),

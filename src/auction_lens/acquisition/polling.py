@@ -8,11 +8,11 @@ that already happened.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from ..config import AcquisitionConfig, PRODUCTION
+from ..config import AcquisitionConfig, RunMode
 from ..file_io import read_json, write_json_atomically
 
 # Enough history to explain today's decisions without growing without bound.
@@ -28,7 +28,7 @@ class PollLedger:
     path: Path
 
     @classmethod
-    def at(cls, path: str | Path) -> "PollLedger":
+    def at(cls, path: str | Path) -> PollLedger:
         return cls(Path(path))
 
     def attempts(self) -> list[datetime]:
@@ -37,7 +37,7 @@ class PollLedger:
 
     def record(self, instant: datetime) -> None:
         """Append one attempt, keeping only the most recent entries."""
-        attempts = [*self.attempts(), instant.astimezone(timezone.utc)]
+        attempts = [*self.attempts(), instant.astimezone(UTC)]
         write_json_atomically(
             self.path,
             {ATTEMPTS_KEY: [value.isoformat() for value in attempts[-RETAINED_ATTEMPTS:]]},
@@ -55,7 +55,7 @@ def enforce_request_limits(
     that is the day a provider would see in its logs. Development only spaces
     requests out, so that iterating on a parser stays polite without a quota.
     """
-    if config.run_mode == PRODUCTION:
+    if config.run_mode == RunMode.PRODUCTION:
         _enforce_daily_limit(attempts, config, instant)
     if attempts and instant - max(attempts) < _minimum_interval(config):
         raise RuntimeError(f"{config.run_mode} minimum interval has not elapsed")
@@ -74,7 +74,7 @@ def _enforce_daily_limit(
 
 
 def _minimum_interval(config: AcquisitionConfig) -> timedelta:
-    if config.run_mode == PRODUCTION:
+    if config.run_mode == RunMode.PRODUCTION:
         return timedelta(minutes=config.minimum_interval_minutes)
     return timedelta(seconds=config.development_minimum_interval_seconds)
 

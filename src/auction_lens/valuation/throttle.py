@@ -7,8 +7,8 @@ one is in-memory on purpose, because it bounds a single fan-out over listings.
 from __future__ import annotations
 
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Callable
 
 
 @dataclass
