@@ -65,6 +65,84 @@ class ConfigValidationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "scoring.minimum_report_score"):
             self._load_variant("minimum_report_score = 70", 'minimum_report_score = "high"')
 
+    def test_a_quoted_boolean_is_not_treated_as_true(self):
+        with self.assertRaisesRegex(ValueError, "provider.enabled must be true or false"):
+            self._load_variant("enabled = true", 'enabled = "false"')
+
+    def test_a_fractional_integer_is_not_silently_truncated(self):
+        with self.assertRaisesRegex(
+            ValueError, "scoring.minimum_report_score must be a whole number"
+        ):
+            self._load_variant("minimum_report_score = 70", "minimum_report_score = 70.5")
+
+    def test_non_finite_numbers_are_rejected_by_key(self):
+        with self.assertRaisesRegex(
+            ValueError, "economics.processing_fee must be a finite number"
+        ):
+            self._load_variant("processing_fee = 0.0", "processing_fee = inf")
+
+    def test_text_settings_do_not_accept_tables_or_arrays(self):
+        with self.assertRaisesRegex(ValueError, "provider.display_name must be text"):
+            self._load_variant(
+                'display_name = "Nellis Auction"',
+                'display_name = ["Nellis Auction"]',
+            )
+
+    def test_empty_matching_terms_are_rejected(self):
+        with self.assertRaisesRegex(
+            ValueError, r"interests\[0\]\.any_terms\[0\] must be non-empty text"
+        ):
+            self._load_variant(
+                'any_terms = ["soundbar", "sound bar"]',
+                'any_terms = ["", "sound bar"]',
+            )
+
+    def test_a_negative_interest_budget_is_rejected_by_key(self):
+        with self.assertRaisesRegex(
+            ValueError, r"interests\[0\]\.max_total_cost cannot be negative"
+        ):
+            self._load_variant("max_total_cost = 50", "max_total_cost = -1")
+
+    def test_request_safeguards_cannot_be_negative(self):
+        with self.assertRaisesRegex(
+            ValueError, "provider.acquisition.minimum_interval_minutes cannot be negative"
+        ):
+            self._load_variant(
+                'mode = "authorized_http"',
+                'mode = "authorized_http"\nminimum_interval_minutes = -1',
+            )
+
+    def test_an_unknown_time_zone_names_the_setting(self):
+        with self.assertRaisesRegex(
+            ValueError, "provider.acquisition.timezone must be a valid IANA time zone"
+        ):
+            self._load_variant(
+                'mode = "authorized_http"',
+                'mode = "authorized_http"\ntimezone = "Moon/SeaOfTranquility"',
+            )
+
+    def test_scores_stay_inside_the_reported_range(self):
+        with self.assertRaisesRegex(
+            ValueError, "scoring.minimum_report_score must be between 0 and 100"
+        ):
+            self._load_variant("minimum_report_score = 70", "minimum_report_score = 101")
+
+    def test_anomaly_ratio_cannot_describe_a_markup(self):
+        with self.assertRaisesRegex(
+            ValueError, "scoring.anomaly_maximum_ratio cannot exceed 1"
+        ):
+            self._load_variant("anomaly_maximum_ratio = 0.20", "anomaly_maximum_ratio = 1.01")
+
+    def test_penalties_cannot_turn_into_bonuses(self):
+        with self.assertRaisesRegex(
+            ValueError, "condition_profiles.ready_to_use.penalties.untested cannot be negative"
+        ):
+            self._load_variant('"untested" = 22', '"untested" = -1')
+
+    def test_email_port_is_in_the_tcp_port_range(self):
+        with self.assertRaisesRegex(ValueError, "reports.email.port cannot exceed 65535"):
+            self._load_variant("port = 465", "port = 65536")
+
     def _load_variant(self, original: str, replacement: str):
         """Load the example configuration with one setting changed."""
         source = EXAMPLE_CONFIG.read_text(encoding="utf-8")

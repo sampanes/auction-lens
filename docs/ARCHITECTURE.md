@@ -9,7 +9,8 @@ acquisition -> ingest -> scoring -> valuation -> reporting
                    \--------- storage ----------/
 ```
 
-`models` and `fields` sit underneath all of it and depend on nothing.
+`fields` has no project dependencies. `models` depends only on `fields`; both
+sit underneath the rest of the application.
 
 ## Where things live
 
@@ -26,13 +27,14 @@ acquisition -> ingest -> scoring -> valuation -> reporting
 | `storage/` | What did we see last time? |
 | `reporting/` | How is this said to a person, and how is it delivered? |
 | `pipeline` | One whole run, without a command line. |
-| `cli/` | Which arguments map to which command? |
+| `cli/` | Which arguments map to which command, and how are errors shown? |
 | `file_io`, `env_file` | Shared plumbing with no domain opinions. |
 
 ## Rules that keep it navigable
 
-1. **One concern per module.** If a file needs the word "and" to describe it,
-   it is two files.
+1. **One reason to change per module.** Keep helpers beside the behavior they
+   explain. Split a file when its parts change for different reasons, not merely
+   because it can be made smaller.
 2. **Take the narrowest configuration you need.** Cost estimation takes
    `EconomicsConfig`, not the whole `AppConfig`; only `pipeline` and `cli` see
    everything.
@@ -57,6 +59,13 @@ acquisition -> ingest -> scoring -> valuation -> reporting
 - **A new command**: add the parser in `cli/parser.py`, the function in
   `cli/commands.py`, and the mapping in `cli/__init__.py`. Anything with real
   logic belongs in `pipeline` instead, where it can be tested without argv.
+
+## Reading the code for the first time
+
+Start with `pipeline.analyze_listings`, which shows one complete run in about a
+page. Follow `evaluate` into `scoring/` for selection policy, or follow the
+stores into `storage/` for persistence. Read `cli/` last: it deliberately adds
+argument names and terminal output, but no domain behavior.
 
 ## Tests
 

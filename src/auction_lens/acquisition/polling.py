@@ -12,12 +12,8 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from ..config import AcquisitionConfig
+from ..config import AcquisitionConfig, PRODUCTION
 from ..file_io import read_json, write_json_atomically
-
-PRODUCTION = "production"
-DEVELOPMENT = "development"
-RUN_MODES = frozenset({PRODUCTION, DEVELOPMENT})
 
 # Enough history to explain today's decisions without growing without bound.
 RETAINED_ATTEMPTS = 60

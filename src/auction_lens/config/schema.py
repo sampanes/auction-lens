@@ -15,9 +15,18 @@ DEFAULT_USER_AGENT_ENV = "AUCTION_LENS_HTTP_USER_AGENT"
 DEFAULT_CACHE_FILE = "private/cache/provider-response.html"
 DEFAULT_LEDGER_FILE = "private/poll-ledger.json"
 
-LARGE_ITEM_POLICIES = frozenset({"ask", "allow", "reject"})
-RUN_MODES = frozenset({"production", "development"})
-EMAIL_SECURITY_MODES = frozenset({"ssl", "starttls"})
+ASK = "ask"
+ALLOW = "allow"
+REJECT = "reject"
+LARGE_ITEM_POLICIES = frozenset({ASK, ALLOW, REJECT})
+
+PRODUCTION = "production"
+DEVELOPMENT = "development"
+RUN_MODES = frozenset({PRODUCTION, DEVELOPMENT})
+
+SSL = "ssl"
+STARTTLS = "starttls"
+EMAIL_SECURITY_MODES = frozenset({SSL, STARTTLS})
 
 
 @dataclass(frozen=True)

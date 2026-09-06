@@ -23,8 +23,8 @@ LABEL_SEPARATOR = "|"
 
 
 def is_absent(value: Any) -> bool:
-    """Treat both an omitted key and an empty string as "not provided"."""
-    return value is None or value == ""
+    """Treat an omitted key or whitespace-only text as "not provided"."""
+    return value is None or (isinstance(value, str) and not value.strip())
 
 
 def parse_decimal(value: Any, *, field_name: str) -> Decimal:
@@ -33,6 +33,8 @@ def parse_decimal(value: Any, *, field_name: str) -> Decimal:
         amount = Decimal(str(value))
     except (InvalidOperation, TypeError, ValueError) as exc:
         raise ValueError(f"{field_name} must be a number") from exc
+    if not amount.is_finite():
+        raise ValueError(f"{field_name} must be a finite number")
     if amount < 0:
         raise ValueError(f"{field_name} cannot be negative")
     return amount
@@ -56,9 +58,14 @@ def parse_whole_number(value: Any, *, field_name: str) -> int:
     if is_absent(value):
         return 0
     try:
-        return int(value)
-    except (TypeError, ValueError) as exc:
+        number = Decimal(str(value))
+    except (InvalidOperation, TypeError, ValueError) as exc:
         raise ValueError(f"{field_name} must be a whole number") from exc
+    if not number.is_finite() or number != number.to_integral_value():
+        raise ValueError(f"{field_name} must be a whole number")
+    if number < 0:
+        raise ValueError(f"{field_name} cannot be negative")
+    return int(number)
 
 
 def parse_rate(value: Any, *, field_name: str) -> Decimal:

@@ -11,18 +11,13 @@ import smtplib
 from dataclasses import dataclass
 from email.message import EmailMessage
 
-from ..config import EmailConfig
-from ..config.schema import EMAIL_SECURITY_MODES
+from ..config import EMAIL_SECURITY_MODES, SSL, STARTTLS, EmailConfig
 from ..models import Candidate
 from .html import render_html
 from .text import render_text
 
 SMTP_TIMEOUT_SECONDS = 30
 MATCH_COUNT_PLACEHOLDER = "{{ match_count }}"
-
-SSL = "ssl"
-STARTTLS = "starttls"
-
 
 @dataclass(frozen=True)
 class MailAccount:

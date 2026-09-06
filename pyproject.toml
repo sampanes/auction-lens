@@ -8,10 +8,12 @@ version = "0.3.0"
 description = "Provider-agnostic auction scoring, configurable market valuation, and reporting."
 readme = "README.md"
 requires-python = ">=3.11"
-dependencies = []
+dependencies = [
+    "tzdata>=2024.1; platform_system == 'Windows'",
+]
 
 [project.scripts]
-auction-lens = "auction_lens.cli:main"
+auction-lens = "auction_lens.cli:console"
 
 [tool.setuptools.packages.find]
 where = ["src"]
