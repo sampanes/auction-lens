@@ -157,6 +157,24 @@ def parse_labels(value: Any) -> tuple[str, ...]:
     return tuple(sorted({str(item).strip().lower() for item in values if str(item).strip()}))
 
 
+def parse_urls(value: Any) -> tuple[str, ...]:
+    """Normalize a list or delimited string of URLs, keeping the order given.
+
+    Unlike labels, a gallery is ordered and case-sensitive: a provider sends the
+    manufacturer's photo first and the photograph of the actual lot last, so
+    sorting them would throw away the only thing that tells them apart.
+    """
+    if is_absent(value):
+        return ()
+    values = value if isinstance(value, list) else str(value).split(LABEL_SEPARATOR)
+    seen = {}
+    for item in values:
+        url = str(item).strip()
+        if url:
+            seen.setdefault(url, None)
+    return tuple(seen)
+
+
 def parse_dimensions(value: Any) -> tuple[Decimal, ...]:
     """Read two or three package dimensions in inches, in the given order.
 

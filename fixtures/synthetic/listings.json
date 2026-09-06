@@ -12,9 +12,21 @@
       "estimated_retail": "129.00",
       "bid_count": 4,
       "location": "Example Warehouse",
-      "conditions": ["used"],
       "buyer_premium_rate": "0.15",
-      "observed_at": "2026-09-04T18:00:00Z"
+      "observed_at": "2026-09-04T18:00:00Z",
+      "photo_urls": [
+        "https://example.invalid/photo/synthetic-001-stock.jpg",
+        "https://example.invalid/photo/synthetic-001-shelf.jpg"
+      ],
+      "quality_rating": 3,
+      "grade": {
+        "condition": "Used",
+        "functional": "Yes",
+        "damage": "None",
+        "missing_parts": "Unknown",
+        "assembly": "No",
+        "package": "Yes"
+      }
     },
     {
       "source": "nellis",
@@ -28,9 +40,21 @@
       "estimated_retail": "229.00",
       "bid_count": 3,
       "location": "Example Warehouse",
-      "conditions": [],
       "buyer_premium_rate": "0.15",
-      "observed_at": "2026-09-04T18:00:00Z"
+      "observed_at": "2026-09-04T18:00:00Z",
+      "photo_urls": [
+        "https://example.invalid/photo/synthetic-002-stock.jpg",
+        "https://example.invalid/photo/synthetic-002-shelf.jpg"
+      ],
+      "quality_rating": 5,
+      "grade": {
+        "condition": "New",
+        "functional": "Yes",
+        "damage": "None",
+        "missing_parts": "No",
+        "assembly": "No",
+        "package": "Yes"
+      }
     }
   ]
 }

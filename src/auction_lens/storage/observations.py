@@ -83,7 +83,9 @@ def _listing_row(listing: Listing, observed_at: str) -> tuple:
         None if listing.ends_at is None else listing.ends_at.isoformat(),
         listing.location,
         LABEL_SEPARATOR.join(listing.conditions),
-        listing.image_url,
+        # One representative image is enough to notice a lot changed; the
+        # whole gallery is kept in the watchlist, which a person reads.
+        listing.condition_photo_url,
         observed_at,
         observed_at,
     )

@@ -25,13 +25,14 @@ from .fields import (
     parse_optional_decimal,
     parse_optional_money,
     parse_optional_rate,
+    parse_urls,
     parse_utc_datetime,
     parse_whole_number,
     require_at_least,
     require_finite,
     require_not_negative,
-    require_within,
 )
+from .grading import ConditionTag, Grade, read_grade
 
 REQUIRED_LISTING_FIELDS = ("source", "listing_id", "title", "url", "current_bid")
 
@@ -66,36 +67,20 @@ class CandidateCategory(StrEnum):
     ANOMALY = "anomaly"
 
 
-class WatchState(StrEnum):
-    """What a person has decided about a lot they are following."""
+class Verdict(StrEnum):
+    """What a person has decided about a lot they are following.
 
+    This is the person's own word, and is nothing to do with the provider's
+    condition tags. Those live in ``grading`` and are the lot's, not theirs.
+    """
+
+    # Declared in the order a person reads them: what is being chased first,
+    # what was decided against last. Sorting reads this order and nothing else.
     HUNTING = "hunting"
     WATCHING = "watching"
-    PASSED = "passed"
     WON = "won"
     LOST = "lost"
-
-
-class WatchTag(StrEnum):
-    """The colour word a state reads as at a glance."""
-
-    GREEN = "green"
-    AMBER = "amber"
-    RED = "red"
-
-
-# Every state has a colour, so a long list can be skimmed before it is read.
-WATCH_TAGS = {
-    WatchState.HUNTING: WatchTag.GREEN,
-    WatchState.WON: WatchTag.GREEN,
-    WatchState.WATCHING: WatchTag.AMBER,
-    WatchState.PASSED: WatchTag.RED,
-    WatchState.LOST: WatchTag.RED,
-}
-
-# How many stars a person may give one lot, and the scale they are read on.
-FEWEST_STARS = 0
-MOST_STARS = 5
+    PASSED = "passed"
 
 
 @dataclass(frozen=True)
@@ -112,7 +97,8 @@ class Listing:
     ends_at: datetime | None = None
     location: str = ""
     conditions: tuple[str, ...] = ()
-    image_url: str = ""
+    photo_urls: tuple[str, ...] = ()
+    grade: Grade | None = None
     buyer_premium_rate: Decimal | None = None
     brand: str = ""
     model: str = ""
@@ -121,6 +107,16 @@ class Listing:
     package_dimensions_in: tuple[Decimal, ...] = ()
     loading_assistance: tuple[str, ...] = ()
     observed_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+
+    @property
+    def stock_photo_url(self) -> str:
+        """The manufacturer's photo, which shows the model rather than the lot."""
+        return self.photo_urls[0] if self.photo_urls else ""
+
+    @property
+    def condition_photo_url(self) -> str:
+        """The last photo, which is the one taken of this actual lot."""
+        return self.photo_urls[-1] if self.photo_urls else ""
 
     @classmethod
     def from_mapping(cls, data: dict[str, Any]) -> Listing:
@@ -133,6 +129,7 @@ class Listing:
         missing = [key for key in REQUIRED_LISTING_FIELDS if is_absent(data.get(key))]
         if missing:
             raise ValueError(f"missing required listing fields: {', '.join(missing)}")
+        grade = read_grade(data.get("grade"), data.get("quality_rating"))
         return cls(
             source=_text(data, "source"),
             listing_id=_text(data, "listing_id"),
@@ -145,8 +142,9 @@ class Listing:
             bid_count=parse_whole_number(data.get("bid_count"), field_name="bid_count"),
             ends_at=parse_utc_datetime(data.get("ends_at"), field_name="ends_at"),
             location=_text(data, "location"),
-            conditions=parse_labels(data.get("conditions")),
-            image_url=_text(data, "image_url"),
+            conditions=_condition_words(data, grade),
+            photo_urls=_photos(data),
+            grade=grade,
             buyer_premium_rate=parse_optional_rate(
                 data.get("buyer_premium_rate"), field_name="buyer_premium_rate"
             ),
@@ -299,21 +297,19 @@ class WatchedItem:
     listing_id: str
     title: str = ""
     url: str = ""
-    image_url: str = ""
+    photo_urls: tuple[str, ...] = ()
     estimated_retail: Decimal | None = None
+    conditions: tuple[ConditionTag, ...] = ()
+    quality_rating: int | None = None
 
     my_estimate: Decimal | None = None
-    state: WatchState = WatchState.WATCHING
-    stars: int = FEWEST_STARS
+    verdict: Verdict = Verdict.WATCHING
     note: str = ""
 
     readings: tuple[PriceReading, ...] = ()
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "state", _watch_state(self.state))
-        require_within(
-            self.stars, low=FEWEST_STARS, high=MOST_STARS, field_name="stars"
-        )
+        object.__setattr__(self, "verdict", _verdict(self.verdict))
         if self.estimated_retail is not None:
             require_not_negative(self.estimated_retail, field_name="estimated_retail")
         if self.my_estimate is not None:
@@ -325,8 +321,14 @@ class WatchedItem:
         return uid_of(self.source, self.listing_id)
 
     @property
-    def tag(self) -> WatchTag:
-        return WATCH_TAGS[self.state]
+    def concerns(self) -> tuple[ConditionTag, ...]:
+        """The condition tags that are not green, worst news first."""
+        return tuple(tag for tag in self.conditions if tag.is_concerning)
+
+    @property
+    def condition_photo_url(self) -> str:
+        """The photo of this actual lot, rather than the manufacturer's."""
+        return self.photo_urls[-1] if self.photo_urls else ""
 
     @property
     def first(self) -> PriceReading | None:
@@ -360,13 +362,30 @@ def uid_of(source: str, listing_id: str) -> str:
     return f"{source}{UID_SEPARATOR}{listing_id}"
 
 
-def _watch_state(state: Any) -> WatchState:
+def _verdict(verdict: Any) -> Verdict:
     """Accept either the word or the member, and return the member."""
-    for allowed in WatchState:
-        if state == allowed:
+    for allowed in Verdict:
+        if verdict == allowed:
             return allowed
-    choices = ", ".join(WatchState)
-    raise ValueError(f"state must be one of: {choices}")
+    choices = ", ".join(Verdict)
+    raise ValueError(f"verdict must be one of: {choices}")
+
+
+def _photos(data: dict[str, Any]) -> tuple[str, ...]:
+    """Read a gallery, accepting the single image older files carry."""
+    return parse_urls(data.get("photo_urls")) or parse_urls(data.get("image_url"))
+
+
+def _condition_words(data: dict[str, Any], grade: Grade | None) -> tuple[str, ...]:
+    """Let a grade speak for the condition when the provider gave one.
+
+    A provider that grades its lots would otherwise say the same thing twice --
+    once as tags and once as loose words -- and the two would drift. Scoring
+    keeps matching the words it always matched either way.
+    """
+    if grade is not None:
+        return grade.words
+    return parse_labels(data.get("conditions"))
 
 
 def _decidable(status: Any) -> LogisticsStatus:

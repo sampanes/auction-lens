@@ -92,7 +92,7 @@ def logistics(args: argparse.Namespace) -> int:
 def watch(args: argparse.Namespace) -> int:
     """Record what a person thinks of one lot, or stop following it."""
     store = WatchlistStore(Path(args.watchlist))
-    if args.state == DROP:
+    if args.verdict == DROP:
         removed = store.drop(args.source, args.listing_id)
         print("Stopped following." if removed else "That lot was not being followed.")
         return SUCCESS
@@ -102,15 +102,15 @@ def watch(args: argparse.Namespace) -> int:
     )
     updated = replace(followed, **_stated_opinions(args))
     store.save(updated)
-    print(f"{updated.uid} is {updated.state} [{updated.tag}], {updated.stars} star(s).")
+    print(f"{updated.uid}: {updated.verdict}.")
     return SUCCESS
 
 
 def watchlist(args: argparse.Namespace) -> int:
     """Show the followed lots, keenest first."""
     items = WatchlistStore(Path(args.watchlist)).items()
-    if args.state:
-        items = tuple(item for item in items if item.state == args.state)
+    if args.verdict:
+        items = tuple(item for item in items if item.verdict == args.verdict)
     print(render_watchlist(items, path=args.watchlist), end="")
     return SUCCESS
 
@@ -122,10 +122,8 @@ def _stated_opinions(args: argparse.Namespace) -> dict:
     never silently erases the estimate written last week.
     """
     changes = {}
-    if args.state is not None:
-        changes["state"] = args.state
-    if args.stars is not None:
-        changes["stars"] = args.stars
+    if args.verdict is not None:
+        changes["verdict"] = args.verdict
     if args.estimate is not None:
         changes["my_estimate"] = parse_money(args.estimate, field_name="estimate")
     if args.note is not None:

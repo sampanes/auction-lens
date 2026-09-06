@@ -23,7 +23,18 @@ class JsonIngestTests(unittest.TestCase):
         listings = load_listings(SYNTHETIC_LISTINGS)
         self.assertEqual(len(listings), 2)
         self.assertEqual(listings[0].current_bid, Decimal("18.00"))
-        self.assertEqual(listings[0].conditions, ("used",))
+
+    def test_a_graded_lot_gets_its_condition_words_from_the_grade(self):
+        # The provider left missing_parts unanswered, which is its own concern
+        # rather than a silence; see docs/DATA_ACQUISITION.md.
+        listings = load_listings(SYNTHETIC_LISTINGS)
+        self.assertEqual(listings[0].conditions, ("used", "missing parts unknown"))
+        self.assertEqual(listings[0].grade.rating, 3)
+
+    def test_the_gallery_keeps_the_order_the_provider_sent(self):
+        (soundbar, _) = load_listings(SYNTHETIC_LISTINGS)
+        self.assertTrue(soundbar.stock_photo_url.endswith("stock.jpg"))
+        self.assertTrue(soundbar.condition_photo_url.endswith("shelf.jpg"))
 
     def test_a_bare_list_is_also_accepted(self):
         with temporary_directory() as directory:
