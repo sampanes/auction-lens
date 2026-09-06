@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import argparse
 
-from ..models import OPERATOR_DECIDABLE
+from ..models import MOST_STARS, OPERATOR_DECIDABLE, WatchState
+from ..storage import DEFAULT_WATCHLIST_FILE
 
 PROGRAM = "auction-lens"
 DEFAULT_DATABASE = "data/auction-lens.sqlite3"
@@ -13,10 +14,17 @@ DEFAULT_ENV_FILE = ".env"
 RUN = "run"
 FETCH = "fetch"
 LOGISTICS = "logistics"
+WATCH = "watch"
+WATCHLIST = "watchlist"
 
 # Everything an operator may record, plus the word that removes a past answer.
 CLEAR = "clear"
 LOGISTICS_STATUSES = (*(status.value for status in OPERATOR_DECIDABLE), CLEAR)
+
+# The same shape for the watchlist: every state, plus the word that forgets a lot.
+DROP = "drop"
+WATCH_STATES = tuple(state.value for state in WatchState)
+WATCH_ACTIONS = (*WATCH_STATES, DROP)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -28,6 +36,8 @@ def build_parser() -> argparse.ArgumentParser:
     _add_run(subparsers)
     _add_fetch(subparsers)
     _add_logistics(subparsers)
+    _add_watch(subparsers)
+    _add_watchlist(subparsers)
     return parser
 
 
@@ -36,6 +46,11 @@ def _add_run(subparsers) -> None:
     run.add_argument("--input", required=True, help="canonical .json or .csv listing file")
     run.add_argument("--config", required=True, help="TOML provider and scoring configuration")
     run.add_argument("--database", default=DEFAULT_DATABASE)
+    run.add_argument(
+        "--watchlist",
+        default=DEFAULT_WATCHLIST_FILE,
+        help="ignored JSON file that collects a price reading per reported lot",
+    )
     run.add_argument(
         "--env-file", default=DEFAULT_ENV_FILE, help="optional local KEY=VALUE settings file"
     )
@@ -62,3 +77,25 @@ def _add_logistics(subparsers) -> None:
     logistics.add_argument("--status", required=True, choices=LOGISTICS_STATUSES)
     logistics.add_argument("--added-cost", default="0")
     logistics.add_argument("--note", default="")
+
+
+def _add_watch(subparsers) -> None:
+    watch = subparsers.add_parser(
+        WATCH, help="say what you think of one lot, or stop following it"
+    )
+    watch.add_argument("--watchlist", default=DEFAULT_WATCHLIST_FILE)
+    watch.add_argument("--source", required=True)
+    watch.add_argument("--listing-id", required=True)
+    watch.add_argument("--state", choices=WATCH_ACTIONS)
+    watch.add_argument("--stars", type=int, help=f"0 to {MOST_STARS}")
+    watch.add_argument("--estimate", help="what the lot is worth to you, all in")
+    watch.add_argument("--note", help="anything the other fields cannot say")
+
+
+def _add_watchlist(subparsers) -> None:
+    """Reading the file is the common case, so it is its own command."""
+    watchlist = subparsers.add_parser(WATCHLIST, help="show the lots you are following")
+    watchlist.add_argument("--watchlist", default=DEFAULT_WATCHLIST_FILE)
+    watchlist.add_argument(
+        "--state", choices=WATCH_STATES, help="show only lots in one state"
+    )

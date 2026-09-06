@@ -8,11 +8,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 from datetime import datetime
+from decimal import Decimal
 
 from .config import AppConfig
-from .models import Candidate, Listing
+from .models import Candidate, Listing, uid_of
 from .scoring import evaluate
-from .storage import LogisticsDecisionStore, ObservationStore
+from .storage import LogisticsDecisionStore, ObservationStore, WatchlistStore
 from .valuation import ValuationEngine
 
 
@@ -23,6 +24,7 @@ class RunResult:
     candidates: list[Candidate]
     listings_read: int
     listings_scored: int
+    lots_followed: int = 0
 
     @property
     def listings_from_other_providers(self) -> int:
@@ -35,6 +37,7 @@ def analyze_listings(
     *,
     observations: ObservationStore,
     decisions: LogisticsDecisionStore,
+    watchlist: WatchlistStore | None = None,
     valuation_engine: ValuationEngine | None = None,
     now: datetime | None = None,
 ) -> RunResult:
@@ -61,6 +64,7 @@ def analyze_listings(
         candidates=candidates,
         listings_read=len(listings),
         listings_scored=scored,
+        lots_followed=_follow(candidates, watchlist),
     )
 
 
@@ -74,3 +78,24 @@ def _with_valuation(
         return matches
     valuation = engine.value(listing)
     return [replace(candidate, valuation=valuation) for candidate in matches]
+
+
+def _follow(candidates: list[Candidate], watchlist: WatchlistStore | None) -> int:
+    """Add one price reading per reported lot to the person's own file."""
+    if watchlist is None:
+        return 0
+    return watchlist.record(_one_entry_per_lot(candidates))
+
+
+def _one_entry_per_lot(candidates: list[Candidate]) -> list[tuple[Listing, Decimal]]:
+    """Collapse a lot that matched several rules down to a single reading.
+
+    Total cost is a property of the lot and the configured fees, not of the rule
+    that noticed it, so the first match speaks for all of them.
+    """
+    seen: dict[str, tuple[Listing, Decimal]] = {}
+    for candidate in candidates:
+        listing = candidate.listing
+        uid = uid_of(listing.source, listing.listing_id)
+        seen.setdefault(uid, (listing, candidate.total_cost))
+    return list(seen.values())

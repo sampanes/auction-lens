@@ -27,12 +27,12 @@ Python 3.11 or newer is required. The application uses only the standard library
 on Windows, installation also supplies the IANA time-zone database used for
 provider-local request limits.
 
-```powershell
+```cmd
 python -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -e .
-.\.venv\Scripts\auction-lens.exe run `
-  --input fixtures\synthetic\listings.json `
-  --config config\providers\nellis.example.toml `
+.venv\Scripts\python.exe -m pip install -e .
+.venv\Scripts\auction-lens.exe run ^
+  --input fixtures\synthetic\listings.json ^
+  --config config\providers\nellis.example.toml ^
   --database data\auction-lens.sqlite3
 ```
 
@@ -41,8 +41,8 @@ the Nellis-shaped configuration without accessing Nellis Auction.
 
 A live deployment can fetch configured pages with:
 
-```powershell
-.\.venv\Scripts\auction-lens.exe fetch --config config\local.toml
+```cmd
+.venv\Scripts\auction-lens.exe fetch --config config\local.toml
 ```
 
 The fetcher uses an identifiable User-Agent, records attempts before connecting,
@@ -60,8 +60,8 @@ By default the CLI loads non-empty values from an ignored `.env` file in the
 working directory. Existing process environment variables take precedence. Gmail
 accounts normally require an app password rather than the ordinary account password.
 
-```powershell
-.\.venv\Scripts\auction-lens.exe run --input listings.json --config config\local.toml --email
+```cmd
+.venv\Scripts\auction-lens.exe run --input listings.json --config config\local.toml --email
 ```
 
 Run that command from Windows Task Scheduler, cron, or another scheduler to send
@@ -134,18 +134,44 @@ blanket rejection.
 
 Save a decision for one listing in the same ignored SQLite database:
 
-```powershell
-.\.venv\Scripts\auction-lens.exe logistics `
-  --source provider-id `
-  --listing-id stable-id `
-  --status feasible `
-  --added-cost 25 `
+```cmd
+.venv\Scripts\auction-lens.exe logistics ^
+  --source provider-id ^
+  --listing-id stable-id ^
+  --status feasible ^
+  --added-cost 25 ^
   --note "Handling arranged"
 ```
 
 Use `--status infeasible` to suppress the listing or `--status clear` to ask
 again. Added logistics cost participates in configured price ceilings. The future
 profile questionnaire is deliberately separate; see [the roadmap](docs/ROADMAP.md).
+
+## Watchlist
+
+Every `run` appends one price reading -- time, bid, total cost, bid count -- for
+each reported lot to an ignored `private/watchlist.json`. Scan hourly and a lot
+collects an hourly trail; scan once and it collects a single point.
+
+On top of that trail you record what you think: your own estimate, a state word
+that reads green, amber, or red, stars, and a note. A run never overwrites any
+of it.
+
+```cmd
+.venv\Scriptsuction-lens.exe watch ^
+  --source nellis ^
+  --listing-id synthetic-001 ^
+  --state hunting ^
+  --stars 4 ^
+  --estimate 60 ^
+  --note "worth it under 40 all in"
+
+.venv\Scriptsuction-lens.exe watchlist
+```
+
+The list prints keenest first, with headroom -- your estimate minus the latest
+total -- so a lot that has already cost more than you said it was worth says so.
+See [the watchlist guide](docs/WATCHLIST.md) for the file format.
 
 ## Provider policy
 
@@ -165,8 +191,8 @@ suite touches the network, an SMTP server, or a real provider.
 
 Install the development tools once, then run the check wrapper:
 
-```powershell
-.\.venv\Scripts\python.exe -m pip install -e ".[dev]"
+```cmd
+.venv\Scripts\python.exe -m pip install -e ".[dev]"
 scripts\test.cmd
 ```
 
