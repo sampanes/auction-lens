@@ -127,6 +127,9 @@ provider has since changed is reported by name and skipped, so one broken page
 does not lose the other fifty. A reduced, redacted page carrying a real streamed
 payload is kept at `fixtures/nellis/product-page.html`.
 
+`pull` only reads pages already saved on disk. It does not fetch and it
+does not bid.
+
 Official references:
 
 - [How do I save an item for later?](https://nellisauction-help.freshdesk.com/support/solutions/articles/68000007628-how-do-i-save-an-item-for-later-)

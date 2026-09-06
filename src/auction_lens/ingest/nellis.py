@@ -62,7 +62,7 @@ def read_product_page(html: str, *, source: str) -> dict[str, Any]:
         "location": _location(product),
         "category": _category(product),
         "photo_urls": _photos(product),
-        "grade": _grade(grade),
+        "grade": canonical_grade(grade),
         "quality_rating": grade.get(RATING_KEY),
     }
 
@@ -97,8 +97,12 @@ def _canonical_url(html: str) -> str:
     return match.group(1)
 
 
-def _grade(grade: dict[str, Any]) -> dict[str, str]:
-    """Rename the provider's axes, keeping only the ones it actually answered."""
+def canonical_grade(grade: dict[str, Any]) -> dict[str, str]:
+    """Rename the provider's axes, keeping only the ones it actually answered.
+
+    Public because it is the one authority on the rename: anything reading a
+    recorded provider payload has to arrive at the same canonical names.
+    """
     answers = {}
     for provider_name, canonical_name in AXIS_NAMES.items():
         answer = grade.get(provider_name)

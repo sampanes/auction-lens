@@ -8,7 +8,9 @@ import unittest
 from contextlib import redirect_stderr, redirect_stdout
 
 from auction_lens.cli import console, main
-from support import EXAMPLE_CONFIG, SYNTHETIC_LISTINGS, temporary_directory
+from support import EXAMPLE_CONFIG, ROOT, SYNTHETIC_LISTINGS, temporary_directory
+
+NELLIS_PRODUCT_PAGE = ROOT / "fixtures" / "nellis" / "product-page.html"
 
 
 def run_cli(argv: list[str]) -> str:
@@ -96,6 +98,46 @@ class LogisticsCommandTests(unittest.TestCase):
             "--listing-id",
             "synthetic-001",
         ]
+
+
+class PullCommandTests(unittest.TestCase):
+    def test_a_saved_product_page_is_ready_for_the_run_command(self):
+        with temporary_directory() as directory:
+            output = directory / "listings.json"
+            message = run_cli(
+                [
+                    "pull",
+                    "--config",
+                    str(EXAMPLE_CONFIG),
+                    "--input",
+                    str(NELLIS_PRODUCT_PAGE),
+                    "--output",
+                    str(output),
+                ]
+            )
+            payload = json.loads(output.read_text(encoding="utf-8"))
+
+        self.assertIn("Read 1 of 1 saved page(s)", message)
+        self.assertEqual(payload["listings"][0]["grade"]["condition"], "Used")
+
+    def test_a_page_the_provider_has_changed_is_named_and_the_batch_survives(self):
+        with temporary_directory() as directory:
+            pages = directory / "pages"
+            pages.mkdir()
+            (pages / "good.html").write_text(
+                NELLIS_PRODUCT_PAGE.read_text(encoding="utf-8"), encoding="utf-8"
+            )
+            (pages / "changed.html").write_text("<html>nothing</html>", encoding="utf-8")
+            output = directory / "listings.json"
+            message = run_cli(
+                ["pull", "--config", str(EXAMPLE_CONFIG), "--input", str(pages),
+                 "--output", str(output)]
+            )
+            payload = json.loads(output.read_text(encoding="utf-8"))
+
+        self.assertIn("Read 1 of 2 saved page(s)", message)
+        self.assertIn("changed.html", message)
+        self.assertEqual(len(payload["listings"]), 1)
 
 
 if __name__ == "__main__":
