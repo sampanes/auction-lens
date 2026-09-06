@@ -43,7 +43,11 @@ class Section:
 
     def text(self, key: str, default: str = "") -> str:
         value = self.data.get(key, default)
-        return default if value is None else str(value)
+        if value is None:
+            return default
+        if not isinstance(value, str):
+            raise ValueError(f"{self._label(key)} must be text")
+        return value
 
     def required_text(self, key: str) -> str:
         value = self.text(key).strip()
@@ -52,21 +56,42 @@ class Section:
         return value
 
     def flag(self, key: str, default: bool) -> bool:
-        return bool(self.data.get(key, default))
+        value = self.data.get(key, default)
+        if not isinstance(value, bool):
+            raise ValueError(f"{self._label(key)} must be true or false")
+        return value
 
     def integer(self, key: str, default: int) -> int:
         value = self.data.get(key, default)
-        try:
-            return int(value)
-        except (TypeError, ValueError) as exc:
-            raise ValueError(f"{self._label(key)} must be a whole number") from exc
+        if isinstance(value, bool) or not isinstance(value, int):
+            raise ValueError(f"{self._label(key)} must be a whole number")
+        return value
+
+    def non_negative_integer(self, key: str, default: int) -> int:
+        value = self.integer(key, default)
+        if value < 0:
+            raise ValueError(f"{self._label(key)} cannot be negative")
+        return value
+
+    def positive_integer(self, key: str, default: int) -> int:
+        value = self.integer(key, default)
+        if value < 1:
+            raise ValueError(f"{self._label(key)} must be at least 1")
+        return value
 
     def decimal(self, key: str, default: Any) -> Decimal:
         value = self.data.get(key, default)
+        if key in self.data and (
+            isinstance(value, bool) or not isinstance(value, (int, float))
+        ):
+            raise ValueError(f"{self._label(key)} must be a number")
         try:
-            return Decimal(str(value))
+            number = Decimal(str(value))
         except (InvalidOperation, TypeError, ValueError) as exc:
             raise ValueError(f"{self._label(key)} must be a number") from exc
+        if not number.is_finite():
+            raise ValueError(f"{self._label(key)} must be a finite number")
+        return number
 
     def non_negative_decimal(self, key: str, default: Any) -> Decimal:
         """Read a number that would be meaningless below zero, such as a fee."""
@@ -75,20 +100,30 @@ class Section:
             raise ValueError(f"{self._label(key)} cannot be negative")
         return value
 
-    def optional_decimal(self, key: str) -> Decimal | None:
-        return self.decimal(key, 0) if self.contains(key) else None
+    def optional_non_negative_decimal(self, key: str) -> Decimal | None:
+        return self.non_negative_decimal(key, 0) if self.contains(key) else None
 
     def lowercase_texts(self, key: str) -> tuple[str, ...]:
         """Read a list of free-text terms, lowercased for case-insensitive use."""
         values = self.data.get(key, [])
         if not isinstance(values, list):
             raise ValueError(f"{self._label(key)} must be an array")
-        return tuple(str(value).lower() for value in values)
+        normalized = []
+        for index, value in enumerate(values):
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(
+                    f"{self._label(key)}[{index}] must be non-empty text"
+                )
+            normalized.append(value.strip().lower())
+        return tuple(normalized)
 
-    def integer_map(self, key: str) -> dict[str, int]:
-        """Read a table of lowercase labels to whole numbers, such as penalties."""
+    def non_negative_integer_map(self, key: str) -> dict[str, int]:
+        """Read named counts or penalties, rejecting values that reverse their meaning."""
         table = self.table(key)
-        return {str(name).lower(): table.integer(name, 0) for name in table.data}
+        return {
+            str(name).lower(): table.non_negative_integer(name, 0)
+            for name in table.data
+        }
 
     def _label(self, key: str) -> str:
         return f"{self.path}.{key}" if self.path else key

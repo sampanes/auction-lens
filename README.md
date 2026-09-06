@@ -23,14 +23,16 @@ canonical JSON or CSV, live HTTP sources, or a combination of both.
 
 ## Quick start
 
-Python 3.11 or newer is required. The runtime has no third-party dependencies.
+Python 3.11 or newer is required. The application uses only the standard library;
+on Windows, installation also supplies the IANA time-zone database used for
+provider-local request limits.
 
-```cmd
+```powershell
 python -m venv .venv
-.venv\Scripts\python -m pip install -e .
-.venv\Scripts\auction-lens run ^
-  --input fixtures\synthetic\listings.json ^
-  --config config\providers\nellis.example.toml ^
+.\.venv\Scripts\python.exe -m pip install -e .
+.\.venv\Scripts\auction-lens.exe run `
+  --input fixtures\synthetic\listings.json `
+  --config config\providers\nellis.example.toml `
   --database data\auction-lens.sqlite3
 ```
 
@@ -39,8 +41,8 @@ the Nellis-shaped configuration without accessing Nellis Auction.
 
 A live deployment can fetch configured pages with:
 
-```cmd
-auction-lens fetch --config config\local.toml
+```powershell
+.\.venv\Scripts\auction-lens.exe fetch --config config\local.toml
 ```
 
 The fetcher uses an identifiable User-Agent, records attempts before connecting,
@@ -58,8 +60,8 @@ By default the CLI loads non-empty values from an ignored `.env` file in the
 working directory. Existing process environment variables take precedence. Gmail
 accounts normally require an app password rather than the ordinary account password.
 
-```cmd
-auction-lens run --input listings.json --config config\local.toml --email
+```powershell
+.\.venv\Scripts\auction-lens.exe run --input listings.json --config config\local.toml --email
 ```
 
 Run that command from Windows Task Scheduler, cron, or another scheduler to send
@@ -132,12 +134,12 @@ blanket rejection.
 
 Save a decision for one listing in the same ignored SQLite database:
 
-```cmd
-auction-lens logistics ^
-  --source provider-id ^
-  --listing-id stable-id ^
-  --status feasible ^
-  --added-cost 25 ^
+```powershell
+.\.venv\Scripts\auction-lens.exe logistics `
+  --source provider-id `
+  --listing-id stable-id `
+  --status feasible `
+  --added-cost 25 `
   --note "Handling arranged"
 ```
 
@@ -160,9 +162,10 @@ describes the supported acquisition paths.
 Run the test suite from the repository root. Nothing in it touches the network,
 an SMTP server, or a real provider.
 
-```cmd
-set PYTHONPATH=src
-python -m unittest discover -s tests -v
+```powershell
+.\.venv\Scripts\python.exe -m compileall -q src tests
+.\.venv\Scripts\python.exe scripts\check-ascii.py
+.\.venv\Scripts\python.exe -m unittest discover -s tests -v
 ```
 
 `docs/ARCHITECTURE.md` is the map: which module answers which question, the

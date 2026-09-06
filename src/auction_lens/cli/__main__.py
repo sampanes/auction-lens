@@ -2,6 +2,6 @@
 
 from __future__ import annotations
 
-from . import main
+from . import console
 
-raise SystemExit(main())
+raise SystemExit(console())

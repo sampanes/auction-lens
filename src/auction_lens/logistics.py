@@ -7,7 +7,7 @@ bulky enough that someone should think before bidding, and says so once.
 
 from __future__ import annotations
 
-from .config import LogisticsConfig
+from .config import ALLOW, ASK, REJECT, LogisticsConfig
 from .models import Listing, LogisticsAssessment, LogisticsDecision
 
 # Assessment outcomes, in the order a listing moves through them.
@@ -19,10 +19,6 @@ INFEASIBLE = "infeasible"
 
 # The two outcomes an operator can record for a specific listing.
 DECIDED_STATUSES = frozenset({FEASIBLE, INFEASIBLE})
-
-ASK = "ask"
-ALLOW = "allow"
-REJECT = "reject"
 
 DIMENSION_SEPARATOR = " x "
 

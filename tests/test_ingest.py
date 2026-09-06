@@ -60,6 +60,50 @@ class JsonIngestTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "missing required listing fields: url"):
                 load_listings(path)
 
+    def test_a_bad_row_names_its_file_and_position(self):
+        with temporary_directory() as directory:
+            path = directory / "listings.json"
+            path.write_text(json.dumps([MINIMAL_LISTING, 42]), encoding="utf-8")
+            with self.assertRaisesRegex(
+                ValueError, r"listings\.json: listing 2 must be an object"
+            ):
+                load_listings(path)
+
+    def test_duplicate_listing_keys_are_rejected(self):
+        with temporary_directory() as directory:
+            path = directory / "listings.json"
+            path.write_text(
+                json.dumps([MINIMAL_LISTING, MINIMAL_LISTING]), encoding="utf-8"
+            )
+            with self.assertRaisesRegex(
+                ValueError, "listing 2 duplicates nellis/row-1 from listing 1"
+            ):
+                load_listings(path)
+
+    def test_fractional_bid_count_is_not_silently_truncated(self):
+        listing = {**MINIMAL_LISTING, "bid_count": 1.5}
+        with temporary_directory() as directory:
+            path = directory / "listings.json"
+            path.write_text(json.dumps([listing]), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "bid_count must be a whole number"):
+                load_listings(path)
+
+    def test_non_finite_money_is_rejected_plainly(self):
+        listing = {**MINIMAL_LISTING, "current_bid": "Infinity"}
+        with temporary_directory() as directory:
+            path = directory / "listings.json"
+            path.write_text(json.dumps([listing]), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "current_bid must be a finite number"):
+                load_listings(path)
+
+    def test_whitespace_does_not_satisfy_a_required_field(self):
+        listing = {**MINIMAL_LISTING, "title": "   "}
+        with temporary_directory() as directory:
+            path = directory / "listings.json"
+            path.write_text(json.dumps([listing]), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "missing required listing fields: title"):
+                load_listings(path)
+
 
 class CsvIngestTests(unittest.TestCase):
     def test_delimited_conditions_and_dimensions_are_parsed(self):

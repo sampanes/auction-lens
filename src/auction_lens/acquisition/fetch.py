@@ -16,9 +16,9 @@ from urllib.error import HTTPError
 from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
 
-from ..config import AcquisitionConfig, ProviderConfig
+from ..config import AcquisitionConfig, PRODUCTION, RUN_MODES, ProviderConfig
 from .cache import ResponseCache
-from .polling import RUN_MODES, PRODUCTION, PollLedger, enforce_request_limits
+from .polling import PollLedger, enforce_request_limits
 
 AUTHORIZED_HTTP = "authorized_http"
 ACCEPTED_CONTENT = "text/html,application/xhtml+xml"

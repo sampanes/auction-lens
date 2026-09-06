@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import io
+import json
 import unittest
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 
-from auction_lens.cli import main
+from auction_lens.cli import console, main
 from support import EXAMPLE_CONFIG, SYNTHETIC_LISTINGS, temporary_directory
 
 
@@ -33,6 +34,30 @@ class RunCommandTests(unittest.TestCase):
             argv = self._run_argv(directory, directory / "observations.sqlite3") + ["--email"]
             with self.assertRaisesRegex(RuntimeError, "email reporting is disabled"):
                 run_cli(argv)
+
+    def test_console_reports_bad_input_without_a_traceback(self):
+        with temporary_directory() as directory:
+            bad_input = directory / "bad-listings.json"
+            bad_input.write_text(json.dumps([42]), encoding="utf-8")
+            errors = io.StringIO()
+            with redirect_stderr(errors):
+                exit_code = console(
+                    [
+                        "run",
+                        "--input",
+                        str(bad_input),
+                        "--config",
+                        str(EXAMPLE_CONFIG),
+                        "--database",
+                        str(directory / "observations.sqlite3"),
+                        "--env-file",
+                        str(directory / "absent.env"),
+                    ]
+                )
+        self.assertEqual(exit_code, 2)
+        self.assertIn("auction-lens: error:", errors.getvalue())
+        self.assertIn("listing 1 must be an object", errors.getvalue())
+        self.assertNotIn("Traceback", errors.getvalue())
 
     def _run_argv(self, directory, database) -> list[str]:
         return [

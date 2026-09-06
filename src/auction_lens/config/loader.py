@@ -9,6 +9,7 @@ from __future__ import annotations
 import re
 import tomllib
 from pathlib import Path
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from .conditions import resolve_condition_policy
 from .schema import (
@@ -17,6 +18,7 @@ from .schema import (
     DEFAULT_USER_AGENT_ENV,
     EMAIL_SECURITY_MODES,
     LARGE_ITEM_POLICIES,
+    RUN_MODES,
     AcquisitionConfig,
     AppConfig,
     EconomicsConfig,
@@ -76,30 +78,41 @@ def _economics(section: Section) -> EconomicsConfig:
 
 
 def _acquisition(section: Section) -> AcquisitionConfig:
-    return AcquisitionConfig(
+    config = AcquisitionConfig(
         mode=section.text("mode", "manual"),
         url=section.text("url"),
         user_agent_env=section.text("user_agent_env", DEFAULT_USER_AGENT_ENV),
         timezone=section.text("timezone", "UTC"),
-        max_requests_per_day=section.integer("max_requests_per_day", 1),
-        minimum_interval_minutes=section.integer("minimum_interval_minutes", 720),
-        timeout_seconds=section.integer("timeout_seconds", 30),
+        max_requests_per_day=section.positive_integer("max_requests_per_day", 1),
+        minimum_interval_minutes=section.non_negative_integer(
+            "minimum_interval_minutes", 720
+        ),
+        timeout_seconds=section.positive_integer("timeout_seconds", 30),
         cache_file=section.text("cache_file", DEFAULT_CACHE_FILE),
         ledger_file=section.text("ledger_file", DEFAULT_LEDGER_FILE),
         run_mode=section.text("run_mode", "production").lower(),
-        development_minimum_interval_seconds=section.integer(
+        development_minimum_interval_seconds=section.non_negative_integer(
             "development_minimum_interval_seconds", 2
         ),
     )
+    if config.run_mode not in RUN_MODES:
+        raise ValueError("provider.acquisition.run_mode must be production or development")
+    try:
+        ZoneInfo(config.timezone)
+    except ZoneInfoNotFoundError as error:
+        raise ValueError(
+            "provider.acquisition.timezone must be a valid IANA time zone"
+        ) from error
+    return config
 
 
 def _scoring(section: Section, conditions: Section, profiles: Section) -> ScoringConfig:
-    return ScoringConfig(
+    config = ScoringConfig(
         anomaly_minimum_retail=section.non_negative_decimal("anomaly_minimum_retail", 100),
         anomaly_maximum_ratio=section.non_negative_decimal("anomaly_maximum_ratio", "0.20"),
         minimum_report_score=section.integer("minimum_report_score", 70),
-        ending_soon_minutes=section.integer("ending_soon_minutes", 20),
-        condition_penalties=conditions.integer_map("penalties"),
+        ending_soon_minutes=section.non_negative_integer("ending_soon_minutes", 20),
+        condition_penalties=conditions.non_negative_integer_map("penalties"),
         rejected_conditions=frozenset(conditions.lowercase_texts("reject")),
         anomaly_condition=resolve_condition_policy(
             section,
@@ -108,23 +121,30 @@ def _scoring(section: Section, conditions: Section, profiles: Section) -> Scorin
             inline_key="anomaly_condition",
         ),
     )
+    _require_score("scoring.minimum_report_score", config.minimum_report_score)
+    if config.anomaly_maximum_ratio > 1:
+        raise ValueError("scoring.anomaly_maximum_ratio cannot exceed 1")
+    return config
 
 
 def _interests(root: Section, profiles: Section) -> tuple[InterestRule, ...]:
-    return tuple(
-        InterestRule(
-            name=item.required_text("name"),
-            purpose=item.text("purpose", "use"),
-            any_terms=item.lowercase_texts("any_terms"),
-            all_terms=item.lowercase_texts("all_terms"),
-            exclude_terms=item.lowercase_texts("exclude_terms"),
-            max_total_cost=item.optional_decimal("max_total_cost"),
-            minimum_score=item.integer("minimum_score", 0),
-            condition_profile=item.text("condition_profile"),
-            condition=resolve_condition_policy(item, profiles),
-        )
-        for item in root.tables("interests")
+    return tuple(_interest(item, profiles) for item in root.tables("interests"))
+
+
+def _interest(item: Section, profiles: Section) -> InterestRule:
+    rule = InterestRule(
+        name=item.required_text("name"),
+        purpose=item.text("purpose", "use"),
+        any_terms=item.lowercase_texts("any_terms"),
+        all_terms=item.lowercase_texts("all_terms"),
+        exclude_terms=item.lowercase_texts("exclude_terms"),
+        max_total_cost=item.optional_non_negative_decimal("max_total_cost"),
+        minimum_score=item.integer("minimum_score", 0),
+        condition_profile=item.text("condition_profile"),
+        condition=resolve_condition_policy(item, profiles),
     )
+    _require_score(f"{item.path}.minimum_score", rule.minimum_score)
+    return rule
 
 
 def _valuation(section: Section) -> ValuationConfig:
@@ -181,7 +201,7 @@ def _email(section: Section) -> EmailConfig:
     config = EmailConfig(
         enabled=section.flag("enabled", False),
         host_env=section.text("host_env", "AUCTION_LENS_SMTP_HOST"),
-        port=section.integer("port", 465),
+        port=section.positive_integer("port", 465),
         security=section.text("security", "ssl").lower(),
         username_env=section.text("username_env", "AUCTION_LENS_SMTP_USERNAME"),
         password_env=section.text("password_env", "AUCTION_LENS_SMTP_PASSWORD"),
@@ -191,4 +211,11 @@ def _email(section: Section) -> EmailConfig:
     )
     if config.security not in EMAIL_SECURITY_MODES:
         raise ValueError("email security must be 'ssl' or 'starttls'")
+    if config.port > 65535:
+        raise ValueError("reports.email.port cannot exceed 65535")
     return config
+
+
+def _require_score(label: str, value: int) -> None:
+    if not 0 <= value <= 100:
+        raise ValueError(f"{label} must be between 0 and 100")

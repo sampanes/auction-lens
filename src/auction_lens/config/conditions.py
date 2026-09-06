@@ -29,8 +29,8 @@ def resolve_condition_policy(
     profile = _named_profile(owner, profiles, profile_key)
     inline = owner.table(inline_key)
 
-    penalties = profile.integer_map("penalties")
-    penalties.update(inline.integer_map("penalties"))
+    penalties = profile.non_negative_integer_map("penalties")
+    penalties.update(inline.non_negative_integer_map("penalties"))
     rejected = inline if inline.contains("reject") else profile
     unknown_owner = inline if inline.contains("allow_unknown") else profile
     return ConditionPolicy(
