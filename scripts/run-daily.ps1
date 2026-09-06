@@ -1,4 +1,4 @@
-# Scheduled daily run: update prices, then email only lots marked hunting.
+# Scheduled daily run: email today's findings, then the lots marked hunting.
 # Register with Windows Task Scheduler; it exits non-zero if anything fails.
 
 $ErrorActionPreference = "Stop"
@@ -20,7 +20,8 @@ try {
         --input $inputPath `
         --config "config\local.toml" `
         --database "data\auction-lens.sqlite3" `
-        --env-file ".env"
+        --env-file ".env" `
+        --email
     if ($LASTEXITCODE -ne 0) {
         throw "Auction Lens exited with code $LASTEXITCODE"
     }
