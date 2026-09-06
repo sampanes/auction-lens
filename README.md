@@ -72,6 +72,25 @@ For Windows, `scripts/run-daily.ps1` is the ready-to-schedule entry point. It re
 an ignored `data/inbox/listings.json`, uses the ignored personal configuration and
 `.env`, updates SQLite, and emails the resulting report.
 
+## Pulling real listings
+
+Fetching and pulling are separate steps. `fetch` saves a provider page; `pull`
+reads saved pages into the canonical file `run` analyses. Keeping them apart
+means a parser can be corrected and re-run over pages already on disk without
+asking the provider again.
+
+```cmd
+.venv\Scriptsuction-lens.exe pull ^
+  --config config\local.toml ^
+  --input private\cache\pages ^
+  --output data\inbox\listings.json
+```
+
+A pulled lot carries everything the page states: the six condition tags, the
+provider's quality rating, and the photo gallery. It is then indistinguishable
+from a hand-written listing, so scoring, valuation, and the watchlist need to
+know nothing about where it came from.
+
 ## Canonical input
 
 JSON input is either a list or an object with a `listings` list. CSV remains

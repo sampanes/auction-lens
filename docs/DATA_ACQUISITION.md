@@ -91,6 +91,42 @@ and `Yes` for `packageType`. Match on the axis together with the description.
 The observed vocabulary and three redacted samples are in
 `fixtures/nellis/product-grade-samples.json`.
 
+### Reading a saved page
+
+The data is not plain JSON in the HTML. It arrives in a single streamed chunk at
+the bottom of the response, written as a flat array of interned values plus
+indexes describing the object graph: a scalar is itself, an array is a list of
+indexes, and an object is `{"_<keyIndex>": valueIndex}`, so both keys and values
+are indexes into that same array. A string used forty times is stored once.
+
+`ingest/turbo_stream.py` decodes that envelope and knows nothing about auctions.
+`ingest/nellis.py` is the only module that knows the provider's field names, and
+turns one page into the canonical row the rest of the project already reads.
+
+Two details that cost real debugging:
+
+- A photo's `url` is the address that fetches. Its `fullPath` is the provider's
+  own storage path, and is **relative** for the photographs it took itself, so
+  reading `fullPath` puts an unopenable string in a report.
+- The decoder refuses any negative marker other than the null one it has seen,
+  rather than guessing. A wrong guess there silently becomes a wrong price.
+
+Fetching and pulling are separate commands on purpose. `fetch` saves pages;
+`pull` reads them. A parser can then be corrected and re-run over pages already
+on disk without asking the provider for anything again.
+
+```cmd
+.venv\Scriptsuction-lens.exe pull ^
+  --config config\local.toml ^
+  --input private\cache\pages ^
+  --output data\inbox\listings.json
+```
+
+`--input` takes one saved `.html` page or a directory of them. A page the
+provider has since changed is reported by name and skipped, so one broken page
+does not lose the other fifty. A reduced, redacted page carrying a real streamed
+payload is kept at `fixtures/nellis/product-page.html`.
+
 Official references:
 
 - [How do I save an item for later?](https://nellisauction-help.freshdesk.com/support/solutions/articles/68000007628-how-do-i-save-an-item-for-later-)
