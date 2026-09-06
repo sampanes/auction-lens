@@ -96,6 +96,7 @@ class Listing:
     bid_count: int = 0
     ends_at: datetime | None = None
     location: str = ""
+    inventory_id: str = ""
     conditions: tuple[str, ...] = ()
     photo_urls: tuple[str, ...] = ()
     grade: Grade | None = None
@@ -107,6 +108,17 @@ class Listing:
     package_dimensions_in: tuple[Decimal, ...] = ()
     loading_assistance: tuple[str, ...] = ()
     observed_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+
+    @property
+    def lot_key(self) -> str:
+        """What names the *thing*, rather than the auction it is currently in.
+
+        A lot that does not sell is relisted under a new auction id, so the
+        auction id alone loses the fact that this exact item has been round
+        before. The physical item id survives that; a provider that does not
+        give one falls back to the auction id, which is all it has.
+        """
+        return self.inventory_id or self.listing_id
 
     @property
     def stock_photo_url(self) -> str:
@@ -142,6 +154,7 @@ class Listing:
             bid_count=parse_whole_number(data.get("bid_count"), field_name="bid_count"),
             ends_at=parse_utc_datetime(data.get("ends_at"), field_name="ends_at"),
             location=_text(data, "location"),
+            inventory_id=_text(data, "inventory_id"),
             conditions=_condition_words(data, grade),
             photo_urls=_photos(data),
             grade=grade,
@@ -272,12 +285,16 @@ class PriceReading:
     A scan every hour leaves twenty-four of these in a day; a scan once leaves
     one. That is the whole point of keeping them as a list rather than as a
     single "current price" that forgets everything it replaces.
+
+    The auction is recorded on the reading rather than on the item, because a
+    trail that spans a relisting has readings from more than one auction.
     """
 
     scanned_at: datetime
     current_bid: Decimal
     total_cost: Decimal
     bid_count: int = 0
+    listing_id: str = ""
 
     def __post_init__(self) -> None:
         require_not_negative(self.current_bid, field_name="current_bid")
@@ -295,6 +312,7 @@ class WatchedItem:
 
     source: str
     listing_id: str
+    inventory_id: str = ""
     title: str = ""
     url: str = ""
     photo_urls: tuple[str, ...] = ()
@@ -317,8 +335,25 @@ class WatchedItem:
 
     @property
     def uid(self) -> str:
-        """The one name that identifies this lot everywhere in the project."""
-        return uid_of(self.source, self.listing_id)
+        """The one name that identifies this lot, across every relisting of it."""
+        return uid_of(self.source, self.inventory_id or self.listing_id)
+
+    @property
+    def auctions_seen(self) -> int:
+        """How many separate auctions this item's trail covers."""
+        return len({reading.listing_id for reading in self.readings if reading.listing_id})
+
+    def answers_to(self, source: str, identifier: str) -> bool:
+        """Match either name a person might have to hand.
+
+        Someone reading the file has the item id; someone reading a URL has the
+        auction id. Both should find the same entry.
+        """
+        return source == self.source and identifier in {
+            self.inventory_id,
+            self.listing_id,
+            *(reading.listing_id for reading in self.readings),
+        }
 
     @property
     def concerns(self) -> tuple[ConditionTag, ...]:
@@ -357,9 +392,9 @@ class WatchedItem:
         return self.my_estimate - self.latest.total_cost
 
 
-def uid_of(source: str, listing_id: str) -> str:
-    """Name one lot across providers; a listing id alone is only unique per site."""
-    return f"{source}{UID_SEPARATOR}{listing_id}"
+def uid_of(source: str, identifier: str) -> str:
+    """Name one lot across providers; an id alone is only unique per site."""
+    return f"{source}{UID_SEPARATOR}{identifier}"
 
 
 def _verdict(verdict: Any) -> Verdict:

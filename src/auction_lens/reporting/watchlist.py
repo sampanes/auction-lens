@@ -30,14 +30,23 @@ TIMESTAMP_FORMAT = "%Y-%m-%d %H:%M"
 
 ALL_CLEAR = "every tag green"
 
+# Terminal colours, which are plain ASCII escape sequences. They are written
+# only when the caller says the output is a terminal, so a redirected or piped
+# watchlist stays clean, and the colour word is printed either way -- colour is
+# how the line is skimmed, never the only place the news is.
+COLOURS = {Tag.RED: "31", Tag.AMBER: "33", Tag.GREEN: "32"}
+PLAIN = "[0m"
 
-def render_watchlist(items: tuple[WatchedItem, ...], *, path: str = "") -> str:
+
+def render_watchlist(
+    items: tuple[WatchedItem, ...], *, path: str = "", colour: bool = False
+) -> str:
     """Render every followed lot, keenest first."""
     if not items:
         return f"Watchlist is empty{_at(path)}.\n"
     lines = [f"Following {len(items)} lot(s){_at(path)}."]
     for item in sorted(items, key=_keenness):
-        lines.extend(_item_lines(item))
+        lines.extend(_item_lines(item, colour=colour))
     return "\n".join(lines).rstrip() + "\n"
 
 
@@ -55,11 +64,11 @@ def _keenness(item: WatchedItem) -> tuple:
     )
 
 
-def _item_lines(item: WatchedItem) -> Iterator[str]:
+def _item_lines(item: WatchedItem, *, colour: bool) -> Iterator[str]:
     yield ""
     yield f"[{item.verdict.upper()}] {stars_of(item.quality_rating)}  {item.title}"
-    yield f"  {item.uid}"
-    yield from _condition_lines(item.conditions)
+    yield f"  {item.uid}{_relisting(item)}"
+    yield from _condition_lines(item.conditions, colour=colour)
     yield from _indented(_value_facts(item))
     yield from _indented(_price_facts(item))
     if item.note:
@@ -81,7 +90,25 @@ def stars_of(rating: int | None) -> str:
     return FILLED_STAR * rating + EMPTY_STAR * (HIGHEST_RATING - rating)
 
 
-def _condition_lines(conditions: tuple[ConditionTag, ...]) -> Iterator[str]:
+def _relisting(item: WatchedItem) -> str:
+    """Say when a trail spans more than the auction the lot is in today.
+
+    An item that did not sell comes back under a new auction id. Following the
+    item rather than the auction is what lets the trail say so.
+    """
+    auctions = item.auctions_seen
+    return f"  (seen in {auctions} auctions)" if auctions > 1 else ""
+
+
+def _paint(body: str, tag: Tag, *, colour: bool) -> str:
+    if not colour:
+        return body
+    return f"[{COLOURS[tag]}m{body}{PLAIN}"
+
+
+def _condition_lines(
+    conditions: tuple[ConditionTag, ...], *, colour: bool
+) -> Iterator[str]:
     """One line per colour, worst first, so a rough lot is obvious at a glance.
 
     Amber means the provider was asked and did not answer. It gets its own line
@@ -95,10 +122,12 @@ def _condition_lines(conditions: tuple[ConditionTag, ...]) -> Iterator[str]:
     if not concerns:
         yield f"  Condition: {ALL_CLEAR}"
         return
-    for colour in CONCERN_ORDER:
-        labels = [tag.label for tag in concerns if tag.tag == colour]
+    for shade in CONCERN_ORDER:
+        labels = [tag.label for tag in concerns if tag.tag == shade]
         if labels:
-            yield f"  [{colour.upper()}] {SEPARATOR.join(labels)}"
+            yield "  " + _paint(
+                f"[{shade.upper()}] {SEPARATOR.join(labels)}", shade, colour=colour
+            )
 
 
 def _value_facts(item: WatchedItem) -> list[str]:

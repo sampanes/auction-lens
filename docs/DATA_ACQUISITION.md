@@ -75,6 +75,9 @@ The `product` object answers three questions this project had open:
 - **There is a gallery.** `photos` is an array: typically a manufacturer stock
   image followed by real warehouse photographs of the actual lot.
 - **`notes` is free text** written by staff, such as `verified 7/28/26`.
+- **There are two ids.** `id` names the auction and builds the page URL;
+  `inventoryNumber` names the physical item and survives it being relisted.
+  Both are carried into the canonical row, as `listing_id` and `inventory_id`.
 
 Two traps are worth stating out loud, because a parser gets them wrong silently:
 

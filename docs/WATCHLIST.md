@@ -59,6 +59,32 @@ kept as its own number. A provider that does not rate its lots leaves it null,
 and the list prints `-----` rather than a zero-star row, because unrated and
 rated-worst are not the same news.
 
+## What a followed lot *is*
+
+A lot is followed as a **thing**, not as an auction. The provider gives two ids:
+`listing_id` names the auction and is what the page URL is built from, and
+`inventory_id` names the physical item. An item that does not sell is relisted
+under a fresh auction id, so following the auction would start a new, empty
+trail every time.
+
+Entries are therefore keyed on `inventory_id` when the provider gives one, and
+fall back to `listing_id` when it does not. Each reading records the auction it
+was taken in, so a trail that spans a relisting can say so:
+
+```
+[HUNTING] ***..  Example 2.1 Channel Sound Bar with ARC
+  nellis:INV-77  (seen in 2 auctions)
+  Bid $5.00 | Total $5.75 | -$13.00 over 2 looks since 2026-09-04 18:00
+```
+
+That is the reading worth having: it did not sell at $18, and it is back at $5.
+
+`watch` and `watchlist` accept either id, so a person reading the file and a
+person reading a URL both find the same entry.
+
+SQLite is unaffected and stays keyed on the auction, which is what keeps
+"new listing" and "price changed" meaning what they say.
+
 ## Your verdict
 
 `verdict` is your own word, and has nothing to do with the condition tags.
@@ -88,9 +114,10 @@ The list shows the last one for that reason, and the accessors are named
   "version": 1,
   "items": [
     {
-      "uid": "nellis:synthetic-001",
+      "uid": "nellis:INV-77",
       "source": "nellis",
       "listing_id": "synthetic-001",
+      "inventory_id": "INV-77",
       "title": "Example 2.1 Channel Sound Bar with ARC",
       "url": "https://example.invalid/auction/synthetic-001",
       "photo_urls": [
@@ -115,7 +142,8 @@ The list shows the last one for that reason, and the accessors are named
           "scanned_at": "2026-09-04T18:00:00+00:00",
           "current_bid": "18.00",
           "total_cost": "20.70",
-          "bid_count": 4
+          "bid_count": 4,
+          "listing_id": "synthetic-001"
         }
       ]
     }
@@ -128,7 +156,8 @@ Money is written as text, so a rounded float can never become the record.
 logistics cost -- the number you actually pay, not the number on the screen.
 
 `uid` is written for you to read and search; it is derived from `source` plus
-`listing_id`, so editing it in place changes nothing. A hand edit that is not
+`inventory_id` (or `listing_id` when the provider gives no item id), so editing
+it in place changes nothing. A hand edit that is not
 readable is reported against the entry it broke, as in
 `nellis:synthetic-001: my_estimate must be a number`.
 
@@ -145,7 +174,11 @@ Say what you think of a lot. Only the flags you pass are changed:
   --note "worth it under 40 all in"
 ```
 
-Read the list, keenest first -- by verdict, then by the provider's rating:
+Read the list, keenest first -- by verdict, then by the provider's rating.
+Red and amber tags are printed in colour when the output is a terminal, and in
+plain text when it is redirected or piped, so a saved list never carries escape
+sequences. The colour word is always printed either way: colour is how a line is
+skimmed, never the only place the news is.
 
 ```cmd
 .venv\Scripts\auction-lens.exe watchlist

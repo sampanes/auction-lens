@@ -9,6 +9,11 @@ reading it would mean depending on class names that are nobody's contract.
 This module is the only place that knows the provider's field names. Everything
 downstream sees the canonical row described in docs/DATA_ACQUISITION.md, which
 is the same shape a hand-written JSON file uses.
+
+The provider gives two ids. ``id`` names this auction and is what the page URL
+is built from; ``inventoryNumber`` names the physical item, and survives the
+lot being relisted after it fails to sell. Both are carried, because they answer
+different questions.
 """
 
 from __future__ import annotations
@@ -53,6 +58,7 @@ def read_product_page(html: str, *, source: str) -> dict[str, Any]:
     return {
         "source": source,
         "listing_id": str(product["id"]),
+        "inventory_id": str(product.get("inventoryNumber") or "").strip(),
         "title": str(product.get("title", "")).strip(),
         "url": _canonical_url(html),
         "current_bid": _amount(product.get("currentPrice")),

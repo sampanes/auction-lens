@@ -24,6 +24,7 @@ from support import (
 )
 
 AN_HOUR = timedelta(hours=1)
+ESCAPE = chr(27)
 
 
 @contextmanager
@@ -190,6 +191,74 @@ class RunRecordingTests(unittest.TestCase):
 
     def _store(self):
         return _temporary_watchlist()
+
+
+class RelistingTests(unittest.TestCase):
+    """A lot that does not sell comes back under a new auction id."""
+
+    def _seen(self, store, *, listing_id: str, bid: str, hours: int):
+        listing = replace(
+            example_listings()[SOUNDBAR],
+            listing_id=listing_id,
+            inventory_id="INV-77",
+            current_bid=Decimal(bid),
+            observed_at=example_listings()[SOUNDBAR].observed_at + hours * AN_HOUR,
+        )
+        store.record([(listing, Decimal(bid) * Decimal("1.15"))])
+
+    def test_one_item_relisted_keeps_a_single_trail(self):
+        with _temporary_watchlist() as store:
+            self._seen(store, listing_id="auction-1", bid="18", hours=0)
+            self._seen(store, listing_id="auction-2", bid="5", hours=48)
+            (item,) = store.items()
+
+        self.assertEqual(item.uid, "nellis:INV-77")
+        self.assertEqual(len(item.readings), 2)
+        self.assertEqual(item.auctions_seen, 2)
+
+    def test_the_entry_answers_to_the_item_id_and_to_either_auction(self):
+        with _temporary_watchlist() as store:
+            self._seen(store, listing_id="auction-1", bid="18", hours=0)
+            self._seen(store, listing_id="auction-2", bid="5", hours=48)
+            for identifier in ("INV-77", "auction-1", "auction-2"):
+                with self.subTest(identifier=identifier):
+                    self.assertIsNotNone(store.get("nellis", identifier))
+            self.assertIsNone(store.get("nellis", "never-seen"))
+
+    def test_a_provider_with_no_item_id_still_follows_the_auction(self):
+        with _temporary_watchlist() as store:
+            listing = replace(example_listings()[SOUNDBAR], inventory_id="")
+            store.record([(listing, Decimal("20"))])
+            (item,) = store.items()
+        self.assertEqual(item.uid, "nellis:synthetic-001")
+
+    def test_the_list_says_when_a_trail_spans_more_than_one_auction(self):
+        with _temporary_watchlist() as store:
+            self._seen(store, listing_id="auction-1", bid="18", hours=0)
+            self._seen(store, listing_id="auction-2", bid="5", hours=48)
+            text = render_watchlist(store.items())
+        self.assertIn("(seen in 2 auctions)", text)
+
+
+class ColourTests(unittest.TestCase):
+    """Colour is how a line is skimmed, never the only place the news is."""
+
+    def _item(self):
+        grade = read_grade({"condition": "Used", "missing_parts": "Unknown"})
+        followed = _followed(verdict="hunting", bids=("18",))
+        return replace(followed, conditions=grade.tags)
+
+    def test_a_redirected_watchlist_carries_no_escape_sequences(self):
+        text = render_watchlist((self._item(),))
+        self.assertNotIn(ESCAPE, text)
+        self.assertIn("[RED] Used", text)
+
+    def test_a_terminal_gets_colour_and_still_gets_the_words(self):
+        text = render_watchlist((self._item(),), colour=True)
+        self.assertIn(ESCAPE + "[31m", text)
+        self.assertIn(ESCAPE + "[33m", text)
+        self.assertIn("[RED] Used", text)
+        self.assertIn("[AMBER] Missing Parts Unknown", text)
 
 
 class WatchlistRenderingTests(unittest.TestCase):

@@ -67,6 +67,13 @@ class ProductPageTests(unittest.TestCase):
         self.assertEqual(row["bid_count"], 8)
         self.assertEqual(row["location"], "Example Warehouse")
 
+    def test_both_ids_are_carried_because_they_answer_different_questions(self):
+        row = read_product_page(_page(), source="nellis")
+        # id names this auction and builds the URL; inventoryNumber names the
+        # physical item and survives it being relisted.
+        self.assertEqual(row["listing_id"], "900000001")
+        self.assertEqual(row["inventory_id"], "0000000002")
+
     def test_the_page_states_its_own_address_rather_than_it_being_rebuilt(self):
         row = read_product_page(_page(), source="nellis")
         self.assertEqual(
