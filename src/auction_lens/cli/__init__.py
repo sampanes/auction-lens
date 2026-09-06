@@ -6,11 +6,21 @@ import sys
 
 from ..env_file import load_env_file
 from . import commands
-from .parser import FETCH, LOGISTICS, PROGRAM, RUN, WATCH, WATCHLIST, build_parser
+from .parser import (
+    FETCH,
+    LOGISTICS,
+    PROGRAM,
+    PULL,
+    RUN,
+    WATCH,
+    WATCHLIST,
+    build_parser,
+)
 
 COMMANDS = {
     RUN: commands.run,
     FETCH: commands.fetch,
+    PULL: commands.pull,
     LOGISTICS: commands.logistics,
     WATCH: commands.watch,
     WATCHLIST: commands.watchlist,

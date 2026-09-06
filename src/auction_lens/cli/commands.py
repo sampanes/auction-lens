@@ -9,7 +9,8 @@ from pathlib import Path
 from ..acquisition import fetch_authorized_page
 from ..config import AppConfig, load_config
 from ..fields import parse_money
-from ..ingest import load_listings
+from ..file_io import write_json_atomically
+from ..ingest import load_listings, read_product_page
 from ..models import LogisticsDecision, LogisticsStatus, WatchedItem
 from ..pipeline import analyze_listings
 from ..reporting import render_text, render_watchlist, send_email
@@ -21,6 +22,9 @@ from ..storage import (
 )
 from ..valuation import ValuationEngine
 from .parser import CLEAR, DROP
+
+PAGE_SUFFIX = ".html"
+LISTINGS_KEY = "listings"
 
 SUCCESS = 0
 
@@ -62,6 +66,30 @@ def fetch(args: argparse.Namespace) -> int:
         else f"{result.bytes_received} bytes cached"
     )
     print(f"{provider} returned HTTP {result.status}; {outcome} at {result.cache_path}")
+    return SUCCESS
+
+
+def pull(args: argparse.Namespace) -> int:
+    """Read saved provider pages into the canonical file that `run` analyses."""
+    config = load_config(args.config)
+    pages = _saved_pages(Path(args.input))
+    rows, failures = [], []
+    for page in pages:
+        try:
+            rows.append(
+                read_product_page(
+                    page.read_text(encoding="utf-8", errors="replace"),
+                    source=config.provider.provider_id,
+                )
+            )
+        except ValueError as error:
+            # One page the provider changed must not lose the other fifty.
+            failures.append(f"{page.name}: {error}")
+
+    write_json_atomically(Path(args.output), {LISTINGS_KEY: rows})
+    print(f"Read {len(rows)} of {len(pages)} saved page(s) into {args.output}.")
+    for failure in failures:
+        print(f"  [!] {failure}")
     return SUCCESS
 
 
@@ -129,6 +157,15 @@ def _stated_opinions(args: argparse.Namespace) -> dict:
     if args.note is not None:
         changes["note"] = args.note.strip()
     return changes
+
+
+def _saved_pages(source: Path) -> list[Path]:
+    """Accept one page or a directory of them, so a batch is not a special case."""
+    if source.is_dir():
+        return sorted(source.glob(f"*{PAGE_SUFFIX}"))
+    if not source.is_file():
+        raise ValueError(f"{source} is not a saved page or a directory of them")
+    return [source]
 
 
 def _valuation_engine(config: AppConfig) -> ValuationEngine | None:

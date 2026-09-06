@@ -1,4 +1,4 @@
-"""Reading canonical listing files.
+"""Reading the canonical listing files this project analyses.
 
 JSON and CSV are the boundary between acquiring data and analyzing it. Anything
 that can produce these two shapes -- an export, a scraper, a hand-written file --
@@ -12,7 +12,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from .models import Listing
+from ..models import Listing
 
 LISTINGS_KEY = "listings"
 

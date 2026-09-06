@@ -37,7 +37,9 @@ keeps `scoring` readable without `valuation` open beside it.
 | `grading` | What does a provider's condition answer mean, and what colour is it? |
 | `models` | What is a listing, a candidate, a valuation? |
 | `config/` | What did the operator's TOML file ask for? |
-| `ingest` | How do canonical JSON and CSV files become listings? |
+| `ingest/canonical` | How do canonical JSON and CSV files become listings? |
+| `ingest/nellis` | How does one saved provider page become a canonical row? |
+| `ingest/turbo_stream` | How is a streamed page payload decoded? |
 | `acquisition/` | May we contact the provider right now, and what did it say? |
 | `scoring/` | Is this listing worth reporting, and why? |
 | `logistics` | Is getting this item home still an open question? |

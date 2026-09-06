@@ -13,6 +13,7 @@ DEFAULT_ENV_FILE = ".env"
 
 RUN = "run"
 FETCH = "fetch"
+PULL = "pull"
 LOGISTICS = "logistics"
 WATCH = "watch"
 WATCHLIST = "watchlist"
@@ -37,6 +38,7 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command", required=True)
     _add_run(subparsers)
     _add_fetch(subparsers)
+    _add_pull(subparsers)
     _add_logistics(subparsers)
     _add_watch(subparsers)
     _add_watchlist(subparsers)
@@ -67,6 +69,19 @@ def _add_fetch(subparsers) -> None:
     fetch.add_argument(
         "--env-file", default=DEFAULT_ENV_FILE, help="optional local KEY=VALUE settings file"
     )
+
+
+def _add_pull(subparsers) -> None:
+    """Fetching saves pages; pulling reads them. Keeping the two apart means a
+    parser can be corrected and re-run without asking the provider again."""
+    pull = subparsers.add_parser(
+        PULL, help="read saved provider pages into a canonical listing file"
+    )
+    pull.add_argument("--config", required=True, help="TOML provider configuration")
+    pull.add_argument(
+        "--input", required=True, help="a saved .html page, or a directory of them"
+    )
+    pull.add_argument("--output", required=True, help="canonical .json file to write")
 
 
 def _add_logistics(subparsers) -> None:
