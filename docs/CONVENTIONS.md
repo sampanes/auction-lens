@@ -16,7 +16,7 @@ Every value has exactly one place that decides whether it is acceptable.
 |---|---|---|
 | What a value must be | the record's `__post_init__` | `port must be between 1 and 65535` |
 | What kind of thing the file holds | `config/toml_reader.py` | `scoring.minimum_report_score must be a whole number` |
-| Which table an operator must edit | `config/loader.py`, via `_in_section` | prefixes `reports.email: ` |
+| Which table an operator must edit | `config/toml_reader.py`, via `in_section` | prefixes `reports.email: ` |
 
 So a config builder does nothing but map keys to fields. If you find yourself
 writing `if` after constructing a record, the check belongs in the record.
@@ -29,6 +29,12 @@ else. Before this rule existed the same four guards were written twice each.
 The one exception: a table of names an operator chose, such as
 `[conditions.penalties]`. No record can name a key it has never heard of, so the
 reader checks those and names them precisely.
+
+A valuation source's `settings` table is the same shape of problem: its keys
+belong to whichever adapter the source named, so `config/schema.py` cannot list
+them. `valuation/settings.py` gives that table the same two pieces anyway -- a
+`Section` labelled `valuation.sources.<id>`, and a `RequestLimits` record -- so
+an adapter reads its settings exactly the way the loader reads everything else.
 
 ## 2. A closed set of words is an enum
 
@@ -146,7 +152,8 @@ so in its docstring.
 
 ## Running the checks
 
-`scripts\test.cmd` runs exactly what CI runs, in the same order:
+`scripts/check.py` owns the check list used by CI. On Windows,
+`scripts\test.cmd` runs that driver with the project virtual environment:
 
 ```
 compileall  ->  check-ascii  ->  check-imports  ->  ruff  ->  unittest

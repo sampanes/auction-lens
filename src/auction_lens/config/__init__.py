@@ -18,6 +18,7 @@ from .schema import (
     ValuationConfig,
     ValuationSourceConfig,
 )
+from .toml_reader import Section, in_section
 
 __all__ = [
     "AcquisitionConfig",
@@ -33,7 +34,9 @@ __all__ = [
     "ProviderConfig",
     "RunMode",
     "ScoringConfig",
+    "Section",
     "ValuationConfig",
     "ValuationSourceConfig",
+    "in_section",
     "load_config",
 ]

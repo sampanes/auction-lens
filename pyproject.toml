@@ -19,7 +19,7 @@ auction-lens = "auction_lens.cli:console"
 where = ["src"]
 
 [project.optional-dependencies]
-# Development only. The package itself has no third-party runtime dependencies.
+# Development-only tools; Windows installs tzdata as a runtime dependency above.
 dev = ["ruff==0.16.2"]
 
 [tool.ruff]

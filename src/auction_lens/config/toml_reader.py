@@ -11,7 +11,8 @@ which is the same vocabulary listing input is held to.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
+from contextlib import contextmanager
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from typing import Any
@@ -116,3 +117,22 @@ class Section:
     def label(self, key: str) -> str:
         """The dotted path an operator would search their file for."""
         return f"{self.path}.{key}" if self.path else key
+
+
+@contextmanager
+def in_section(section: Section) -> Iterator[None]:
+    """Name the table an operator has to edit when a record rejects a value.
+
+    A record knows what its values must be; only the reader knows which table
+    they were written in. Wrapping construction joins the two halves of the
+    sentence, so an error always ends at a line the operator can go and edit.
+
+    A reader above already names the full key path, so its complaints are
+    passed through untouched rather than having the table named twice.
+    """
+    try:
+        yield
+    except ValueError as error:
+        if not section.path or str(error).startswith(section.path):
+            raise
+        raise ValueError(f"{section.path}: {error}") from error

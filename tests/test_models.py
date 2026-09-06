@@ -53,6 +53,27 @@ class ValuationObservationTests(unittest.TestCase):
                 sample_size=0,
             )
 
+    def test_non_finite_prices_are_refused(self):
+        with self.assertRaisesRegex(ValueError, "low must be a finite number"):
+            ValuationObservation(
+                source_id="anywhere",
+                basis="used_sold",
+                low=Decimal("NaN"),
+                typical=Decimal("100"),
+                high=Decimal("150"),
+            )
+
+    def test_non_finite_confidence_is_refused(self):
+        with self.assertRaisesRegex(ValueError, "confidence must be a finite number"):
+            ValuationObservation(
+                source_id="anywhere",
+                basis="used_sold",
+                low=Decimal("50"),
+                typical=Decimal("100"),
+                high=Decimal("150"),
+                confidence=Decimal("Infinity"),
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -12,6 +12,7 @@ from auction_lens.valuation import ValuationEngine, create_adapter
 from auction_lens.valuation.aggregation import combine_into_bands
 from auction_lens.valuation.http_json import HttpJsonAdapter
 from auction_lens.valuation.json_path import read_path
+from auction_lens.valuation.reference import ReferenceAdapter
 from auction_lens.valuation.templates import fill_template
 from support import (
     SOUNDBAR,
@@ -143,6 +144,16 @@ class HttpJsonAdapterTests(unittest.TestCase):
                 adapter.collect(replace(self.listing, model="SB23"))
         self.assertEqual(opener.request_count, 2)
 
+    def test_a_fractional_sample_size_is_not_silently_truncated(self):
+        body = (
+            b'{"results":[{"range":{"low":"90","mid":"110","high":"130"},'
+            b'"sales":1.5}]}'
+        )
+        opener = RecordingOpener(FakeResponse(body))
+        with temporary_directory() as directory:
+            with self.assertRaisesRegex(ValueError, "sample_size must be a whole number"):
+                HttpJsonAdapter(self._source(directory), opener=opener).collect(self.listing)
+
     def _source(self, directory, **overrides) -> ValuationSourceConfig:
         settings = {
             "authorization_confirmed": True,
@@ -162,6 +173,49 @@ class HttpJsonAdapterTests(unittest.TestCase):
         return ValuationSourceConfig(
             source_id="configurable-api", adapter="http_json", settings=settings
         )
+
+
+class SourceSettingsTests(unittest.TestCase):
+    """A source's own settings are configuration, held to the same standard.
+
+    Each of these used to be accepted: a negative lifetime made every cached
+    answer stale, a fractional budget was truncated, and an unreadable value
+    failed somewhere deep in the standard library naming nothing.
+    """
+
+    def test_a_negative_cache_lifetime_is_refused(self):
+        with self.assertRaisesRegex(ValueError, "cache_hours cannot be negative"):
+            HttpJsonAdapter(_configured(cache_hours=-1))
+
+    def test_a_spent_request_budget_is_a_configuration_error_not_a_runtime_one(self):
+        with self.assertRaisesRegex(ValueError, "max_requests_per_run must be at least 1"):
+            HttpJsonAdapter(_configured(max_requests_per_run=0))
+
+    def test_a_fractional_timeout_is_refused_rather_than_truncated(self):
+        with self.assertRaisesRegex(ValueError, "timeout_seconds must be a whole number"):
+            HttpJsonAdapter(_configured(timeout_seconds=20.5))
+
+    def test_an_unreadable_setting_names_the_source_and_the_key(self):
+        with self.assertRaisesRegex(
+            ValueError, r"valuation\.sources\.pricing-api\.cache_hours must be a number"
+        ):
+            HttpJsonAdapter(_configured(cache_hours="soon"))
+
+    def test_a_missing_required_setting_names_the_key_to_add(self):
+        source = ValuationSourceConfig(source_id="sold-research", adapter="reference")
+        with self.assertRaisesRegex(
+            ValueError, r"valuation\.sources\.sold-research\.url_template is required"
+        ):
+            ReferenceAdapter(source).collect(example_listings()[SOUNDBAR])
+
+
+def _configured(**settings) -> ValuationSourceConfig:
+    """An otherwise valid HTTP source, so each test varies one setting alone."""
+    settings.setdefault("endpoint", "https://example.invalid/value?q={query}")
+    settings.setdefault("fields", {"typical": "range.mid"})
+    return ValuationSourceConfig(
+        source_id="pricing-api", adapter="http_json", settings=settings
+    )
 
 
 def _observation(**overrides) -> ValuationObservation:

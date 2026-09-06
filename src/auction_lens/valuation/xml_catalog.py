@@ -8,13 +8,13 @@ from __future__ import annotations
 
 import re
 import xml.etree.ElementTree as ElementTree
-from decimal import Decimal
 from pathlib import Path
 
 from ..config import ValuationSourceConfig
-from ..fields import parse_money, parse_utc_datetime
+from ..fields import parse_decimal, parse_money, parse_utc_datetime, parse_whole_number
 from ..models import Listing, ValuationObservation
 from .base import SourceResult
+from .settings import settings_of
 
 TERM_SEPARATOR = "|"
 WORD_PATTERN = re.compile(r"[a-z0-9]+")
@@ -28,9 +28,10 @@ class XmlCatalogAdapter:
 
     def __init__(self, config: ValuationSourceConfig):
         self.config = config
+        self.settings = settings_of(config)
 
     def collect(self, listing: Listing) -> SourceResult:
-        path = Path(str(self.config.settings.get("path", "")))
+        path = Path(self.settings.required_text("path"))
         if not path.is_file():
             return SourceResult()
         catalog = ElementTree.parse(path).getroot()
@@ -53,8 +54,12 @@ class XmlCatalogAdapter:
             typical=typical,
             high=high,
             currency=str(price.get("currency", DEFAULT_CURRENCY)).upper(),
-            sample_size=int(price.get("sample_size", "1")),
-            confidence=Decimal(str(price.get("confidence", "1"))),
+            sample_size=parse_whole_number(
+                price.get("sample_size", "1"), field_name="sample_size"
+            ),
+            confidence=parse_decimal(
+                price.get("confidence", "1"), field_name="confidence"
+            ),
             observed_at=parse_utc_datetime(price.get("observed_at")),
             url=str(price.get("url", "")),
             notes=str(price.get("notes", "")),
