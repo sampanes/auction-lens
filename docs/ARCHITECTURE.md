@@ -42,8 +42,10 @@ keeps `scoring` readable without `valuation` open beside it.
 | `valuation/` | What is it actually worth, according to whom? |
 | `valuation/settings` | What may one source's adapter settings say? |
 | `storage/` | What did we see last time? |
+| `storage/watchlist` | Which lots am I following, and what have they cost? |
 | `reporting/findings` | What does the report say? |
 | `reporting/text`, `reporting/html` | What does that look like? |
+| `reporting/watchlist` | What does the followed list look like? |
 | `reporting/delivery` | How does it get sent? |
 | `pipeline` | One whole run, without a command line. |
 | `cli/` | Which arguments map to which command, and how are errors shown? |

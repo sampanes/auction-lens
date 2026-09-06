@@ -4,5 +4,13 @@ from .delivery import send_email
 from .findings import Report, build_report
 from .html import render_html
 from .text import render_text
+from .watchlist import render_watchlist
 
-__all__ = ["Report", "build_report", "render_html", "render_text", "send_email"]
+__all__ = [
+    "Report",
+    "build_report",
+    "render_html",
+    "render_text",
+    "render_watchlist",
+    "send_email",
+]

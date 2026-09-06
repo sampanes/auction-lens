@@ -6,15 +6,18 @@ import sys
 
 from ..env_file import load_env_file
 from . import commands
-from .parser import FETCH, LOGISTICS, PROGRAM, RUN, build_parser
+from .parser import FETCH, LOGISTICS, PROGRAM, RUN, WATCH, WATCHLIST, build_parser
 
 COMMANDS = {
     RUN: commands.run,
     FETCH: commands.fetch,
     LOGISTICS: commands.logistics,
+    WATCH: commands.watch,
+    WATCHLIST: commands.watchlist,
 }
 
-# The logistics command records a local decision and never needs credentials.
+# Only the commands that reach the network or an SMTP server need credentials;
+# the rest record or read local files.
 COMMANDS_NEEDING_ENVIRONMENT = frozenset({RUN, FETCH})
 
 OPERATOR_ERROR = 2

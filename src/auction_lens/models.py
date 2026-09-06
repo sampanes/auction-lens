@@ -30,9 +30,13 @@ from .fields import (
     require_at_least,
     require_finite,
     require_not_negative,
+    require_within,
 )
 
 REQUIRED_LISTING_FIELDS = ("source", "listing_id", "title", "url", "current_bid")
+
+# What separates a provider from its own listing id in a lot's unique name.
+UID_SEPARATOR = ":"
 
 # The scale every score lives on. Scoring clamps to it and configuration is
 # checked against it, so both read it from the record they are talking about.
@@ -60,6 +64,38 @@ class CandidateCategory(StrEnum):
 
     WANTED = "wanted"
     ANOMALY = "anomaly"
+
+
+class WatchState(StrEnum):
+    """What a person has decided about a lot they are following."""
+
+    HUNTING = "hunting"
+    WATCHING = "watching"
+    PASSED = "passed"
+    WON = "won"
+    LOST = "lost"
+
+
+class WatchTag(StrEnum):
+    """The colour word a state reads as at a glance."""
+
+    GREEN = "green"
+    AMBER = "amber"
+    RED = "red"
+
+
+# Every state has a colour, so a long list can be skimmed before it is read.
+WATCH_TAGS = {
+    WatchState.HUNTING: WatchTag.GREEN,
+    WatchState.WON: WatchTag.GREEN,
+    WatchState.WATCHING: WatchTag.AMBER,
+    WatchState.PASSED: WatchTag.RED,
+    WatchState.LOST: WatchTag.RED,
+}
+
+# How many stars a person may give one lot, and the scale they are read on.
+FEWEST_STARS = 0
+MOST_STARS = 5
 
 
 @dataclass(frozen=True)
@@ -229,6 +265,108 @@ class Candidate:
     change: ObservationChange
     valuation: ValuationSummary | None = None
     logistics: LogisticsAssessment | None = None
+
+
+@dataclass(frozen=True)
+class PriceReading:
+    """One look at a lot: what it cost at that moment.
+
+    A scan every hour leaves twenty-four of these in a day; a scan once leaves
+    one. That is the whole point of keeping them as a list rather than as a
+    single "current price" that forgets everything it replaces.
+    """
+
+    scanned_at: datetime
+    current_bid: Decimal
+    total_cost: Decimal
+    bid_count: int = 0
+
+    def __post_init__(self) -> None:
+        require_not_negative(self.current_bid, field_name="current_bid")
+        require_not_negative(self.total_cost, field_name="total_cost")
+        require_not_negative(self.bid_count, field_name="bid_count")
+
+
+@dataclass(frozen=True)
+class WatchedItem:
+    """One lot a person is following, and every look they have taken at it.
+
+    The first block is what the provider said, refreshed on every run. The
+    second block is what the person thinks, which no run may overwrite.
+    """
+
+    source: str
+    listing_id: str
+    title: str = ""
+    url: str = ""
+    image_url: str = ""
+    estimated_retail: Decimal | None = None
+
+    my_estimate: Decimal | None = None
+    state: WatchState = WatchState.WATCHING
+    stars: int = FEWEST_STARS
+    note: str = ""
+
+    readings: tuple[PriceReading, ...] = ()
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "state", _watch_state(self.state))
+        require_within(
+            self.stars, low=FEWEST_STARS, high=MOST_STARS, field_name="stars"
+        )
+        if self.estimated_retail is not None:
+            require_not_negative(self.estimated_retail, field_name="estimated_retail")
+        if self.my_estimate is not None:
+            require_not_negative(self.my_estimate, field_name="my_estimate")
+
+    @property
+    def uid(self) -> str:
+        """The one name that identifies this lot everywhere in the project."""
+        return uid_of(self.source, self.listing_id)
+
+    @property
+    def tag(self) -> WatchTag:
+        return WATCH_TAGS[self.state]
+
+    @property
+    def first(self) -> PriceReading | None:
+        return self.readings[0] if self.readings else None
+
+    @property
+    def latest(self) -> PriceReading | None:
+        return self.readings[-1] if self.readings else None
+
+    @property
+    def movement(self) -> Decimal | None:
+        """How far the bid has travelled since the first look, if there were two."""
+        if len(self.readings) < 2:
+            return None
+        return self.readings[-1].current_bid - self.readings[0].current_bid
+
+    @property
+    def headroom(self) -> Decimal | None:
+        """What is left between the latest total and the person's own estimate.
+
+        Negative means it has already cost more than they said it was worth,
+        which is the number worth seeing before bidding again.
+        """
+        if self.my_estimate is None or self.latest is None:
+            return None
+        return self.my_estimate - self.latest.total_cost
+
+
+def uid_of(source: str, listing_id: str) -> str:
+    """Name one lot across providers; a listing id alone is only unique per site."""
+    return f"{source}{UID_SEPARATOR}{listing_id}"
+
+
+def _watch_state(state: Any) -> WatchState:
+    """Accept either the word or the member, and return the member."""
+    for allowed in WatchState:
+        if state == allowed:
+            return allowed
+    choices = ", ".join(WatchState)
+    raise ValueError(f"state must be one of: {choices}")
 
 
 def _decidable(status: Any) -> LogisticsStatus:
