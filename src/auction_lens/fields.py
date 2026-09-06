@@ -43,27 +43,37 @@ def require_finite(value: Decimal, *, field_name: str) -> Decimal:
 
 def require_not_negative(value: Number, *, field_name: str) -> Number:
     """For a quantity whose meaning reverses below zero, such as a fee."""
+    _require_finite_if_decimal(value, field_name=field_name)
     if value < 0:
         raise ValueError(f"{field_name} cannot be negative")
     return value
 
 
 def require_at_least(value: Number, minimum: Number, *, field_name: str) -> Number:
+    _require_finite_if_decimal(value, field_name=field_name)
     if value < minimum:
         raise ValueError(f"{field_name} must be at least {minimum}")
     return value
 
 
 def require_at_most(value: Number, maximum: Number, *, field_name: str) -> Number:
+    _require_finite_if_decimal(value, field_name=field_name)
     if value > maximum:
         raise ValueError(f"{field_name} cannot exceed {maximum}")
     return value
 
 
 def require_within(value: Number, *, low: Number, high: Number, field_name: str) -> Number:
+    _require_finite_if_decimal(value, field_name=field_name)
     if not low <= value <= high:
         raise ValueError(f"{field_name} must be between {low} and {high}")
     return value
+
+
+def _require_finite_if_decimal(value: Number, *, field_name: str) -> None:
+    """Apply Decimal's extra validity rule before making an ordered comparison."""
+    if isinstance(value, Decimal):
+        require_finite(value, field_name=field_name)
 
 
 # --------------------------------------------------------------------------
@@ -83,7 +93,6 @@ def parse_decimal(value: Any, *, field_name: str) -> Decimal:
         amount = Decimal(str(value))
     except (InvalidOperation, TypeError, ValueError) as exc:
         raise ValueError(f"{field_name} must be a number") from exc
-    require_finite(amount, field_name=field_name)
     return require_not_negative(amount, field_name=field_name)
 
 

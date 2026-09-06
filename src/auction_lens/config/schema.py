@@ -22,6 +22,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from ..fields import (
     require_at_least,
     require_at_most,
+    require_finite,
     require_not_negative,
     require_within,
 )
@@ -181,6 +182,7 @@ class ValuationSourceConfig:
                 f"id {self.source_id!r} may contain only {SOURCE_ID_CHARACTERS}, "
                 "and must start with a letter or digit"
             )
+        require_finite(self.weight, field_name="weight")
         if self.weight <= 0:
             raise ValueError("weight must be greater than zero")
 

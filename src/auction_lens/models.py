@@ -28,6 +28,7 @@ from .fields import (
     parse_utc_datetime,
     parse_whole_number,
     require_at_least,
+    require_finite,
     require_not_negative,
 )
 
@@ -175,6 +176,8 @@ class ValuationObservation:
     notes: str = ""
 
     def __post_init__(self) -> None:
+        for field_name in ("low", "typical", "high"):
+            require_finite(getattr(self, field_name), field_name=field_name)
         if not self.low <= self.typical <= self.high:
             raise ValueError("valuation requires low <= typical <= high")
         require_at_least(self.sample_size, 1, field_name="sample_size")

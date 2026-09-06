@@ -17,13 +17,5 @@ jobs:
           python-version: "3.11"
       - name: Install package
         run: python -m pip install .[dev]
-      - name: Compile source and tests
-        run: python -m compileall -q src tests
-      - name: Check that tracked text files are ASCII
-        run: python scripts/check-ascii.py
-      - name: Check module layering
-        run: python scripts/check-imports.py
-      - name: Lint
-        run: python -m ruff check src tests scripts
-      - name: Run tests
-        run: python -m unittest discover -s tests -v
+      - name: Run checks
+        run: python scripts/check.py

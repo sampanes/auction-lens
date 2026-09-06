@@ -2,6 +2,9 @@
 
 The acquisition fetcher persists its limits because it runs once a day; this
 one is in-memory on purpose, because it bounds a single fan-out over listings.
+
+The numbers arrive already checked, from ``RequestLimits`` in ``settings``.
+This is the mechanism, not the rule.
 """
 
 from __future__ import annotations
@@ -21,10 +24,6 @@ class RequestThrottle:
     sleeper: Callable[[float], None] = time.sleep
     _requests_made: int = field(default=0, init=False)
     _last_request_at: float | None = field(default=None, init=False)
-
-    def __post_init__(self) -> None:
-        if self.minimum_interval_seconds < 0:
-            raise ValueError("minimum_interval_seconds cannot be negative")
 
     def take_turn(self) -> None:
         """Wait if a request is due later, and refuse once the budget is spent."""

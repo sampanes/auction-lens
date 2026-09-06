@@ -40,6 +40,7 @@ keeps `scoring` readable without `valuation` open beside it.
 | `scoring/` | Is this listing worth reporting, and why? |
 | `logistics` | Is getting this item home still an open question? |
 | `valuation/` | What is it actually worth, according to whom? |
+| `valuation/settings` | What may one source's adapter settings say? |
 | `storage/` | What did we see last time? |
 | `reporting/findings` | What does the report say? |
 | `reporting/text`, `reporting/html` | What does that look like? |
@@ -78,4 +79,5 @@ argument names and terminal output, but no domain behavior.
 
 `tests/` mirrors the module layout, one file per area, with shared fixtures and
 fakes in `tests/support.py`. Nothing in the suite touches the network, an SMTP
-server, or a real provider. Run everything CI runs with `scripts\test.cmd`.
+server, or a real provider. Run everything CI runs with `scripts\test.cmd` on
+Windows or `python scripts/check.py` elsewhere.

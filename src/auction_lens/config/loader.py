@@ -9,8 +9,6 @@ an operator has to open, which a record cannot know.
 from __future__ import annotations
 
 import tomllib
-from collections.abc import Iterator
-from contextlib import contextmanager
 from pathlib import Path
 
 from .conditions import resolve_condition_policy
@@ -33,7 +31,7 @@ from .schema import (
     ValuationConfig,
     ValuationSourceConfig,
 )
-from .toml_reader import Section
+from .toml_reader import Section, in_section
 
 # Keys consumed by ValuationSourceConfig itself; the rest are adapter settings.
 VALUATION_SOURCE_KEYS = frozenset({"id", "adapter", "enabled", "label", "categories", "weight"})
@@ -61,17 +59,8 @@ def load_config(path: str | Path) -> AppConfig:
     )
 
 
-@contextmanager
-def _in_section(section: Section) -> Iterator[None]:
-    """Name the table an operator has to edit when a record rejects a value."""
-    try:
-        yield
-    except ValueError as error:
-        raise ValueError(f"{section.path}: {error}") from error
-
-
 def _provider(section: Section) -> ProviderConfig:
-    with _in_section(section):
+    with in_section(section):
         return ProviderConfig(
             provider_id=section.text("id", "unknown"),
             display_name=section.text("display_name"),
@@ -80,7 +69,7 @@ def _provider(section: Section) -> ProviderConfig:
 
 
 def _economics(section: Section) -> EconomicsConfig:
-    with _in_section(section):
+    with in_section(section):
         return EconomicsConfig(
             default_buyer_premium=section.decimal("default_buyer_premium", 0),
             premium_is_taxable=section.flag("premium_is_taxable", True),
@@ -90,7 +79,7 @@ def _economics(section: Section) -> EconomicsConfig:
 
 
 def _acquisition(section: Section) -> AcquisitionConfig:
-    with _in_section(section):
+    with in_section(section):
         return AcquisitionConfig(
             mode=section.text("mode", AcquisitionMode.MANUAL),
             url=section.text("url"),
@@ -109,7 +98,7 @@ def _acquisition(section: Section) -> AcquisitionConfig:
 
 
 def _scoring(section: Section, conditions: Section, profiles: Section) -> ScoringConfig:
-    with _in_section(section):
+    with in_section(section):
         return ScoringConfig(
             anomaly_minimum_retail=section.decimal("anomaly_minimum_retail", 100),
             anomaly_maximum_ratio=section.decimal("anomaly_maximum_ratio", "0.20"),
@@ -131,7 +120,7 @@ def _interests(root: Section, profiles: Section) -> tuple[InterestRule, ...]:
 
 
 def _interest(item: Section, profiles: Section) -> InterestRule:
-    with _in_section(item):
+    with in_section(item):
         return InterestRule(
             name=item.required_text("name"),
             purpose=item.text("purpose", "use"),
@@ -146,7 +135,7 @@ def _interest(item: Section, profiles: Section) -> InterestRule:
 
 
 def _valuation(section: Section) -> ValuationConfig:
-    with _in_section(section):
+    with in_section(section):
         return ValuationConfig(
             enabled=section.flag("enabled", False),
             currency=section.text("currency", "USD").upper(),
@@ -155,7 +144,7 @@ def _valuation(section: Section) -> ValuationConfig:
 
 
 def _valuation_source(item: Section) -> ValuationSourceConfig:
-    with _in_section(item):
+    with in_section(item):
         source_id = item.required_text("id")
         return ValuationSourceConfig(
             source_id=source_id,
@@ -173,7 +162,7 @@ def _valuation_source(item: Section) -> ValuationSourceConfig:
 
 
 def _logistics(section: Section) -> LogisticsConfig:
-    with _in_section(section):
+    with in_section(section):
         return LogisticsConfig(
             large_item_policy=section.text("large_item_policy", LargeItemPolicy.ASK),
             manual_handling_limit_lb=section.decimal("manual_handling_limit_lb", 75),
@@ -182,7 +171,7 @@ def _logistics(section: Section) -> LogisticsConfig:
 
 
 def _email(section: Section) -> EmailConfig:
-    with _in_section(section):
+    with in_section(section):
         return EmailConfig(
             enabled=section.flag("enabled", False),
             host_env=section.text("host_env", "AUCTION_LENS_SMTP_HOST"),

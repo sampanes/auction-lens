@@ -5,6 +5,7 @@ from __future__ import annotations
 from ..config import ValuationSourceConfig
 from ..models import Listing, ResearchLink
 from .base import SourceResult
+from .settings import settings_of
 from .templates import fill_template
 
 
@@ -13,11 +14,10 @@ class ReferenceAdapter:
 
     def __init__(self, config: ValuationSourceConfig):
         self.config = config
+        self.settings = settings_of(config)
 
     def collect(self, listing: Listing) -> SourceResult:
-        template = str(self.config.settings.get("url_template", "")).strip()
-        if not template:
-            raise ValueError(f"valuation source {self.config.source_id!r} needs url_template")
+        template = self.settings.required_text("url_template")
         return SourceResult(
             research_links=(
                 ResearchLink(

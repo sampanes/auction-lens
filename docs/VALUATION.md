@@ -113,6 +113,12 @@ Field values use a deliberately small dotted-path notation such as
 in committed TOML. Network responses are cached under `private/` by default. The
 adapter spaces uncached requests and caps them per run.
 
+`cache_hours`, `timeout_seconds`, `minimum_interval_seconds`, and
+`max_requests_per_run` are what keep a run polite, so a value that would switch
+one of them off is refused rather than obeyed: no negative cache lifetime, no
+zero request budget. Every settings mistake is reported against its full key,
+as in `valuation.sources.authorized-value-api.cache_hours must be a number`.
+
 A source failure is reported alongside successful evidence; it does not erase the
 rest of the fan-out result.
 
