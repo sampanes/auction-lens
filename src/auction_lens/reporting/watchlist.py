@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from decimal import Decimal
+from html import escape
 
 from ..grading import HIGHEST_RATING, ConditionTag, Tag
 from ..models import Verdict, WatchedItem
@@ -35,7 +36,11 @@ ALL_CLEAR = "every tag green"
 # watchlist stays clean, and the colour word is printed either way -- colour is
 # how the line is skimmed, never the only place the news is.
 COLOURS = {Tag.RED: "31", Tag.AMBER: "33", Tag.GREEN: "32"}
-PLAIN = "[0m"
+ESCAPE = "\x1b"
+PLAIN = f"{ESCAPE}[0m"
+
+CARD_STYLE = "border:1px solid #ddd;border-radius:8px;padding:14px;margin:12px 0"
+PHOTO_STYLE = "display:block;max-width:100%;height:auto;margin-top:12px"
 
 
 def render_watchlist(
@@ -48,6 +53,48 @@ def render_watchlist(
     for item in sorted(items, key=_keenness):
         lines.extend(_item_lines(item, colour=colour))
     return "\n".join(lines).rstrip() + "\n"
+
+
+def render_watchlist_html(items: tuple[WatchedItem, ...], *, path: str = "") -> str:
+    """Render the same watchlist as phone-friendly email cards."""
+    if not items:
+        return f"<p>Watchlist is empty{escape(_at(path))}.</p>"
+    cards = "".join(_html_card(item) for item in sorted(items, key=_keenness))
+    headline = f"Following {len(items)} lot(s){_at(path)}."
+    return f"<h2>{escape(headline)}</h2>{cards}"
+
+
+def _html_card(item: WatchedItem) -> str:
+    concerns = _html_conditions(item.conditions)
+    facts = (*_value_facts(item), *_price_facts(item))
+    details = "".join(f"<li>{escape(fact)}</li>" for fact in facts)
+    note = f"<p><strong>Note:</strong> {escape(item.note)}</p>" if item.note else ""
+    link = (
+        f"<p><a href='{escape(item.url, quote=True)}'>View listing</a></p>"
+        if item.url
+        else ""
+    )
+    photo = (
+        f"<a href='{escape(item.condition_photo_url, quote=True)}'>"
+        f"<img src='{escape(item.condition_photo_url, quote=True)}' "
+        f"alt='Photo of this lot' style='{PHOTO_STYLE}'></a>"
+        if item.condition_photo_url
+        else ""
+    )
+    return "".join(
+        (
+            f"<article style='{CARD_STYLE}'>",
+            f"<h3>{escape(item.title or item.uid)}</h3>",
+            f"<p><strong>{escape(str(item.verdict).upper())}</strong> "
+            f"{escape(stars_of(item.quality_rating))}</p>",
+            concerns,
+            f"<ul>{details}</ul>" if details else "",
+            note,
+            link,
+            photo,
+            "</article>",
+        )
+    )
 
 
 def _at(path: str) -> str:
@@ -103,7 +150,7 @@ def _relisting(item: WatchedItem) -> str:
 def _paint(body: str, tag: Tag, *, colour: bool) -> str:
     if not colour:
         return body
-    return f"[{COLOURS[tag]}m{body}{PLAIN}"
+    return f"{ESCAPE}[{COLOURS[tag]}m{body}{PLAIN}"
 
 
 def _condition_lines(
@@ -122,12 +169,36 @@ def _condition_lines(
     if not concerns:
         yield f"  Condition: {ALL_CLEAR}"
         return
-    for shade in CONCERN_ORDER:
-        labels = [tag.label for tag in concerns if tag.tag == shade]
+    for shade, labels in _concern_groups(concerns):
         if labels:
             yield "  " + _paint(
                 f"[{shade.upper()}] {SEPARATOR.join(labels)}", shade, colour=colour
             )
+
+
+def _html_conditions(conditions: tuple[ConditionTag, ...]) -> str:
+    if not conditions:
+        return ""
+    concerns = tuple(tag for tag in conditions if tag.is_concerning)
+    if not concerns:
+        return f"<p>Condition: {ALL_CLEAR}</p>"
+    rows = []
+    for shade, labels in _concern_groups(concerns):
+        rows.append(
+            f"<li><strong>{escape(str(shade).upper())}:</strong> "
+            f"{escape(', '.join(labels))}</li>"
+        )
+    return "<ul>" + "".join(rows) + "</ul>"
+
+
+def _concern_groups(
+    concerns: tuple[ConditionTag, ...] | list[ConditionTag],
+) -> Iterator[tuple[Tag, list[str]]]:
+    """Group condition labels once, in the order every rendering uses."""
+    for shade in CONCERN_ORDER:
+        labels = [tag.label for tag in concerns if tag.tag == shade]
+        if labels:
+            yield shade, labels
 
 
 def _value_facts(item: WatchedItem) -> list[str]:

@@ -6,8 +6,11 @@ import io
 import json
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
+from unittest.mock import patch
 
 from auction_lens.cli import console, main
+from auction_lens.models import WatchedItem
+from auction_lens.storage import WatchlistStore
 from support import EXAMPLE_CONFIG, ROOT, SYNTHETIC_LISTINGS, temporary_directory
 
 NELLIS_PRODUCT_PAGE = ROOT / "fixtures" / "nellis" / "product-page.html"
@@ -73,6 +76,56 @@ class RunCommandTests(unittest.TestCase):
             "--env-file",
             str(directory / "absent.env"),
         ]
+
+
+class WatchlistCommandTests(unittest.TestCase):
+    def test_email_requires_the_configuration_that_names_the_account(self):
+        with temporary_directory() as directory:
+            with self.assertRaisesRegex(RuntimeError, "--config is required"):
+                run_cli(
+                    [
+                        "watchlist",
+                        "--watchlist",
+                        str(directory / "watchlist.json"),
+                        "--env-file",
+                        str(directory / "absent.env"),
+                        "--email",
+                    ]
+                )
+
+    @patch("auction_lens.cli.commands.send_watchlist_email")
+    def test_email_sends_only_the_selected_verdict(self, send_watchlist_email):
+        with temporary_directory() as directory:
+            watchlist = directory / "watchlist.json"
+            store = WatchlistStore(watchlist)
+            store.save(WatchedItem(source="nellis", listing_id="1", verdict="hunting"))
+            store.save(WatchedItem(source="nellis", listing_id="2", verdict="watching"))
+            config = directory / "config.toml"
+            source = EXAMPLE_CONFIG.read_text(encoding="utf-8")
+            config.write_text(
+                source.replace(
+                    '[reports.email]\nenabled = false',
+                    '[reports.email]\nenabled = true',
+                ),
+                encoding="utf-8",
+            )
+            run_cli(
+                [
+                    "watchlist",
+                    "--watchlist",
+                    str(watchlist),
+                    "--verdict",
+                    "hunting",
+                    "--config",
+                    str(config),
+                    "--env-file",
+                    str(directory / "absent.env"),
+                    "--email",
+                ]
+            )
+
+        selected = send_watchlist_email.call_args.args[0]
+        self.assertEqual([item.listing_id for item in selected], ["1"])
 
 
 class LogisticsCommandTests(unittest.TestCase):

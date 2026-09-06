@@ -9,7 +9,14 @@ from decimal import Decimal
 from unittest.mock import patch
 
 from auction_lens.env_file import load_env_file
-from auction_lens.reporting import build_report, render_html, render_text, send_email
+from auction_lens.models import WatchedItem
+from auction_lens.reporting import (
+    build_report,
+    render_html,
+    render_text,
+    send_email,
+    send_watchlist_email,
+)
 from auction_lens.scoring import evaluate
 from support import (
     LASER_LEVEL,
@@ -105,6 +112,19 @@ class EmailDeliveryTests(unittest.TestCase):
             send_email([], replace(self.config.email, security="starttlz"))
         smtp.assert_not_called()
         smtp_ssl.assert_not_called()
+
+    @patch("auction_lens.reporting.delivery.smtplib.SMTP_SSL")
+    def test_a_watchlist_email_has_a_clear_subject_and_both_renderings(self, smtp_ssl):
+        items = (WatchedItem(source="nellis", listing_id="1", title="Flagged monitor"),)
+        with patch.dict("os.environ", SMTP_ENVIRONMENT, clear=False):
+            send_watchlist_email(items, self.config.email)
+
+        message = smtp_ssl.return_value.__enter__.return_value.send_message.call_args.args[0]
+        self.assertEqual(message["Subject"], "Auction Lens watchlist: 1 selected lot(s)")
+        plain = message.get_body(preferencelist=("plain",)).get_content()
+        markup = message.get_body(preferencelist=("html",)).get_content()
+        self.assertIn("Flagged monitor", plain)
+        self.assertIn("Flagged monitor", markup)
 
 
 class BothRenderingsSayTheSameThingTests(unittest.TestCase):

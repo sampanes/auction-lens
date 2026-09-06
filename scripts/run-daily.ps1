@@ -1,4 +1,4 @@
-# Scheduled daily run: read the ignored inbox file, update SQLite, email the report.
+# Scheduled daily run: update prices, then email only lots marked hunting.
 # Register with Windows Task Scheduler; it exits non-zero if anything fails.
 
 $ErrorActionPreference = "Stop"
@@ -20,10 +20,18 @@ try {
         --input $inputPath `
         --config "config\local.toml" `
         --database "data\auction-lens.sqlite3" `
+        --env-file ".env"
+    if ($LASTEXITCODE -ne 0) {
+        throw "Auction Lens exited with code $LASTEXITCODE"
+    }
+    & $python -m auction_lens watchlist `
+        --watchlist "private\watchlist.json" `
+        --verdict hunting `
+        --config "config\local.toml" `
         --env-file ".env" `
         --email
     if ($LASTEXITCODE -ne 0) {
-        throw "Auction Lens exited with code $LASTEXITCODE"
+        throw "Auction Lens watchlist email exited with code $LASTEXITCODE"
     }
 }
 finally {

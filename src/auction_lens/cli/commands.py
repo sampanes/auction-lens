@@ -14,7 +14,7 @@ from ..file_io import write_json_atomically
 from ..ingest import load_listings, read_product_page, read_search_page
 from ..models import LogisticsDecision, LogisticsStatus, WatchedItem
 from ..pipeline import analyze_listings
-from ..reporting import render_text, render_watchlist, send_email
+from ..reporting import render_text, render_watchlist, send_email, send_watchlist_email
 from ..storage import (
     Database,
     LogisticsDecisionStore,
@@ -184,6 +184,14 @@ def watchlist(args: argparse.Namespace) -> int:
         render_watchlist(items, path=args.watchlist, colour=sys.stdout.isatty()),
         end="",
     )
+    if args.email:
+        if not args.config:
+            raise RuntimeError("--config is required when emailing a watchlist")
+        config = load_config(args.config)
+        if not config.email.enabled:
+            raise RuntimeError("email reporting is disabled in the selected configuration")
+        send_watchlist_email(items, config.email, path=args.watchlist)
+        print(f"Emailed {len(items)} selected lot(s).")
     return SUCCESS
 
 

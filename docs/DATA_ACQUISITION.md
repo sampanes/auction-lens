@@ -110,7 +110,7 @@ requests.
 User-Agent carrying a contact address -- and writes canonical JSON.
 
 ```cmd
-.venv\Scriptsuction-lens.exe discover ^
+.venv\Scripts\auction-lens.exe discover ^
   --config config\local.toml ^
   --output data\inbox\listings.json ^
   --search soundbar
@@ -181,7 +181,7 @@ Fetching and pulling are separate commands on purpose. `fetch` saves pages;
 on disk without asking the provider for anything again.
 
 ```cmd
-.venv\Scriptsuction-lens.exe pull ^
+.venv\Scripts\auction-lens.exe pull ^
   --config config\local.toml ^
   --input private\cache\pages ^
   --output data\inbox\listings.json

@@ -13,7 +13,7 @@ from decimal import Decimal
 from auction_lens.grading import read_grade
 from auction_lens.models import PriceReading, Verdict, WatchedItem
 from auction_lens.pipeline import analyze_listings
-from auction_lens.reporting import render_watchlist
+from auction_lens.reporting import render_watchlist, render_watchlist_html
 from auction_lens.storage import LogisticsDecisionStore, ObservationStore, WatchlistStore
 from support import (
     SOUNDBAR,
@@ -282,6 +282,22 @@ class WatchlistRenderingTests(unittest.TestCase):
     def test_a_loss_reads_as_a_negative_amount_not_a_stray_minus_sign(self):
         item = _followed(my_estimate="10", bids=("18",))
         self.assertIn("Headroom -$10.70", render_watchlist((item,)))
+
+    def test_html_is_phone_friendly_and_links_the_actual_lot(self):
+        item = replace(
+            _followed(title="Flagged monitor", bids=("18",)),
+            photo_urls=("https://example.invalid/stock.jpg", "https://example.invalid/lot.jpg"),
+        )
+        markup = render_watchlist_html((item,))
+        self.assertIn("Flagged monitor", markup)
+        self.assertIn("View listing", markup)
+        self.assertIn("https://example.invalid/lot.jpg", markup)
+
+    def test_html_escapes_a_hand_written_note(self):
+        item = replace(_followed(), note="<script>not markup</script>")
+        markup = render_watchlist_html((item,))
+        self.assertNotIn("<script>", markup)
+        self.assertIn("&lt;script&gt;", markup)
 
 
 def _followed(

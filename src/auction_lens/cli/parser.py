@@ -136,3 +136,12 @@ def _add_watchlist(subparsers) -> None:
     watchlist.add_argument(
         "--verdict", choices=VERDICTS, help="show only lots you decided one way"
     )
+    watchlist.add_argument(
+        "--email", action="store_true", help="email the selected lots after showing them"
+    )
+    watchlist.add_argument(
+        "--config", help="TOML configuration; required when --email is used"
+    )
+    watchlist.add_argument(
+        "--env-file", default=DEFAULT_ENV_FILE, help="optional local KEY=VALUE settings file"
+    )
