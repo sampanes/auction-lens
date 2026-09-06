@@ -94,6 +94,47 @@ and `Yes` for `packageType`. Match on the axis together with the description.
 The observed vocabulary and three redacted samples are in
 `fixtures/nellis/product-grade-samples.json`.
 
+### Discovery: one request per search, not one per lot
+
+The provider's own search page is server-rendered *and* carries the complete
+data for every result it lists -- grade, rating, prices, photos, both ids. One
+request therefore describes a whole page of lots. Asking for each lot's own page
+instead would be forty requests for information already received, which is most
+of the difference between a polite client and a nuisance.
+
+A live check on 2026-09-06: two searches returned 158 distinct lots in two
+requests.
+
+`discover` fetches one search page per term through the same guards as `fetch`
+-- provider enabled, `authorized_http` mode, public HTTPS, an identifying
+User-Agent carrying a contact address -- and writes canonical JSON.
+
+```cmd
+.venv\Scriptsuction-lens.exe discover ^
+  --config config\local.toml ^
+  --output data\inbox\listings.json ^
+  --search soundbar
+```
+
+Search terms come from the first of these that says anything: `--search` (which
+is repeatable), `[provider.acquisition] searches`, or the `any_terms` of every
+`[[interests]]` rule. That last fallback means the terms are written down once:
+a configuration that already says it wants a soundbar does not have to say so
+again in a second list.
+
+**Two limits apply, and they answer different questions.** The persistent ledger
+counts *runs*, and a whole discovery run is one attempt however many searches it
+makes. An in-memory throttle spaces the searches inside that run
+(`seconds_between_searches`, default 5). Conflating them would either forbid a
+second search for twelve hours or let one run fire every search at once.
+
+Each term's page is cached separately and revalidated with `If-None-Match`, so a
+provider can answer 304 and send nothing. Lots the page marks as closed are left
+out; nothing can be bid on any more.
+
+A search result carries no taxonomy, so discovered lots have no `category`. Only
+a lot's own page has one, which is what `pull` is still for.
+
 ### Reading a saved page
 
 The data is not plain JSON in the HTML. It arrives in a single streamed chunk at

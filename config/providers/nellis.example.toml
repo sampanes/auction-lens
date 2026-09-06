@@ -7,6 +7,14 @@ enabled = true
 # See docs/DATA_ACQUISITION.md for everything a fetch requires. A live
 # deployment also sets url, timezone, and the request limits here.
 mode = "authorized_http"
+#
+# Discovery asks the provider's own search once per term, and one search
+# page carries every lot it lists. A live deployment sets:
+#   search_url_template = "https://provider.example/search?query={query}"
+#   searches = ["soundbar", "monitor"]   # optional; defaults to the
+#                                          # any_terms of every interest
+#   max_searches_per_run = 8
+#   seconds_between_searches = 5
 
 [economics]
 # Listing-level values override this event-dependent fallback.

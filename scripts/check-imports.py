@@ -25,7 +25,7 @@ PACKAGE = Path("src/auction_lens")
 LAYERS = (
     ("fields",),
     ("grading",),
-    ("env_file", "file_io", "models"),
+    ("env_file", "file_io", "models", "throttle"),
     ("config",),
     ("logistics",),
     ("acquisition", "ingest", "reporting", "scoring", "storage", "valuation"),

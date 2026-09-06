@@ -42,8 +42,8 @@ def fetch_authorized_page(
     opener: Callable = urlopen,
 ) -> FetchResult:
     """Fetch the configured page, or explain why this run must not."""
-    _require_fetch_allowed(provider, config)
-    user_agent = _authorized_user_agent(config)
+    require_fetch_allowed(provider, config, config.url)
+    user_agent = authorized_user_agent(config)
     instant = _timezone_aware(now or datetime.now(UTC))
 
     ledger = PollLedger.at(config.ledger_file)
@@ -81,16 +81,22 @@ def fetch_authorized_page(
     return FetchResult(status, cache.path, len(body), False)
 
 
-def _require_fetch_allowed(provider: ProviderConfig, config: AcquisitionConfig) -> None:
-    """Check every precondition for contacting the provider at all."""
+def require_fetch_allowed(
+    provider: ProviderConfig, config: AcquisitionConfig, url: str
+) -> None:
+    """Check every precondition for contacting the provider at all.
+
+    Public because discovery asks the same questions of a different address, and
+    there has to be exactly one place that decides what "allowed" means.
+    """
     if not provider.enabled:
         raise RuntimeError("provider is disabled")
     if config.mode != AcquisitionMode.AUTHORIZED_HTTP:
         raise RuntimeError("provider must use authorized_http acquisition mode")
-    _require_public_https(config.url)
+    _require_public_https(url)
 
 
-def _authorized_user_agent(config: AcquisitionConfig) -> str:
+def authorized_user_agent(config: AcquisitionConfig) -> str:
     """The provider must be able to tell who is making the request."""
     user_agent = os.getenv(config.user_agent_env, "").strip()
     if "@" not in user_agent:

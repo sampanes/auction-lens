@@ -106,7 +106,7 @@ class ProductPageTests(unittest.TestCase):
         self.assertIn("shelf", urls[-1])
 
     def test_a_page_with_no_streamed_payload_says_what_is_wrong(self):
-        with self.assertRaisesRegex(ValueError, "not a product page"):
+        with self.assertRaisesRegex(ValueError, "not a provider page"):
             read_product_page("<html><body>Nothing here</body></html>", source="nellis")
 
     def test_a_page_whose_payload_holds_no_product_says_so(self):

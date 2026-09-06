@@ -82,7 +82,24 @@ For Windows, `scripts/run-daily.ps1` is the ready-to-schedule entry point. It re
 an ignored `data/inbox/listings.json`, uses the ignored personal configuration and
 `.env`, updates SQLite, and emails the resulting report.
 
-## Pulling real listings
+## Getting real listings
+
+One command asks the provider's search and writes listings ready to score:
+
+```cmd
+.venv\Scriptsuction-lens.exe discover ^
+  --config config\local.toml ^
+  --output data\inbox\listings.json
+```
+
+A search page carries the complete data for every lot it lists, so one request
+describes a whole page of them rather than one. Terms come from `--search`, or
+from `[provider.acquisition] searches`, or failing both from the `any_terms` of
+your `[[interests]]` -- so what you want is written down once.
+
+A whole discovery run counts as a single attempt against the configured daily
+limit, and the searches inside it are spaced apart. Each term's page is cached
+and revalidated, so an unchanged page costs nothing.
 
 Fetching and pulling are separate steps. `fetch` saves a provider page; `pull`
 reads saved pages into the canonical file `run` analyses. Keeping them apart

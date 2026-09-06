@@ -7,11 +7,11 @@ import sys
 from dataclasses import replace
 from pathlib import Path
 
-from ..acquisition import fetch_authorized_page
+from ..acquisition import discover_searches, fetch_authorized_page
 from ..config import AppConfig, load_config
 from ..fields import parse_money
 from ..file_io import write_json_atomically
-from ..ingest import load_listings, read_product_page
+from ..ingest import load_listings, read_product_page, read_search_page
 from ..models import LogisticsDecision, LogisticsStatus, WatchedItem
 from ..pipeline import analyze_listings
 from ..reporting import render_text, render_watchlist, send_email
@@ -68,6 +68,45 @@ def fetch(args: argparse.Namespace) -> int:
     )
     print(f"{provider} returned HTTP {result.status}; {outcome} at {result.cache_path}")
     return SUCCESS
+
+
+def discover(args: argparse.Namespace) -> int:
+    """Ask the provider's search for lots, and write what it lists."""
+    config = load_config(args.config)
+    captures = discover_searches(
+        config.provider, config.acquisition, _search_terms(config, args.search)
+    )
+
+    rows: dict[str, dict] = {}
+    for capture in captures:
+        listed = read_search_page(
+            capture.path.read_text(encoding="utf-8", errors="replace"),
+            source=config.provider.provider_id,
+            page_url=capture.url,
+        )
+        # One lot can answer two searches; the first sighting is the same lot.
+        for row in listed:
+            rows.setdefault(row["inventory_id"] or row["listing_id"], row)
+        state = "unchanged" if capture.reused_cache else "fetched"
+        print(f"  {capture.term}: {len(listed)} lot(s) ({state})")
+
+    write_json_atomically(Path(args.output), {LISTINGS_KEY: list(rows.values())})
+    print(f"Found {len(rows)} lot(s) from {len(captures)} search(es) into {args.output}.")
+    return SUCCESS
+
+
+def _search_terms(config: AppConfig, requested: list[str]) -> list[str]:
+    """What to search for: what was asked, what was configured, or what is wanted.
+
+    Falling back to the interest rules means the terms are written down once. A
+    configuration that already says it wants a soundbar does not have to say so
+    again in a second list.
+    """
+    if requested:
+        return requested
+    if config.acquisition.searches:
+        return list(config.acquisition.searches)
+    return [term for rule in config.interests for term in rule.any_terms]
 
 
 def pull(args: argparse.Namespace) -> int:

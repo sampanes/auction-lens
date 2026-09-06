@@ -14,6 +14,7 @@ DEFAULT_ENV_FILE = ".env"
 RUN = "run"
 FETCH = "fetch"
 PULL = "pull"
+DISCOVER = "discover"
 LOGISTICS = "logistics"
 WATCH = "watch"
 WATCHLIST = "watchlist"
@@ -38,6 +39,7 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command", required=True)
     _add_run(subparsers)
     _add_fetch(subparsers)
+    _add_discover(subparsers)
     _add_pull(subparsers)
     _add_logistics(subparsers)
     _add_watch(subparsers)
@@ -67,6 +69,25 @@ def _add_fetch(subparsers) -> None:
     fetch = subparsers.add_parser(FETCH, help="fetch one authorized public provider page")
     fetch.add_argument("--config", required=True, help="TOML provider configuration")
     fetch.add_argument(
+        "--env-file", default=DEFAULT_ENV_FILE, help="optional local KEY=VALUE settings file"
+    )
+
+
+def _add_discover(subparsers) -> None:
+    """One request per search term, and each one describes a page of lots."""
+    discover = subparsers.add_parser(
+        DISCOVER, help="ask the provider's search for lots and write them as canonical JSON"
+    )
+    discover.add_argument("--config", required=True, help="TOML provider configuration")
+    discover.add_argument("--output", required=True, help="canonical .json file to write")
+    discover.add_argument(
+        "--search",
+        action="append",
+        default=[],
+        metavar="TERM",
+        help="search term; repeatable. Defaults to the configured or wanted terms",
+    )
+    discover.add_argument(
         "--env-file", default=DEFAULT_ENV_FILE, help="optional local KEY=VALUE settings file"
     )
 

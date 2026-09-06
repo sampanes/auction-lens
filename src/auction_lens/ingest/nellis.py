@@ -21,6 +21,7 @@ from __future__ import annotations
 import json
 import re
 from typing import Any
+from urllib.parse import urljoin
 
 from .turbo_stream import decode
 
@@ -33,6 +34,15 @@ CANONICAL_URL_PATTERN = re.compile(
 # The route whose loader carries the product. A page that does not have it is
 # not a product page, which is worth saying plainly.
 PRODUCT_ROUTE = "routes/p.$title.$productId._index"
+
+# A search page carries every result in one payload, complete with grades, so
+# one request describes a whole page of lots rather than one lot.
+SEARCH_ROUTE = "routes/search"
+PRODUCTS_KEY = "products"
+
+# Each result is linked from the rendered markup, and the link ends in the
+# auction id, which is how a product is matched to its own address.
+PRODUCT_LINK_PATTERN = re.compile(r'href="(/p/[^"]*?/(\d+))"')
 
 # The provider names each graded axis after its own database table. Renaming
 # them is this module's job; grading.py knows only the canonical names.
@@ -53,33 +63,82 @@ WEB_ADDRESS_PREFIXES = ("https://", "http://")
 
 def read_product_page(html: str, *, source: str) -> dict[str, Any]:
     """Read one saved product page into a canonical listing row."""
-    product = _product(html)
+    return _row(_product(html), source=source, url=_canonical_url(html))
+
+
+def _row(product: dict[str, Any], *, source: str, url: str) -> dict[str, Any]:
+    """The one mapping from a provider product to a canonical row.
+
+    A product object is the same shape whether it came from its own page or from
+    a page of search results, so both readers arrive here.
+    """
     grade = product.get("grade") or {}
-    return {
+    row = {
         "source": source,
         "listing_id": str(product["id"]),
         "inventory_id": str(product.get("inventoryNumber") or "").strip(),
         "title": str(product.get("title", "")).strip(),
-        "url": _canonical_url(html),
+        "url": url,
         "current_bid": _amount(product.get("currentPrice")),
         "estimated_retail": _amount(product.get("retailPrice")),
         "bid_count": product.get("bidCount", 0),
         "ends_at": product.get("closeTime"),
         "location": _location(product),
-        "category": _category(product),
         "photo_urls": _photos(product),
         "grade": canonical_grade(grade),
         "quality_rating": grade.get(RATING_KEY),
     }
+    category = _category(product)
+    if category:
+        row["category"] = category
+    return row
+
+
+def read_search_page(html: str, *, source: str, page_url: str) -> list[dict[str, Any]]:
+    """Read every open lot a saved search page lists, as canonical rows.
+
+    This is the polite way to discover lots: one request describes a whole page
+    of them, where asking for each product page separately would be forty.
+
+    A search result carries no taxonomy, so ``category`` is absent on these rows;
+    a lot's own page has it, for a rule that needs to match on it. Lots the page
+    marks as closed are left out, because nothing can be bid on any more.
+    """
+    payload = _payload(html)
+    products = (payload.get("loaderData") or {}).get(SEARCH_ROUTE) or {}
+    listed = products.get(PRODUCTS_KEY)
+    if not isinstance(listed, list):
+        raise ValueError("no search results found; this is not a search page")
+    addresses = _product_addresses(html, page_url)
+    return [
+        _row(product, source=source, url=addresses.get(str(product.get("id")), ""))
+        for product in listed
+        if isinstance(product, dict) and product.get("id") and not product.get("isClosed")
+    ]
+
+
+def _product_addresses(html: str, page_url: str) -> dict[str, str]:
+    """Match each result to the address the page itself links it at."""
+    return {
+        match.group(2): urljoin(page_url, match.group(1))
+        for match in PRODUCT_LINK_PATTERN.finditer(html)
+    }
+
+
+def _payload(html: str) -> dict[str, Any]:
+    """Find the streamed payload at the foot of the page and decode it."""
+    match = PAYLOAD_PATTERN.search(html)
+    if match is None:
+        raise ValueError("no streamed payload found; this is not a provider page")
+    decoded = decode(_unescape(match.group(1)))
+    if not isinstance(decoded, dict):
+        raise ValueError("streamed payload was not an object")
+    return decoded
 
 
 def _product(html: str) -> dict[str, Any]:
-    """Find the streamed payload and take the product out of it."""
-    match = PAYLOAD_PATTERN.search(html)
-    if match is None:
-        raise ValueError("no streamed payload found; this is not a product page")
-    payload = _unescape(match.group(1))
-    routes = decode(payload).get("loaderData") or {}
+    """Take the single product a lot's own page describes."""
+    routes = _payload(html).get("loaderData") or {}
     route = routes.get(PRODUCT_ROUTE) or {}
     product = route.get("product")
     if not isinstance(product, dict) or "id" not in product:

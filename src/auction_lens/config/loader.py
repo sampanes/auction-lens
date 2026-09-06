@@ -15,6 +15,7 @@ from .conditions import resolve_condition_policy
 from .schema import (
     DEFAULT_CACHE_FILE,
     DEFAULT_LEDGER_FILE,
+    DEFAULT_SEARCH_CACHE_DIR,
     DEFAULT_USER_AGENT_ENV,
     AcquisitionConfig,
     AcquisitionMode,
@@ -94,6 +95,11 @@ def _acquisition(section: Section) -> AcquisitionConfig:
             development_minimum_interval_seconds=section.integer(
                 "development_minimum_interval_seconds", 2
             ),
+            search_url_template=section.text("search_url_template"),
+            searches=section.lowercase_texts("searches"),
+            search_cache_dir=section.text("search_cache_dir", DEFAULT_SEARCH_CACHE_DIR),
+            max_searches_per_run=section.integer("max_searches_per_run", 8),
+            seconds_between_searches=section.decimal("seconds_between_searches", 5),
         )
 
 
