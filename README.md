@@ -27,12 +27,12 @@ Python 3.11 or newer is required. The application uses only the standard library
 on Windows, installation also supplies the IANA time-zone database used for
 provider-local request limits.
 
-```cmd
+```powershell
 python -m venv .venv
-.venv\Scripts\python.exe -m pip install -e .
-.venv\Scripts\auction-lens.exe run ^
-  --input fixtures\synthetic\listings.json ^
-  --config config\providers\nellis.example.toml ^
+.\.venv\Scripts\python.exe -m pip install -e .
+.\.venv\Scripts\auction-lens.exe run `
+  --input fixtures\synthetic\listings.json `
+  --config config\providers\nellis.example.toml `
   --database data\auction-lens.sqlite3
 ```
 
@@ -41,24 +41,14 @@ the Nellis-shaped configuration without accessing Nellis Auction.
 
 A live deployment can fetch configured pages with:
 
-```cmd
-.venv\Scripts\auction-lens.exe fetch --config config\local.toml
+```powershell
+.\.venv\Scripts\auction-lens.exe fetch --config config\local.toml
 ```
 
 The fetcher uses an identifiable User-Agent, records attempts before connecting,
 and caches responses atomically. Production mode caps requests per provider-local
 day with a configurable interval. Development mode permits repeated requests with
 an optional spacing delay.
-
-A saved Nellis product page can be normalized for `run` without another network
-request:
-
-```cmd
-.venv\Scripts\auction-lens.exe import-nellis ^
-  --input data\inbox\product.html ^
-  --url https://www.nellisauction.com/p/example/product-id ^
-  --output data\inbox\listings.json
-```
 
 ## Email reports
 
@@ -70,8 +60,8 @@ By default the CLI loads non-empty values from an ignored `.env` file in the
 working directory. Existing process environment variables take precedence. Gmail
 accounts normally require an app password rather than the ordinary account password.
 
-```cmd
-.venv\Scripts\auction-lens.exe run --input listings.json --config config\local.toml --email
+```powershell
+.\.venv\Scripts\auction-lens.exe run --input listings.json --config config\local.toml --email
 ```
 
 Run that command from Windows Task Scheduler, cron, or another scheduler to send
@@ -80,15 +70,15 @@ new listings from changed prices.
 
 For Windows, `scripts/run-daily.ps1` is the ready-to-schedule entry point. It reads
 an ignored `data/inbox/listings.json`, uses the ignored personal configuration and
-`.env`, updates SQLite, and emails the resulting report.
+`.env`, updates SQLite, and emails only lots you marked `hunting`.
 
 ## Getting real listings
 
 One command asks the provider's search and writes listings ready to score:
 
-```cmd
-.venv\Scriptsuction-lens.exe discover ^
-  --config config\local.toml ^
+```powershell
+.\.venv\Scripts\auction-lens.exe discover `
+  --config config\local.toml `
   --output data\inbox\listings.json
 ```
 
@@ -128,10 +118,10 @@ reads saved pages into the canonical file `run` analyses. Keeping them apart
 means a parser can be corrected and re-run over pages already on disk without
 asking the provider again.
 
-```cmd
-.venv\Scriptsuction-lens.exe pull ^
-  --config config\local.toml ^
-  --input private\cache\pages ^
+```powershell
+.\.venv\Scripts\auction-lens.exe pull `
+  --config config\local.toml `
+  --input private\cache\pages `
   --output data\inbox\listings.json
 ```
 
@@ -202,12 +192,12 @@ blanket rejection.
 
 Save a decision for one listing in the same ignored SQLite database:
 
-```cmd
-.venv\Scripts\auction-lens.exe logistics ^
-  --source provider-id ^
-  --listing-id stable-id ^
-  --status feasible ^
-  --added-cost 25 ^
+```powershell
+.\.venv\Scripts\auction-lens.exe logistics `
+  --source provider-id `
+  --listing-id stable-id `
+  --status feasible `
+  --added-cost 25 `
   --note "Handling arranged"
 ```
 
@@ -230,21 +220,33 @@ manufacturer's stock shot.
 On top of that you record what *you* think: your own estimate, a verdict, and a
 note. A run never overwrites any of it.
 
-```cmd
-.venv\Scripts\auction-lens.exe watch ^
-  --source nellis ^
-  --listing-id synthetic-001 ^
-  --verdict hunting ^
-  --estimate 60 ^
+```powershell
+.\.venv\Scripts\auction-lens.exe watch `
+  --source nellis `
+  --listing-id synthetic-001 `
+  --verdict hunting `
+  --estimate 60 `
   --note "worth it under 40 all in"
 
-.venv\Scripts\auction-lens.exe watchlist
+.\.venv\Scripts\auction-lens.exe watchlist
 ```
 
 The list prints keenest first, with headroom -- your estimate minus the latest
 total -- so a lot that has already cost more than you said it was worth says so.
 See [the watchlist guide](docs/WATCHLIST.md) for the file format and for the two
 ways a condition grade is easy to read backwards.
+
+Email only the lots you explicitly flagged as `hunting`:
+
+```powershell
+.\.venv\Scripts\auction-lens.exe watchlist `
+  --verdict hunting `
+  --config config\local.toml `
+  --email
+```
+
+The email is a compact set of phone-friendly cards with price, headroom,
+condition concerns, the actual-lot photo, and a direct listing link.
 
 ## Provider policy
 
@@ -264,8 +266,8 @@ suite touches the network, an SMTP server, or a real provider.
 
 Install the development tools once, then run the check wrapper:
 
-```cmd
-.venv\Scripts\python.exe -m pip install -e ".[dev]"
+```powershell
+.\.venv\Scripts\python.exe -m pip install -e ".[dev]"
 scripts\test.cmd
 ```
 

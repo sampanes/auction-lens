@@ -165,12 +165,12 @@ readable is reported against the entry it broke, as in
 
 Say what you think of a lot. Only the flags you pass are changed:
 
-```cmd
-.venv\Scripts\auction-lens.exe watch ^
-  --source nellis ^
-  --listing-id synthetic-001 ^
-  --verdict hunting ^
-  --estimate 60 ^
+```powershell
+.\.venv\Scripts\auction-lens.exe watch `
+  --source nellis `
+  --listing-id synthetic-001 `
+  --verdict hunting `
+  --estimate 60 `
   --note "worth it under 40 all in"
 ```
 
@@ -180,9 +180,9 @@ plain text when it is redirected or piped, so a saved list never carries escape
 sequences. The colour word is always printed either way: colour is how a line is
 skimmed, never the only place the news is.
 
-```cmd
-.venv\Scripts\auction-lens.exe watchlist
-.venv\Scripts\auction-lens.exe watchlist --verdict hunting
+```powershell
+.\.venv\Scripts\auction-lens.exe watchlist
+.\.venv\Scripts\auction-lens.exe watchlist --verdict hunting
 ```
 
 ```
@@ -205,9 +205,27 @@ before bidding again.
 
 Stop following a lot entirely, forgetting its trail:
 
-```cmd
-.venv\Scripts\auction-lens.exe watch --source nellis --listing-id synthetic-001 --verdict drop
+```powershell
+.\.venv\Scripts\auction-lens.exe watch --source nellis --listing-id synthetic-001 --verdict drop
 ```
+
+## Emailing your flags
+
+Every reported lot begins as `watching`; `hunting` is the explicit flag that
+means you are actively chasing it. Send only those flags to the email account
+already configured for reports:
+
+```powershell
+.\.venv\Scripts\auction-lens.exe watchlist `
+  --verdict hunting `
+  --config config\local.toml `
+  --email
+```
+
+The plain-text alternative contains everything the terminal view does. The HTML
+version uses phone-friendly cards and includes the actual-lot photo and a direct
+link. `scripts/run-daily.ps1` runs this after refreshing prices, so the scheduled
+message reflects the newest scan.
 
 Marking a lot `passed` is usually better than dropping it: the entry stays, so a
 later run does not silently start following it again.

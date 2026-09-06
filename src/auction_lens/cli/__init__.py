@@ -38,7 +38,7 @@ OPERATOR_ERROR = 2
 def main(argv: list[str] | None = None) -> int:
     """Dispatch a command, leaving errors intact for callers and tests."""
     args = build_parser().parse_args(argv)
-    if args.command in COMMANDS_NEEDING_ENVIRONMENT:
+    if args.command in COMMANDS_NEEDING_ENVIRONMENT or getattr(args, "email", False):
         load_env_file(args.env_file)
     return COMMANDS[args.command](args)
 
