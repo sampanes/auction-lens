@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from dataclasses import replace
 from pathlib import Path
 
@@ -139,7 +140,11 @@ def watchlist(args: argparse.Namespace) -> int:
     items = WatchlistStore(Path(args.watchlist)).items()
     if args.verdict:
         items = tuple(item for item in items if item.verdict == args.verdict)
-    print(render_watchlist(items, path=args.watchlist), end="")
+    # Colour only when a person is watching; a redirected list stays plain.
+    print(
+        render_watchlist(items, path=args.watchlist, colour=sys.stdout.isatty()),
+        end="",
+    )
     return SUCCESS
 
 

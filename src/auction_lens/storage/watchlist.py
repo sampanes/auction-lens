@@ -49,21 +49,21 @@ class WatchlistStore:
         rows = document.get(ITEMS_KEY, []) if isinstance(document, dict) else []
         return tuple(self._read(row) for row in rows)
 
-    def get(self, source: str, listing_id: str) -> WatchedItem | None:
-        """One followed lot, or nothing when it is not being followed yet."""
-        wanted = uid_of(source, listing_id)
-        return next((item for item in self.items() if item.uid == wanted), None)
+    def get(self, source: str, identifier: str) -> WatchedItem | None:
+        """One followed lot, found by either the item id or an auction id."""
+        return next(
+            (item for item in self.items() if item.answers_to(source, identifier)), None
+        )
 
     def save(self, item: WatchedItem) -> None:
         """Add a lot, or replace the one already stored under its uid."""
         kept = [stored for stored in self.items() if stored.uid != item.uid]
         self._write([*kept, item])
 
-    def drop(self, source: str, listing_id: str) -> bool:
+    def drop(self, source: str, identifier: str) -> bool:
         """Stop following a lot; say whether there was one to stop following."""
-        unwanted = uid_of(source, listing_id)
         stored = self.items()
-        kept = [item for item in stored if item.uid != unwanted]
+        kept = [item for item in stored if not item.answers_to(source, identifier)]
         if len(kept) == len(stored):
             return False
         self._write(kept)
@@ -78,7 +78,7 @@ class WatchlistStore:
         stored = {item.uid: item for item in self.items()}
         touched = 0
         for listing, total_cost in seen:
-            item = stored.get(uid_of(listing.source, listing.listing_id))
+            item = stored.get(uid_of(listing.source, listing.lot_key))
             updated = _observed(item, listing, total_cost)
             if updated is not None:
                 stored[updated.uid] = updated
@@ -115,6 +115,7 @@ def _observed(
         current_bid=listing.current_bid,
         total_cost=total_cost,
         bid_count=listing.bid_count,
+        listing_id=listing.listing_id,
     )
     readings = () if item is None else item.readings
     if any(stored.scanned_at == reading.scanned_at for stored in readings):
@@ -122,6 +123,7 @@ def _observed(
     return WatchedItem(
         source=listing.source,
         listing_id=listing.listing_id,
+        inventory_id=listing.inventory_id,
         title=listing.title,
         url=listing.url,
         photo_urls=listing.photo_urls,
@@ -145,6 +147,7 @@ def _as_json(item: WatchedItem) -> dict[str, Any]:
         "uid": item.uid,
         "source": item.source,
         "listing_id": item.listing_id,
+        "inventory_id": item.inventory_id,
         "title": item.title,
         "url": item.url,
         "photo_urls": list(item.photo_urls),
@@ -164,6 +167,7 @@ def _reading_as_json(reading: PriceReading) -> dict[str, Any]:
         "current_bid": str(reading.current_bid),
         "total_cost": str(reading.total_cost),
         "bid_count": reading.bid_count,
+        "listing_id": reading.listing_id,
     }
 
 
@@ -172,6 +176,7 @@ def _from_json(row: dict[str, Any]) -> WatchedItem:
     return WatchedItem(
         source=str(row["source"]),
         listing_id=str(row["listing_id"]),
+        inventory_id=str(row.get("inventory_id", "")),
         title=str(row.get("title", "")),
         url=str(row.get("url", "")),
         photo_urls=tuple(str(url) for url in row.get("photo_urls", [])),
@@ -196,6 +201,7 @@ def _reading_from_json(entry: dict[str, Any]) -> PriceReading:
         current_bid=parse_money(entry.get("current_bid"), field_name="current_bid"),
         total_cost=parse_money(entry.get("total_cost"), field_name="total_cost"),
         bid_count=parse_whole_number(entry.get("bid_count"), field_name="bid_count"),
+        listing_id=str(entry.get("listing_id", "")),
     )
 
 
