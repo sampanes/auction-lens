@@ -91,6 +91,22 @@ and `Yes` for `packageType`. Match on the axis together with the description.
 The observed vocabulary and three redacted samples are in
 `fixtures/nellis/product-grade-samples.json`.
 
+### Importing a saved product page
+
+Save an authorized product page as HTML, then convert its Remix product payload
+to the same canonical JSON accepted by `run`:
+
+```cmd
+.venv\Scripts\auction-lens.exe import-nellis ^
+  --input data\inbox\product.html ^
+  --url https://www.nellisauction.com/p/example/product-id ^
+  --output data\inbox\listings.json
+```
+
+The adapter renames Nellis grade axes (for example, `conditionType` becomes
+`condition`) and keeps the complete photo order. The command only reads a page
+already saved by the operator; it does not fetch or bid.
+
 Official references:
 
 - [How do I save an item for later?](https://nellisauction-help.freshdesk.com/support/solutions/articles/68000007628-how-do-i-save-an-item-for-later-)

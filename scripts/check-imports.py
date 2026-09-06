@@ -28,7 +28,7 @@ LAYERS = (
     ("env_file", "file_io", "models"),
     ("config",),
     ("logistics",),
-    ("acquisition", "ingest", "reporting", "scoring", "storage", "valuation"),
+    ("acquisition", "ingest", "nellis_ingest", "reporting", "scoring", "storage", "valuation"),
     ("pipeline",),
     ("cli",),
 )

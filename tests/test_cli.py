@@ -8,7 +8,9 @@ import unittest
 from contextlib import redirect_stderr, redirect_stdout
 
 from auction_lens.cli import console, main
-from support import EXAMPLE_CONFIG, SYNTHETIC_LISTINGS, temporary_directory
+from support import EXAMPLE_CONFIG, ROOT, SYNTHETIC_LISTINGS, temporary_directory
+
+NELLIS_PRODUCT_PAGE = ROOT / "fixtures" / "nellis" / "product-page.html"
 
 
 def run_cli(argv: list[str]) -> str:
@@ -96,6 +98,27 @@ class LogisticsCommandTests(unittest.TestCase):
             "--listing-id",
             "synthetic-001",
         ]
+
+
+class ImportNellisCommandTests(unittest.TestCase):
+    def test_a_saved_product_page_is_ready_for_the_run_command(self):
+        with temporary_directory() as directory:
+            output = directory / "listings.json"
+            message = run_cli(
+                [
+                    "import-nellis",
+                    "--input",
+                    str(NELLIS_PRODUCT_PAGE),
+                    "--url",
+                    "https://www.nellisauction.com/p/example/product-002",
+                    "--output",
+                    str(output),
+                ]
+            )
+            payload = json.loads(output.read_text(encoding="utf-8"))
+
+        self.assertIn("Wrote Nellis listing 0000000002", message)
+        self.assertEqual(payload["listings"][0]["grade"]["condition"], "Used")
 
 
 if __name__ == "__main__":

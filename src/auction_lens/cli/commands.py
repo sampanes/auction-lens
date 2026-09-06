@@ -11,6 +11,7 @@ from ..config import AppConfig, load_config
 from ..fields import parse_money
 from ..ingest import load_listings
 from ..models import LogisticsDecision, LogisticsStatus, WatchedItem
+from ..nellis_ingest import load_nellis_product_page, write_canonical_listings
 from ..pipeline import analyze_listings
 from ..reporting import render_text, render_watchlist, send_email
 from ..storage import (
@@ -62,6 +63,14 @@ def fetch(args: argparse.Namespace) -> int:
         else f"{result.bytes_received} bytes cached"
     )
     print(f"{provider} returned HTTP {result.status}; {outcome} at {result.cache_path}")
+    return SUCCESS
+
+
+def import_nellis(args: argparse.Namespace) -> int:
+    """Convert a saved Nellis product page to one canonical listing file."""
+    listing_row = load_nellis_product_page(args.input, page_url=args.url)
+    write_canonical_listings([listing_row], args.output)
+    print(f"Wrote Nellis listing {listing_row['listing_id']} to {args.output}.")
     return SUCCESS
 
 
