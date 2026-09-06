@@ -38,6 +38,7 @@ keeps `scoring` readable without `valuation` open beside it.
 | `models` | What is a listing, a candidate, a valuation? |
 | `config/` | What did the operator's TOML file ask for? |
 | `ingest` | How do canonical JSON and CSV files become listings? |
+| `nellis_ingest` | How does a saved Nellis product page become a canonical row? |
 | `acquisition/` | May we contact the provider right now, and what did it say? |
 | `scoring/` | Is this listing worth reporting, and why? |
 | `logistics` | Is getting this item home still an open question? |

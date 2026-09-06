@@ -6,7 +6,16 @@ import sys
 
 from ..env_file import load_env_file
 from . import commands
-from .parser import FETCH, LOGISTICS, PROGRAM, RUN, WATCH, WATCHLIST, build_parser
+from .parser import (
+    FETCH,
+    IMPORT_NELLIS,
+    LOGISTICS,
+    PROGRAM,
+    RUN,
+    WATCH,
+    WATCHLIST,
+    build_parser,
+)
 
 COMMANDS = {
     RUN: commands.run,
@@ -14,6 +23,7 @@ COMMANDS = {
     LOGISTICS: commands.logistics,
     WATCH: commands.watch,
     WATCHLIST: commands.watchlist,
+    IMPORT_NELLIS: commands.import_nellis,
 }
 
 # Only the commands that reach the network or an SMTP server need credentials;
