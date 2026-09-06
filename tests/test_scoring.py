@@ -7,7 +7,7 @@ from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
-from auction_lens.config import ConditionPolicy, InterestRule
+from auction_lens.config import ConditionPolicy, InterestRule, LocationPolicy
 from auction_lens.models import LogisticsDecision
 from auction_lens.scoring import estimate_total_cost, evaluate
 from support import LASER_LEVEL, SOUNDBAR, example_config, example_listings
@@ -80,8 +80,29 @@ class InterestScoringTests(unittest.TestCase):
         self.assertEqual([item for item in matches if item.category == "wanted"], [])
 
     def test_listing_outside_an_allowed_location_is_skipped(self):
-        config = replace(self.config, allowed_locations=("north warehouse",))
+        config = replace(self.config, locations=LocationPolicy(allowed=("north warehouse",)))
         self.assertEqual(evaluate(self.listings[SOUNDBAR], config), [])
+
+    def test_an_ordinary_lot_at_a_far_branch_is_not_worth_the_drive(self):
+        config = replace(
+            self.config,
+            locations=LocationPolicy(far=("example warehouse",), far_minimum_score=99),
+        )
+        self.assertEqual(evaluate(self.listings[SOUNDBAR], config), [])
+
+    def test_a_standout_at_a_far_branch_still_gets_through(self):
+        config = replace(
+            self.config,
+            locations=LocationPolicy(far=("example warehouse",), far_minimum_score=1),
+        )
+        self.assertTrue(evaluate(self.listings[SOUNDBAR], config))
+
+    def test_a_near_branch_is_never_held_to_the_far_bar(self):
+        config = replace(
+            self.config,
+            locations=LocationPolicy(far=("somewhere else",), far_minimum_score=100),
+        )
+        self.assertTrue(evaluate(self.listings[SOUNDBAR], config))
 
     def test_ending_soon_adds_a_reason_and_raises_the_score(self):
         now = datetime(2026, 9, 5, 12, tzinfo=UTC)

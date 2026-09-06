@@ -50,7 +50,7 @@ def evaluate(
     anomaly = score_retail_anomaly(context, config.scoring)
     if anomaly is not None:
         candidates.append(anomaly)
-    return candidates
+    return _worth_collecting(candidates, config)
 
 
 def build_context(
@@ -62,7 +62,7 @@ def build_context(
     now: datetime,
 ) -> ScoringContext | None:
     """Apply the gates every rule shares, or return None if the listing fails one."""
-    if not _is_allowed_location(listing, config.allowed_locations):
+    if not config.locations.permits(listing.location):
         return None
     logistics = assess_logistics(listing, config.logistics, logistics_decision)
     if logistics.status == LogisticsStatus.INFEASIBLE:
@@ -83,9 +83,14 @@ def build_context(
     )
 
 
-def _is_allowed_location(listing: Listing, allowed_locations: tuple[str, ...]) -> bool:
-    """An empty allow-list means every pickup location is acceptable."""
-    if not allowed_locations:
-        return True
-    location = listing.location.lower()
-    return any(allowed in location for allowed in allowed_locations)
+def _worth_collecting(candidates: list[Candidate], config: AppConfig) -> list[Candidate]:
+    """Drop a lot at a far branch unless it is good enough to justify the drive.
+
+    This runs after scoring rather than as a gate, because "good enough" is a
+    score, and a gate by definition has not seen one yet.
+    """
+    return [
+        candidate
+        for candidate in candidates
+        if config.locations.worth_collecting(candidate.listing.location, candidate.score)
+    ]

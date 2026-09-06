@@ -101,6 +101,28 @@ A whole discovery run counts as a single attempt against the configured daily
 limit, and the searches inside it are spaced apart. Each term's page is cached
 and revalidated, so an unchanged page costs nothing.
 
+Some providers scope their catalogue to one branch and choose it by session
+rather than by URL, so `[provider.acquisition] session_url` and `session_fields`
+say which branch a run is shopping. Without it the site serves its default city,
+and the results look perfectly real while being hundreds of miles away.
+
+### Near and far branches
+
+Distance is a fact about you, not about a lot, so it is not scored. A branch you
+pass anyway and one half an hour in the wrong direction are both acceptable, but
+not on the same terms:
+
+```toml
+[locations]
+allowed = ["phoenix", "mesa"]
+far = ["phoenix"]
+far_minimum_score = 90
+```
+
+Everything at a near branch is reported as usual. A lot at a far branch is
+reported only if it scores at least `far_minimum_score` -- good enough to
+justify the drive rather than merely good.
+
 Fetching and pulling are separate steps. `fetch` saves a provider page; `pull`
 reads saved pages into the canonical file `run` analyses. Keeping them apart
 means a parser can be corrected and re-run over pages already on disk without

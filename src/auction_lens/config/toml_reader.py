@@ -107,6 +107,11 @@ class Section:
             normalized.append(value.strip().lower())
         return tuple(normalized)
 
+    def text_map(self, key: str) -> dict[str, str]:
+        """Read a table of named text, where no record can name the keys."""
+        table = self.table(key)
+        return {str(name): table.text(str(name)) for name in table.data}
+
     def non_negative_integer_map(self, key: str) -> dict[str, int]:
         """Read named counts or penalties, rejecting values that reverse their meaning."""
         table = self.table(key)

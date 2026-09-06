@@ -24,6 +24,11 @@ sales_tax_rate = 0.0 # Set locally; taxes vary by jurisdiction.
 processing_fee = 0.0
 
 [locations]
+# allowed is a hard gate. far names the branches that are acceptable but out
+# of the way, and a lot there is reported only if it clears far_minimum_score,
+# so distance costs a lot something rather than excluding it outright.
+#   far = ["phoenix"]
+#   far_minimum_score = 90
 # Empty means any location. Values are case-insensitive substrings.
 allowed = []
 

@@ -80,11 +80,13 @@ class RecordingOpener:
         self.urls: list[str] = []
         self.headers: list[dict] = []
         self.response_headers: dict[str, str] = {}
+        self.posted: list[bytes | None] = []
         self.raise_not_modified = False
 
     def __call__(self, request, timeout):
         self.urls.append(request.full_url)
         self.headers.append(dict(request.headers))
+        self.posted.append(request.data)
         if self.raise_not_modified:
             raise HTTPError(request.full_url, 304, "Not Modified", {}, None)
         return FakeResponse(self.body, headers=self.response_headers)
@@ -187,6 +189,48 @@ class DiscoveryTests(unittest.TestCase):
         self.assertFalse(first.reused_cache)
         self.assertTrue(second.reused_cache)
         self.assertEqual(first.path, second.path)
+
+    def test_the_branch_is_chosen_before_anything_is_searched_for(self):
+        # A provider that scopes its catalogue by session serves its default
+        # city otherwise, which is the wrong city for everybody but one person.
+        with temporary_directory() as directory:
+            self._discover(
+                directory,
+                ["soundbar"],
+                session_url="https://example.invalid/change-shopping-location",
+                session_fields={"shoppingLocationId": "2"},
+            )
+        self.assertEqual(self.opener.urls[0], "https://example.invalid/change-shopping-location")
+        self.assertEqual(self.opener.posted[0], b"shoppingLocationId=2")
+        self.assertIn("query=soundbar", self.opener.urls[1])
+
+    def test_choosing_a_branch_is_spaced_like_any_other_request(self):
+        with temporary_directory() as directory:
+            self._discover(
+                directory,
+                ["soundbar", "monitor"],
+                session_url="https://example.invalid/change-shopping-location",
+                session_fields={"shoppingLocationId": "2"},
+            )
+        # Three requests, so two waits: nothing is fired back to back.
+        self.assertEqual(len(self.opener.urls), 3)
+        self.assertEqual(len(self.slept), 2)
+
+    def test_a_provider_that_needs_no_branch_chosen_is_only_searched(self):
+        with temporary_directory() as directory:
+            self._discover(directory, ["soundbar"])
+        self.assertEqual(len(self.opener.urls), 1)
+        self.assertIsNone(self.opener.posted[0])
+
+    def test_a_branch_address_that_is_not_public_https_is_refused(self):
+        with temporary_directory() as directory:
+            with self.assertRaisesRegex(ValueError, "public HTTPS"):
+                self._discover(
+                    directory,
+                    ["soundbar"],
+                    session_url="http://example.invalid/change-shopping-location",
+                )
+        self.assertEqual(self.opener.urls, [])
 
     def test_a_disabled_provider_is_never_contacted(self):
         with temporary_directory() as directory:
