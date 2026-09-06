@@ -13,8 +13,14 @@ from auction_lens.valuation.aggregation import combine_into_bands
 from auction_lens.valuation.http_json import HttpJsonAdapter
 from auction_lens.valuation.json_path import read_path
 from auction_lens.valuation.templates import fill_template
-from support import SOUNDBAR, FakeResponse, RecordingOpener, example_config, example_listings
-from support import temporary_directory
+from support import (
+    SOUNDBAR,
+    FakeResponse,
+    RecordingOpener,
+    example_config,
+    example_listings,
+    temporary_directory,
+)
 
 API_BODY = b'{"results":[{"range":{"low":"90","mid":"110","high":"130"},"sales":7}]}'
 
@@ -42,7 +48,8 @@ class EngineTests(unittest.TestCase):
 
     def test_one_failing_source_does_not_erase_the_others(self):
         broken = ValuationSourceConfig(source_id="broken", adapter="reference", settings={})
-        valuation = replace(self.config.valuation, sources=(*self.config.valuation.sources, broken))
+        sources = (*self.config.valuation.sources, broken)
+        valuation = replace(self.config.valuation, sources=sources)
         summary = ValuationEngine(valuation).value(self.listing)
         self.assertTrue(summary.bands)
         self.assertIn("broken: ValueError", summary.errors[0])
@@ -128,7 +135,8 @@ class HttpJsonAdapterTests(unittest.TestCase):
     def test_the_per_run_request_budget_is_enforced(self):
         opener = RecordingOpener(FakeResponse(API_BODY))
         with temporary_directory() as directory:
-            adapter = HttpJsonAdapter(self._source(directory, max_requests_per_run=2), opener=opener)
+            source = self._source(directory, max_requests_per_run=2)
+            adapter = HttpJsonAdapter(source, opener=opener)
             adapter.collect(self.listing)
             adapter.collect(replace(self.listing, model="SB22"))
             with self.assertRaisesRegex(RuntimeError, "max_requests_per_run"):
@@ -157,14 +165,12 @@ class HttpJsonAdapterTests(unittest.TestCase):
 
 
 def _observation(**overrides) -> ValuationObservation:
-    values = {
-        "source_id": "test",
-        "basis": "used_sold",
-        "low": Decimal("50"),
-        "typical": Decimal("100"),
-        "high": Decimal("150"),
-    }
+    values = {"source_id": "test", "basis": "used_sold", "typical": Decimal("100")}
     values.update(overrides)
+    # Keep an overridden typical inside its band unless the caller set the edges.
+    typical = Decimal(str(values["typical"]))
+    values.setdefault("low", typical / 2)
+    values.setdefault("high", typical * 2)
     for name in ("low", "typical", "high", "confidence"):
         if name in values and values[name] is not None:
             values[name] = Decimal(str(values[name]))

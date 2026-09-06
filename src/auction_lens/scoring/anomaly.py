@@ -10,12 +10,11 @@ from __future__ import annotations
 from decimal import Decimal
 
 from ..config import ScoringConfig
-from ..models import Candidate
+from ..models import Candidate, CandidateCategory
 from .conditions import penalty_for, policy_admits
 from .context import ScoringContext
 from .signals import HIGHEST_SCORE, clamp_score
 
-CATEGORY = "anomaly"
 RULE_NAME = "retail-ratio"
 
 
@@ -40,7 +39,7 @@ def score_retail_anomaly(context: ScoringContext, scoring: ScoringConfig) -> Can
     if context.is_ending_soon:
         reasons.append("ending soon")
     return context.candidate(
-        category=CATEGORY,
+        category=CandidateCategory.ANOMALY,
         rule_name=RULE_NAME,
         score=score,
         reasons=reasons,

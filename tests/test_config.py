@@ -16,7 +16,7 @@ class ExampleConfigTests(unittest.TestCase):
     def test_provider_identity_is_separate_from_its_economics(self):
         self.assertEqual(self.config.provider.provider_id, "nellis")
         self.assertEqual(self.config.provider.display_name, "Nellis Auction")
-        self.assertEqual(self.config.economics.buyer_premium_rate, Decimal("0.15"))
+        self.assertEqual(self.config.economics.default_buyer_premium, Decimal("0.15"))
         self.assertTrue(self.config.economics.premium_is_taxable)
 
     def test_reusable_condition_profile_is_loaded(self):
@@ -31,7 +31,7 @@ class ExampleConfigTests(unittest.TestCase):
 
 class ConfigValidationTests(unittest.TestCase):
     def test_invalid_email_security_is_rejected_at_load_time(self):
-        with self.assertRaisesRegex(ValueError, "email security must be"):
+        with self.assertRaisesRegex(ValueError, "security must be one of: ssl, starttls"):
             self._load_variant('security = "ssl"', 'security = "starttlz"')
 
     def test_unknown_condition_profile_names_the_missing_profile(self):
@@ -50,7 +50,9 @@ class ConfigValidationTests(unittest.TestCase):
             self._load_variant("weight = 1.0", "weight = 0")
 
     def test_large_item_policy_must_be_one_of_three_words(self):
-        with self.assertRaisesRegex(ValueError, "ask, allow, or reject"):
+        with self.assertRaisesRegex(
+            ValueError, "large_item_policy must be one of: ask, allow, reject"
+        ):
             self._load_variant('large_item_policy = "ask"', 'large_item_policy = "maybe"')
 
     def test_renamed_interests_table_is_explained(self):
@@ -58,7 +60,7 @@ class ConfigValidationTests(unittest.TestCase):
             self._load_variant("[[interests]]", "[[wanted]]")
 
     def test_a_negative_fee_is_rejected_by_the_key_that_holds_it(self):
-        with self.assertRaisesRegex(ValueError, "economics.processing_fee cannot be negative"):
+        with self.assertRaisesRegex(ValueError, "economics: processing_fee cannot be negative"):
             self._load_variant("processing_fee = 0.0", "processing_fee = -5")
 
     def test_a_setting_of_the_wrong_type_names_its_key(self):
@@ -99,13 +101,13 @@ class ConfigValidationTests(unittest.TestCase):
 
     def test_a_negative_interest_budget_is_rejected_by_key(self):
         with self.assertRaisesRegex(
-            ValueError, r"interests\[0\]\.max_total_cost cannot be negative"
+            ValueError, r"interests\[0\]: max_total_cost cannot be negative"
         ):
             self._load_variant("max_total_cost = 50", "max_total_cost = -1")
 
     def test_request_safeguards_cannot_be_negative(self):
         with self.assertRaisesRegex(
-            ValueError, "provider.acquisition.minimum_interval_minutes cannot be negative"
+            ValueError, "provider.acquisition: minimum_interval_minutes cannot be negative"
         ):
             self._load_variant(
                 'mode = "authorized_http"',
@@ -114,7 +116,7 @@ class ConfigValidationTests(unittest.TestCase):
 
     def test_an_unknown_time_zone_names_the_setting(self):
         with self.assertRaisesRegex(
-            ValueError, "provider.acquisition.timezone must be a valid IANA time zone"
+            ValueError, "provider.acquisition: timezone must be a valid IANA time zone"
         ):
             self._load_variant(
                 'mode = "authorized_http"',
@@ -123,13 +125,13 @@ class ConfigValidationTests(unittest.TestCase):
 
     def test_scores_stay_inside_the_reported_range(self):
         with self.assertRaisesRegex(
-            ValueError, "scoring.minimum_report_score must be between 0 and 100"
+            ValueError, "scoring: minimum_report_score must be between 0 and 100"
         ):
             self._load_variant("minimum_report_score = 70", "minimum_report_score = 101")
 
     def test_anomaly_ratio_cannot_describe_a_markup(self):
         with self.assertRaisesRegex(
-            ValueError, "scoring.anomaly_maximum_ratio cannot exceed 1"
+            ValueError, "scoring: anomaly_maximum_ratio cannot exceed 1"
         ):
             self._load_variant("anomaly_maximum_ratio = 0.20", "anomaly_maximum_ratio = 1.01")
 
@@ -140,8 +142,33 @@ class ConfigValidationTests(unittest.TestCase):
             self._load_variant('"untested" = 22', '"untested" = -1')
 
     def test_email_port_is_in_the_tcp_port_range(self):
-        with self.assertRaisesRegex(ValueError, "reports.email.port cannot exceed 65535"):
+        with self.assertRaisesRegex(
+            ValueError, "reports.email: port must be between 1 and 65535"
+        ):
             self._load_variant("port = 465", "port = 65536")
+
+    def test_a_percentage_written_as_a_whole_number_is_refused(self):
+        """15 means 1500%, and would inflate every estimate on the report."""
+        with self.assertRaisesRegex(
+            ValueError, "economics: default_buyer_premium cannot exceed 1"
+        ):
+            self._load_variant("default_buyer_premium = 0.15", "default_buyer_premium = 15")
+
+    def test_a_misspelled_acquisition_mode_is_refused_at_load_time(self):
+        """A typo used to degrade silently to manual mode and never explain itself."""
+        with self.assertRaisesRegex(
+            ValueError, "mode must be one of: manual, authorized_http"
+        ):
+            self._load_variant('mode = "authorized_http"', 'mode = "authorised_http"')
+
+    def test_an_unknown_run_mode_is_refused_at_load_time(self):
+        with self.assertRaisesRegex(
+            ValueError, "run_mode must be one of: production, development"
+        ):
+            self._load_variant(
+                'mode = "authorized_http"',
+                'mode = "authorized_http"\nrun_mode = "staging"',
+            )
 
     def _load_variant(self, original: str, replacement: str):
         """Load the example configuration with one setting changed."""

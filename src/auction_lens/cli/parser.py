@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import argparse
 
+from ..models import OPERATOR_DECIDABLE
+
 PROGRAM = "auction-lens"
 DEFAULT_DATABASE = "data/auction-lens.sqlite3"
 DEFAULT_ENV_FILE = ".env"
@@ -12,8 +14,9 @@ RUN = "run"
 FETCH = "fetch"
 LOGISTICS = "logistics"
 
+# Everything an operator may record, plus the word that removes a past answer.
 CLEAR = "clear"
-LOGISTICS_STATUSES = ("feasible", "infeasible", CLEAR)
+LOGISTICS_STATUSES = (*(status.value for status in OPERATOR_DECIDABLE), CLEAR)
 
 
 def build_parser() -> argparse.ArgumentParser:

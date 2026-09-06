@@ -3,11 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
 
-from ..logistics import DECIDED_STATUSES
-from ..models import LogisticsDecision
+from ..models import LogisticsDecision, LogisticsStatus
 from .database import Database
 
 _SELECT_DECISION = """
@@ -43,21 +42,22 @@ class LogisticsDecisionStore:
         if row is None:
             return None
         status, added_cost, note = row
-        return LogisticsDecision(status=status, added_cost=Decimal(added_cost), note=note)
+        return LogisticsDecision(
+            status=LogisticsStatus(status), added_cost=Decimal(added_cost), note=note
+        )
 
     def save(self, source: str, listing_id: str, decision: LogisticsDecision) -> None:
-        if decision.status not in DECIDED_STATUSES:
-            raise ValueError("logistics decision must be feasible or infeasible")
+        """Store a decision; the record itself guarantees it is one we may store."""
         with self.database.connect() as connection:
             connection.execute(
                 _UPSERT_DECISION,
                 (
                     source,
                     listing_id,
-                    decision.status,
+                    decision.status.value,
                     str(decision.added_cost),
                     decision.note,
-                    datetime.now(timezone.utc).isoformat(),
+                    datetime.now(UTC).isoformat(),
                 ),
             )
 

@@ -9,12 +9,10 @@ from __future__ import annotations
 from decimal import Decimal
 
 from ..config import InterestRule
-from ..models import Candidate, Listing
+from ..models import Candidate, CandidateCategory, Listing
 from .conditions import penalty_for, policy_admits
 from .context import ScoringContext
 from .signals import clamp_score
-
-CATEGORY = "wanted"
 
 # An explicitly wanted item is presumed reportable; penalties argue it back down.
 BASE_INTEREST_SCORE = 80
@@ -43,7 +41,8 @@ def _score_rule(
         return None
     if not policy_admits(context.conditions, rule.condition):
         return None
-    penalty = context.baseline_penalty + penalty_for(context.conditions, rule.condition.penalties)
+    rule_penalty = penalty_for(context.conditions, rule.condition.penalties)
+    penalty = context.baseline_penalty + rule_penalty
     score = clamp_score(BASE_INTEREST_SCORE + context.bonuses - penalty)
     if score < max(rule.minimum_score, minimum_report_score):
         return None
@@ -51,7 +50,7 @@ def _score_rule(
     if context.is_ending_soon:
         reasons.append("ending soon")
     return context.candidate(
-        category=CATEGORY,
+        category=CandidateCategory.WANTED,
         rule_name=rule.name,
         score=score,
         reasons=reasons,

@@ -8,10 +8,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from ..models import Listing, ObservationChange
-
-LOWEST_SCORE = 0
-HIGHEST_SCORE = 100
+from ..models import HIGHEST_SCORE, LOWEST_SCORE, Listing, ObservationChange
 
 # A listing first seen this run is worth more attention than one already read
 # about, and a moved price is worth slightly more than an unchanged one.

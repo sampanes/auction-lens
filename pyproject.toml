@@ -17,3 +17,19 @@ auction-lens = "auction_lens.cli:console"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[project.optional-dependencies]
+# Development only. The package itself has no third-party runtime dependencies.
+dev = ["ruff==0.16.2"]
+
+[tool.ruff]
+line-length = 96
+src = ["src", "tests", "scripts"]
+
+[tool.ruff.lint]
+# E/W  style, F unused names, I import order, B bugs, UP dated idioms,
+# C4 clumsy comprehensions, D100 every module says what it is for.
+select = ["E", "W", "F", "I", "B", "UP", "C4", "D100"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["auction_lens"]

@@ -64,7 +64,7 @@ class LogisticsAssessmentTests(unittest.TestCase):
         self.assertEqual(assessment.decision_note, "van")
 
     def test_unknown_decision_status_is_rejected(self):
-        with self.assertRaisesRegex(ValueError, "unknown logistics decision"):
+        with self.assertRaisesRegex(ValueError, "must be one of: feasible, infeasible"):
             assess_logistics(self.listing, self.config, LogisticsDecision(status="maybe"))
 
 

@@ -8,10 +8,11 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from ..file_io import write_bytes_atomically
 
@@ -23,14 +24,14 @@ class JsonResponseCache:
     directory: Path
     source_id: str
     lifetime: timedelta
-    clock: Callable[[], datetime] = lambda: datetime.now(timezone.utc)
+    clock: Callable[[], datetime] = lambda: datetime.now(UTC)
 
     def read_fresh(self, endpoint: str) -> Any | None:
         """Return the cached payload while it is still within its lifetime."""
         path = self.path_for(endpoint)
         if not path.is_file():
             return None
-        written_at = datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc)
+        written_at = datetime.fromtimestamp(path.stat().st_mtime, tz=UTC)
         if self.clock() - written_at > self.lifetime:
             return None
         return json.loads(path.read_text(encoding="utf-8"))

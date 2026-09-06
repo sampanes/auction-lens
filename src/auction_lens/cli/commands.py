@@ -5,10 +5,10 @@ from __future__ import annotations
 import argparse
 
 from ..acquisition import fetch_authorized_page
-from ..config import load_config
+from ..config import AppConfig, load_config
 from ..fields import parse_money
 from ..ingest import load_listings
-from ..models import LogisticsDecision
+from ..models import LogisticsDecision, LogisticsStatus
 from ..pipeline import analyze_listings
 from ..reporting import render_text, send_email
 from ..storage import Database, LogisticsDecisionStore, ObservationStore
@@ -30,7 +30,7 @@ def run(args: argparse.Namespace) -> int:
         config,
         observations=ObservationStore(database),
         decisions=LogisticsDecisionStore(database),
-        valuation_engine=ValuationEngine(config.valuation) if config.valuation.enabled else None,
+        valuation_engine=_valuation_engine(config),
     )
     print(render_text(result.candidates), end="")
     _report_skipped(result.listings_from_other_providers, config.provider.provider_id)
@@ -68,7 +68,7 @@ def logistics(args: argparse.Namespace) -> int:
         return SUCCESS
 
     decision = LogisticsDecision(
-        status=args.status,
+        status=LogisticsStatus(args.status),
         added_cost=parse_money(args.added_cost, field_name="added_cost"),
         note=args.note.strip(),
     )
@@ -78,6 +78,11 @@ def logistics(args: argparse.Namespace) -> int:
         f"with ${decision.added_cost} added cost."
     )
     return SUCCESS
+
+
+def _valuation_engine(config: AppConfig) -> ValuationEngine | None:
+    """Value listings only when the configuration asked for it."""
+    return ValuationEngine(config.valuation) if config.valuation.enabled else None
 
 
 def _report_skipped(count: int, provider_id: str) -> None:

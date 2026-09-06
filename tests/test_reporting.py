@@ -9,7 +9,7 @@ from decimal import Decimal
 from unittest.mock import patch
 
 from auction_lens.env_file import load_env_file
-from auction_lens.reporting import render_html, render_text, send_email
+from auction_lens.reporting import build_report, render_html, render_text, send_email
 from auction_lens.scoring import evaluate
 from support import (
     LASER_LEVEL,
@@ -35,7 +35,7 @@ class TextReportTests(unittest.TestCase):
 
     def test_report_states_the_actionable_cost(self):
         report = render_text(evaluate(self.listings[LASER_LEVEL], self.config))
-        self.assertIn("estimated total $12.65", report)
+        self.assertIn("Estimated total: $12.65", report)
         self.assertIn("Example Laser Level Kit", report)
 
     def test_empty_report_says_so_plainly(self):
@@ -66,7 +66,7 @@ class HtmlReportTests(unittest.TestCase):
         report = render_html(candidates)
         self.assertIn("Example 2.1 Channel Sound Bar with ARC", report)
         self.assertIn("https://example.invalid/auction/synthetic-001", report)
-        self.assertIn("Estimated total $20.70", report)
+        self.assertIn("Estimated total: $20.70", report)
 
     def test_listing_title_is_escaped(self):
         candidate = evaluate(self.listings[SOUNDBAR], self.config)[0]
@@ -101,10 +101,49 @@ class EmailDeliveryTests(unittest.TestCase):
     @patch("auction_lens.reporting.delivery.smtplib.SMTP")
     @patch("auction_lens.reporting.delivery.smtplib.SMTP_SSL")
     def test_unknown_security_is_refused_without_connecting(self, smtp_ssl, smtp):
-        with self.assertRaisesRegex(ValueError, "email security must be"):
+        with self.assertRaisesRegex(ValueError, "security must be one of: ssl, starttls"):
             send_email([], replace(self.config.email, security="starttlz"))
         smtp.assert_not_called()
         smtp_ssl.assert_not_called()
+
+
+class BothRenderingsSayTheSameThingTests(unittest.TestCase):
+    """The reason findings and rendering are separate modules.
+
+    Text and HTML used to walk a candidate independently, so each could quietly
+    grow a fact the other did not have. Now there is one list of facts, and this
+    proves both renderings show all of it.
+    """
+
+    def setUp(self):
+        config = example_config()
+        listing = replace(
+            example_listings()[SOUNDBAR],
+            handling_weight_lb=Decimal("148"),
+            package_dimensions_in=(Decimal("70"), Decimal("31"), Decimal("45")),
+        )
+        self.candidates = evaluate(listing, config)
+        self.report = build_report(self.candidates)
+
+    def _findings(self):
+        return [finding for group in self.report.groups for finding in group.findings]
+
+    def test_every_fact_reaches_both_renderings(self):
+        plain = render_text(self.candidates)
+        markup = render_html(self.candidates)
+        for finding in self._findings():
+            for fact in finding.facts:
+                self.assertIn(fact.value, plain, f"{fact.label} missing from text")
+                self.assertIn(fact.value, markup, f"{fact.label} missing from HTML")
+
+    def test_every_open_handling_question_reaches_both_renderings(self):
+        plain = render_text(self.candidates)
+        markup = render_html(self.candidates)
+        asked = [q for finding in self._findings() for q in finding.handling.questions]
+        self.assertTrue(asked, "this fixture is meant to raise handling questions")
+        for question in asked:
+            self.assertIn(question, plain)
+            self.assertIn(question, markup)
 
 
 class EnvironmentFileTests(unittest.TestCase):

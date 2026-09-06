@@ -6,10 +6,10 @@ changed?" instead of downloading the same page again.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Mapping
 
 from ..file_io import read_json, write_bytes_atomically, write_json_atomically
 
@@ -26,7 +26,7 @@ class ResponseCache:
     path: Path
 
     @classmethod
-    def at(cls, path: str | Path) -> "ResponseCache":
+    def at(cls, path: str | Path) -> ResponseCache:
         return cls(Path(path))
 
     @property

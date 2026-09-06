@@ -7,10 +7,10 @@ nothing and would keep the ignored database file locked between commands.
 from __future__ import annotations
 
 import sqlite3
+from collections.abc import Iterator
 from contextlib import closing, contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterator
 
 from .schema import SCHEMA
 
@@ -22,7 +22,7 @@ class Database:
     path: Path
 
     @classmethod
-    def at(cls, path: str | Path) -> "Database":
+    def at(cls, path: str | Path) -> Database:
         return cls(Path(path))
 
     def initialize(self) -> None:

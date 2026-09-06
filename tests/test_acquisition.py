@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import unittest
 from dataclasses import replace
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from unittest.mock import patch
 
 from auction_lens.acquisition import fetch_authorized_page
@@ -83,7 +83,7 @@ class AuthorizedFetchTests(unittest.TestCase):
 
     def test_development_mode_allows_repeated_but_throttled_requests(self):
         opener = RecordingOpener(FakeResponse(b"development fixture"))
-        instant = datetime(2026, 9, 5, 16, tzinfo=timezone.utc)
+        instant = datetime(2026, 9, 5, 16, tzinfo=UTC)
         with temporary_directory() as directory:
             acquisition = replace(
                 self._acquisition(directory),
@@ -136,7 +136,8 @@ class AuthorizedFetchTests(unittest.TestCase):
         opener = RecordingOpener(FakeResponse(b""))
         with temporary_directory() as directory:
             acquisition = self._acquisition(directory)
-            with patch.dict("os.environ", {acquisition.user_agent_env: "AuctionLens"}, clear=False):
+            agent = {acquisition.user_agent_env: "AuctionLens"}
+            with patch.dict("os.environ", agent, clear=False):
                 with self.assertRaisesRegex(RuntimeError, "authorized contact email"):
                     fetch_authorized_page(
                         self.config.provider, acquisition, now=self._instant(), opener=opener
@@ -161,7 +162,7 @@ class AuthorizedFetchTests(unittest.TestCase):
         )
 
     def _instant(self):
-        return datetime(2026, 9, 4, 16, tzinfo=timezone.utc)
+        return datetime(2026, 9, 4, 16, tzinfo=UTC)
 
 
 class BrowseFixtureTests(unittest.TestCase):

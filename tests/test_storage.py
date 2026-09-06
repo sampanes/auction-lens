@@ -69,7 +69,7 @@ class LogisticsDecisionStoreTests(unittest.TestCase):
     def test_an_undecidable_status_is_refused(self):
         with temporary_database() as database:
             store = LogisticsDecisionStore(database)
-            with self.assertRaisesRegex(ValueError, "feasible or infeasible"):
+            with self.assertRaisesRegex(ValueError, "must be one of: feasible, infeasible"):
                 store.save("example", "large-1", LogisticsDecision(status="ordinary"))
 
 

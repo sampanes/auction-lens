@@ -8,19 +8,18 @@ is made, and revalidates the cached copy instead of re-downloading it.
 from __future__ import annotations
 
 import os
+from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Callable
 from urllib.error import HTTPError
 from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
 
-from ..config import AcquisitionConfig, PRODUCTION, RUN_MODES, ProviderConfig
+from ..config import AcquisitionConfig, AcquisitionMode, ProviderConfig
 from .cache import ResponseCache
 from .polling import PollLedger, enforce_request_limits
 
-AUTHORIZED_HTTP = "authorized_http"
 ACCEPTED_CONTENT = "text/html,application/xhtml+xml"
 
 HTTP_OK = 200
@@ -45,7 +44,7 @@ def fetch_authorized_page(
     """Fetch the configured page, or explain why this run must not."""
     _require_fetch_allowed(provider, config)
     user_agent = _authorized_user_agent(config)
-    instant = _timezone_aware(now or datetime.now(timezone.utc))
+    instant = _timezone_aware(now or datetime.now(UTC))
 
     ledger = PollLedger.at(config.ledger_file)
     enforce_request_limits(ledger.attempts(), config, instant)
@@ -76,7 +75,7 @@ def fetch_authorized_page(
     cache.store(
         body,
         headers=response_headers,
-        fetched_at=instant.astimezone(timezone.utc),
+        fetched_at=instant.astimezone(UTC),
         source_url=config.url,
     )
     return FetchResult(status, cache.path, len(body), False)
@@ -86,12 +85,8 @@ def _require_fetch_allowed(provider: ProviderConfig, config: AcquisitionConfig) 
     """Check every precondition for contacting the provider at all."""
     if not provider.enabled:
         raise RuntimeError("provider is disabled")
-    if config.mode != AUTHORIZED_HTTP:
+    if config.mode != AcquisitionMode.AUTHORIZED_HTTP:
         raise RuntimeError("provider must use authorized_http acquisition mode")
-    if config.run_mode not in RUN_MODES:
-        raise RuntimeError("run_mode must be 'development' or 'production'")
-    if config.run_mode == PRODUCTION and config.max_requests_per_day < 1:
-        raise RuntimeError("max_requests_per_day must be at least 1")
     _require_public_https(config.url)
 
 

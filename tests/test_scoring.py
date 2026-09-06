@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import unittest
 from dataclasses import replace
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 from auction_lens.config import ConditionPolicy, InterestRule
@@ -44,7 +44,8 @@ class InterestScoringTests(unittest.TestCase):
 
     def test_globally_rejected_condition_never_becomes_a_candidate(self):
         config = replace(
-            self.config, scoring=replace(self.config.scoring, rejected_conditions=frozenset({"scrap"}))
+            self.config,
+            scoring=replace(self.config.scoring, rejected_conditions=frozenset({"scrap"})),
         )
         scrap = replace(self.listings[SOUNDBAR], conditions=("scrap",))
         self.assertEqual(evaluate(scrap, config), [])
@@ -75,14 +76,15 @@ class InterestScoringTests(unittest.TestCase):
         rule = InterestRule(name="soundbar", any_terms=("sound bar",), exclude_terms=("mount",))
         config = replace(self.config, interests=(rule,))
         listing = replace(self.listings[SOUNDBAR], title="Sound bar wall mount bracket")
-        self.assertEqual([item for item in evaluate(listing, config) if item.category == "wanted"], [])
+        matches = evaluate(listing, config)
+        self.assertEqual([item for item in matches if item.category == "wanted"], [])
 
     def test_listing_outside_an_allowed_location_is_skipped(self):
         config = replace(self.config, allowed_locations=("north warehouse",))
         self.assertEqual(evaluate(self.listings[SOUNDBAR], config), [])
 
     def test_ending_soon_adds_a_reason_and_raises_the_score(self):
-        now = datetime(2026, 9, 5, 12, tzinfo=timezone.utc)
+        now = datetime(2026, 9, 5, 12, tzinfo=UTC)
         listing = replace(self.listings[SOUNDBAR], ends_at=now + timedelta(minutes=5))
         soon = self._wanted(evaluate(listing, self.config, now=now))
         later = self._wanted(evaluate(self.listings[SOUNDBAR], self.config, now=now))
@@ -90,7 +92,7 @@ class InterestScoringTests(unittest.TestCase):
         self.assertGreater(soon.score, later.score)
 
     def test_closed_listing_gets_no_urgency_bonus(self):
-        now = datetime(2026, 9, 5, 12, tzinfo=timezone.utc)
+        now = datetime(2026, 9, 5, 12, tzinfo=UTC)
         listing = replace(self.listings[SOUNDBAR], ends_at=now - timedelta(minutes=1))
         candidate = self._wanted(evaluate(listing, self.config, now=now))
         self.assertNotIn("ending soon", candidate.reasons)

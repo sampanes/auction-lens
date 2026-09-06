@@ -46,10 +46,6 @@ class XmlCatalogAdapter:
         typical = parse_money(price.get("typical"), field_name="typical")
         low = parse_money(price.get("low", typical), field_name="low")
         high = parse_money(price.get("high", typical), field_name="high")
-        if not low <= typical <= high:
-            raise ValueError(
-                f"valuation source {self.config.source_id!r} requires low <= typical <= high"
-            )
         return ValuationObservation(
             source_id=self.config.source_id,
             basis=str(price.get("basis", DEFAULT_BASIS)).strip().lower(),
@@ -57,7 +53,7 @@ class XmlCatalogAdapter:
             typical=typical,
             high=high,
             currency=str(price.get("currency", DEFAULT_CURRENCY)).upper(),
-            sample_size=max(1, int(price.get("sample_size", "1"))),
+            sample_size=int(price.get("sample_size", "1")),
             confidence=Decimal(str(price.get("confidence", "1"))),
             observed_at=parse_utc_datetime(price.get("observed_at")),
             url=str(price.get("url", "")),
@@ -83,7 +79,8 @@ def _entry_matches(entry: ElementTree.Element, listing: Listing) -> bool:
     if model and not _contains_phrase(described, model):
         return False
 
-    terms = [_normalized(value) for value in entry.get("terms", "").split(TERM_SEPARATOR) if value]
+    written = entry.get("terms", "").split(TERM_SEPARATOR)
+    terms = [_normalized(value) for value in written if value]
     return not terms or any(_contains_phrase(described, term) for term in terms)
 
 

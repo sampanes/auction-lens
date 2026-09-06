@@ -20,7 +20,7 @@ def estimate_total_cost(listing: Listing, economics: EconomicsConfig) -> Decimal
     """
     premium_rate = listing.buyer_premium_rate
     if premium_rate is None:
-        premium_rate = economics.buyer_premium_rate
+        premium_rate = economics.default_buyer_premium
     premium = listing.current_bid * premium_rate
     taxable = listing.current_bid + (premium if economics.premium_is_taxable else NO_PREMIUM)
     tax = taxable * economics.sales_tax_rate

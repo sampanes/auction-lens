@@ -3,13 +3,18 @@
 These records are immutable and free of behavior on purpose: acquisition,
 scoring, valuation, storage, and reporting all pass them around, so the model
 stays the one thing in the project with no dependencies of its own.
+
+A record that is built from outside input checks itself in ``__post_init__``,
+so an invalid one cannot exist for any caller to trip over. Records that are
+*derived* from already-checked ones do not re-check; see docs/CONVENTIONS.md.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
+from enum import StrEnum
 from typing import Any
 
 from .fields import (
@@ -22,9 +27,38 @@ from .fields import (
     parse_optional_rate,
     parse_utc_datetime,
     parse_whole_number,
+    require_at_least,
+    require_not_negative,
 )
 
 REQUIRED_LISTING_FIELDS = ("source", "listing_id", "title", "url", "current_bid")
+
+# The scale every score lives on. Scoring clamps to it and configuration is
+# checked against it, so both read it from the record they are talking about.
+LOWEST_SCORE = 0
+HIGHEST_SCORE = 100
+
+
+class LogisticsStatus(StrEnum):
+    """How settled the question of getting one item home is."""
+
+    ORDINARY = "ordinary"
+    NEEDS_PLAN = "needs_plan"
+    ASSUMED_FEASIBLE = "assumed_feasible"
+    FEASIBLE = "feasible"
+    INFEASIBLE = "infeasible"
+
+
+# The two an operator may record. The rest are conclusions Auction Lens drew,
+# and a person overrides them by answering rather than by restating them.
+OPERATOR_DECIDABLE = (LogisticsStatus.FEASIBLE, LogisticsStatus.INFEASIBLE)
+
+
+class CandidateCategory(StrEnum):
+    """Why a listing is being reported at all."""
+
+    WANTED = "wanted"
+    ANOMALY = "anomaly"
 
 
 @dataclass(frozen=True)
@@ -49,11 +83,16 @@ class Listing:
     handling_weight_lb: Decimal | None = None
     package_dimensions_in: tuple[Decimal, ...] = ()
     loading_assistance: tuple[str, ...] = ()
-    observed_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    observed_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
     @classmethod
-    def from_mapping(cls, data: dict[str, Any]) -> "Listing":
-        """Build a listing from one canonical JSON object or CSV row."""
+    def from_mapping(cls, data: dict[str, Any]) -> Listing:
+        """Build a listing from one canonical JSON object or CSV row.
+
+        The field list is deliberately spelled out rather than driven by a
+        table: this is the shape of the file an operator hands us, and it
+        should be readable as such. See docs/CONVENTIONS.md.
+        """
         missing = [key for key in REQUIRED_LISTING_FIELDS if is_absent(data.get(key))]
         if missing:
             raise ValueError(f"missing required listing fields: {', '.join(missing)}")
@@ -83,7 +122,7 @@ class Listing:
             package_dimensions_in=parse_dimensions(data.get("package_dimensions_in")),
             loading_assistance=parse_labels(data.get("loading_assistance")),
             observed_at=parse_utc_datetime(data.get("observed_at"), field_name="observed_at")
-            or datetime.now(timezone.utc),
+            or datetime.now(UTC),
         )
 
 
@@ -100,16 +139,20 @@ class ObservationChange:
 class LogisticsDecision:
     """An operator's saved answer to a handling question for one listing."""
 
-    status: str
+    status: LogisticsStatus
     added_cost: Decimal = Decimal("0")
     note: str = ""
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "status", _decidable(self.status))
+        require_not_negative(self.added_cost, field_name="added_cost")
 
 
 @dataclass(frozen=True)
 class LogisticsAssessment:
     """What handling stages are still unresolved for one listing."""
 
-    status: str
+    status: LogisticsStatus
     questions: tuple[str, ...] = ()
     added_cost: Decimal = Decimal("0")
     decision_note: str = ""
@@ -130,6 +173,12 @@ class ValuationObservation:
     observed_at: datetime | None = None
     url: str = ""
     notes: str = ""
+
+    def __post_init__(self) -> None:
+        if not self.low <= self.typical <= self.high:
+            raise ValueError("valuation requires low <= typical <= high")
+        require_at_least(self.sample_size, 1, field_name="sample_size")
+        require_not_negative(self.confidence, field_name="confidence")
 
 
 @dataclass(frozen=True)
@@ -168,7 +217,7 @@ class Candidate:
     """One listing that matched one rule, with the evidence for reporting it."""
 
     listing: Listing
-    category: str
+    category: CandidateCategory
     rule_name: str
     score: int
     total_cost: Decimal
@@ -177,6 +226,21 @@ class Candidate:
     change: ObservationChange
     valuation: ValuationSummary | None = None
     logistics: LogisticsAssessment | None = None
+
+
+def _decidable(status: Any) -> LogisticsStatus:
+    """Accept either the word or the member, and return the member.
+
+    A saved decision arrives as text from SQLite and as an argument from the
+    command line, so it is normalized here rather than at each call site. The
+    frozen record is written through ``object.__setattr__`` because
+    ``__post_init__`` runs after the field has already been assigned.
+    """
+    for allowed in OPERATOR_DECIDABLE:
+        if status == allowed:
+            return allowed
+    choices = ", ".join(OPERATOR_DECIDABLE)
+    raise ValueError(f"logistics decision must be one of: {choices}")
 
 
 def _text(data: dict[str, Any], key: str) -> str:
