@@ -16,6 +16,7 @@ FETCH = "fetch"
 LOGISTICS = "logistics"
 WATCH = "watch"
 WATCHLIST = "watchlist"
+IMPORT_NELLIS = "import-nellis"
 
 # Everything an operator may record, plus the word that removes a past answer.
 CLEAR = "clear"
@@ -40,6 +41,7 @@ def build_parser() -> argparse.ArgumentParser:
     _add_logistics(subparsers)
     _add_watch(subparsers)
     _add_watchlist(subparsers)
+    _add_import_nellis(subparsers)
     return parser
 
 
@@ -100,3 +102,12 @@ def _add_watchlist(subparsers) -> None:
     watchlist.add_argument(
         "--verdict", choices=VERDICTS, help="show only lots you decided one way"
     )
+
+
+def _add_import_nellis(subparsers) -> None:
+    importer = subparsers.add_parser(
+        IMPORT_NELLIS, help="convert a saved Nellis product page to canonical JSON"
+    )
+    importer.add_argument("--input", required=True, help="saved Nellis product-page HTML")
+    importer.add_argument("--url", required=True, help="URL the product page was saved from")
+    importer.add_argument("--output", required=True, help="canonical JSON file to create")

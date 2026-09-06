@@ -50,6 +50,16 @@ and caches responses atomically. Production mode caps requests per provider-loca
 day with a configurable interval. Development mode permits repeated requests with
 an optional spacing delay.
 
+A saved Nellis product page can be normalized for `run` without another network
+request:
+
+```cmd
+.venv\Scripts\auction-lens.exe import-nellis ^
+  --input data\inbox\product.html ^
+  --url https://www.nellisauction.com/p/example/product-id ^
+  --output data\inbox\listings.json
+```
+
 ## Email reports
 
 Enable `[reports.email]` in a local configuration, then set the named environment
@@ -163,14 +173,14 @@ On top of that you record what *you* think: your own estimate, a verdict, and a
 note. A run never overwrites any of it.
 
 ```cmd
-.venv\Scriptsuction-lens.exe watch ^
+.venv\Scripts\auction-lens.exe watch ^
   --source nellis ^
   --listing-id synthetic-001 ^
   --verdict hunting ^
   --estimate 60 ^
   --note "worth it under 40 all in"
 
-.venv\Scriptsuction-lens.exe watchlist
+.venv\Scripts\auction-lens.exe watchlist
 ```
 
 The list prints keenest first, with headroom -- your estimate minus the latest
