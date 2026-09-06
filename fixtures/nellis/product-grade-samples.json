@@ -1,0 +1,129 @@
+{
+  "_comment": [
+    "Reduced, redacted samples of the grade block a Nellis product page carries,",
+    "observed 2026-09-06. Identifiers, photo URLs, and prices are replaced with",
+    "synthetic values; only the shape and the vocabulary are real.",
+    "",
+    "Each of the six axes carries {id, description}. The pill label a person sees",
+    "is derived from the axis AND the description, and the polarity is NOT a",
+    "property of the description on its own: 'Yes' is green for packageType and",
+    "functionalType, and red for assemblyType.",
+    "",
+    "Green pill background rgb(209, 250, 229); red rgb(255, 203, 212).",
+    "A description of 'Unknown' renders NO pill at all -- the absence of a red",
+    "tag therefore does not mean the answer was good."
+  ],
+  "pill_colours": {
+    "green": "rgb(209, 250, 229)",
+    "red": "rgb(255, 203, 212)"
+  },
+  "observed_vocabulary": {
+    "conditionType": {
+      "5": { "description": "New", "label": "New", "colour": "green" },
+      "6": { "description": "Used", "label": "Used", "colour": "red" }
+    },
+    "functionalType": {
+      "1": { "description": "Yes", "label": "Functional", "colour": "green" },
+      "4": { "description": "Untested", "label": "Untested", "colour": "red" }
+    },
+    "damageType": {
+      "6": { "description": "Minor", "label": "Minor Damage", "colour": "red" },
+      "7": { "description": "None", "label": "No Damage", "colour": "green" }
+    },
+    "assemblyType": {
+      "1": { "description": "Yes", "label": "Assembly Required", "colour": "red" },
+      "2": { "description": "No", "label": "No Assembly Needed", "colour": "green" }
+    },
+    "packageType": {
+      "5": { "description": "Yes", "label": "In Package", "colour": "green" }
+    },
+    "missingPartsType": {
+      "6": { "description": "No", "label": "No Missing Parts", "colour": "green" },
+      "7": { "description": "Unknown", "label": null, "colour": null }
+    }
+  },
+  "samples": [
+    {
+      "_note": "All six axes green, quality rating 5.",
+      "id": "sample-001",
+      "inventoryNumber": "0000000001",
+      "title": "Example 24 inch Black Sound Bar",
+      "retailPrice": 40.66,
+      "currentPrice": 2,
+      "bidCount": 2,
+      "closeTime": "2026-09-07T02:28:00.000Z",
+      "marketStatus": "open",
+      "notes": null,
+      "taxonomyLevel1": "Electronics",
+      "taxonomyLevel2": "Speakers",
+      "photos": [
+        { "url": "https://example.invalid/photo/sample-001-1.jpg" },
+        { "url": "https://example.invalid/photo/sample-001-2.jpg" }
+      ],
+      "grade": {
+        "assemblyType": { "id": 2, "description": "No" },
+        "missingPartsType": { "id": 6, "description": "No" },
+        "functionalType": { "id": 1, "description": "Yes" },
+        "conditionType": { "id": 5, "description": "New" },
+        "damageType": { "id": 7, "description": "None" },
+        "packageType": { "id": 5, "description": "Yes" },
+        "rating": 5
+      }
+    },
+    {
+      "_note": "Four red pills, one green, and a silent Unknown. Quality rating 2.",
+      "id": "sample-002",
+      "inventoryNumber": "0000000002",
+      "title": "Example Karaoke Sound Bar with Wireless Microphones",
+      "retailPrice": 94.0,
+      "currentPrice": 8,
+      "bidCount": 8,
+      "closeTime": "2026-09-07T01:10:00.000Z",
+      "marketStatus": "open",
+      "notes": "verified 7/28/26",
+      "taxonomyLevel1": "Electronics",
+      "taxonomyLevel2": "Speakers",
+      "photos": [
+        { "url": "https://example.invalid/photo/sample-002-1.jpg" },
+        { "url": "https://example.invalid/photo/sample-002-2.jpg" },
+        { "url": "https://example.invalid/photo/sample-002-3.jpg" }
+      ],
+      "grade": {
+        "assemblyType": { "id": 1, "description": "Yes" },
+        "missingPartsType": { "id": 7, "description": "Unknown" },
+        "functionalType": { "id": 4, "description": "Untested" },
+        "conditionType": { "id": 6, "description": "Used" },
+        "damageType": { "id": 6, "description": "Minor" },
+        "packageType": { "id": 5, "description": "Yes" },
+        "rating": 2
+      }
+    },
+    {
+      "_note": "Used but otherwise clean, and still rated 5. The rating is not a function of the tags. No bids yet, so currentPrice is 0.",
+      "id": "sample-003",
+      "inventoryNumber": "0000000003",
+      "title": "Example Replacement Remote, Black Metallic",
+      "retailPrice": 29.9,
+      "currentPrice": 0,
+      "bidCount": 0,
+      "closeTime": "2026-09-07T04:23:00.000Z",
+      "marketStatus": "open",
+      "notes": null,
+      "taxonomyLevel1": "Electronics",
+      "taxonomyLevel2": "Speakers",
+      "photos": [
+        { "url": "https://example.invalid/photo/sample-003-1.jpg" },
+        { "url": "https://example.invalid/photo/sample-003-2.jpg" }
+      ],
+      "grade": {
+        "assemblyType": { "id": 2, "description": "No" },
+        "missingPartsType": { "id": 6, "description": "No" },
+        "functionalType": { "id": 1, "description": "Yes" },
+        "conditionType": { "id": 6, "description": "Used" },
+        "damageType": { "id": 7, "description": "None" },
+        "packageType": { "id": 5, "description": "Yes" },
+        "rating": 5
+      }
+    }
+  ]
+}

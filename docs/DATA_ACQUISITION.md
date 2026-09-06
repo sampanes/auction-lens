@@ -54,6 +54,43 @@ is loaded through the site's public client-side search integration. A reduced,
 redacted shell fixture is retained under `fixtures/nellis/`; verbatim captures
 remain ignored under `private/cache/`.
 
+### 2026-09-06 page check
+
+A browser check on 2026-09-06 refined the picture above. `/browse` still renders
+an empty shell, but `/search?query=<terms>` does render results, so that route is
+not gone; it is the older parameterized form that 404s.
+
+The site is a Remix application. A product page at `/p/<slug>/<productId>`
+carries its whole payload in `window.__remixContext`, under the route key
+`routes/p.$title.$productId._index`, as a `product` object. Search results are
+served through a public Algolia integration whose search key is published in the
+page; Auction Lens does not use that key, and it is deliberately not recorded in
+this repository.
+
+The `product` object answers three questions this project had open:
+
+- **Condition is six graded axes, not one word.** `grade` holds `conditionType`,
+  `functionalType`, `damageType`, `assemblyType`, `packageType`, and
+  `missingPartsType`, each `{id, description}`, plus a 1-5 `rating`.
+- **There is a gallery.** `photos` is an array: typically a manufacturer stock
+  image followed by real warehouse photographs of the actual lot.
+- **`notes` is free text** written by staff, such as `verified 7/28/26`.
+
+Two traps are worth stating out loud, because a parser gets them wrong silently:
+
+1. **Polarity belongs to the axis, not to the word.** `description = "Yes"` is a
+   green tag for `packageType` and `functionalType`, and a red tag for
+   `assemblyType`. Reading the word alone inverts the meaning.
+2. **`Unknown` renders no tag at all.** A lot whose `missingPartsType` is
+   `Unknown` shows nothing where a red tag would sit, so on the site the absence
+   of a warning does not mean the answer was good.
+
+`id` values are per-axis, not globally unique: `5` is `New` for `conditionType`
+and `Yes` for `packageType`. Match on the axis together with the description.
+
+The observed vocabulary and three redacted samples are in
+`fixtures/nellis/product-grade-samples.json`.
+
 Official references:
 
 - [How do I save an item for later?](https://nellisauction-help.freshdesk.com/support/solutions/articles/68000007628-how-do-i-save-an-item-for-later-)
