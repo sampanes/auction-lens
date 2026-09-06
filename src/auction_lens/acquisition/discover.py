@@ -19,10 +19,11 @@ import time
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from http.cookiejar import CookieJar
 from pathlib import Path
 from urllib.error import HTTPError
-from urllib.parse import quote_plus
-from urllib.request import Request, urlopen
+from urllib.parse import quote_plus, urlencode
+from urllib.request import HTTPCookieProcessor, Request, build_opener
 
 from ..config import AcquisitionConfig, ProviderConfig
 from ..config.schema import QUERY_PLACEHOLDER
@@ -58,7 +59,7 @@ def discover_searches(
     terms: Iterable[str],
     *,
     now: datetime | None = None,
-    opener: Callable = urlopen,
+    opener: Callable | None = None,
     sleeper: Callable[[float], None] = time.sleep,
 ) -> list[SearchCapture]:
     """Fetch one search page per term, or explain why this run must not."""
@@ -66,12 +67,15 @@ def discover_searches(
         raise RuntimeError("provider.acquisition.search_url_template is not configured")
     wanted = _terms_to_ask(terms, config)
     instant = _timezone_aware(now or datetime.now(UTC))
+    opener = session_opener() if opener is None else opener
 
     addresses = [(term, _address(config, term)) for term in wanted]
     # Check every address before making any request, so a run that is going to
     # be refused is refused before it has touched the provider at all.
     for _, url in addresses:
         require_fetch_allowed(provider, config, url)
+    if config.session_url:
+        require_fetch_allowed(provider, config, config.session_url)
     user_agent = authorized_user_agent(config)
 
     ledger = PollLedger.at(config.ledger_file)
@@ -81,14 +85,52 @@ def discover_searches(
     ledger.record(instant)
 
     throttle = RequestThrottle(
-        max_requests=len(addresses),
+        # The session request, when there is one, is a request like any other.
+        max_requests=len(addresses) + bool(config.session_url),
         minimum_interval_seconds=float(config.seconds_between_searches),
         sleeper=sleeper,
     )
+    if config.session_url:
+        choose_branch(config, user_agent, opener, throttle)
     return [
         _fetch_one(term, url, config, user_agent, instant, opener, throttle)
         for term, url in addresses
     ]
+
+
+def session_opener() -> Callable:
+    """An opener that keeps the provider's session cookies for one run.
+
+    A provider that serves one branch at a time remembers which one through a
+    cookie, so the searches have to be made by the same client that chose it.
+    The jar lives and dies with the run: a fresh session every time is one more
+    request, and removes any chance of yesterday's branch quietly persisting.
+    """
+    return build_opener(HTTPCookieProcessor(CookieJar())).open
+
+
+def choose_branch(
+    config: AcquisitionConfig,
+    user_agent: str,
+    opener: Callable,
+    throttle: RequestThrottle,
+) -> None:
+    """Tell the provider which branch this run is shopping, before asking it anything.
+
+    Some providers scope their catalogue to one location and choose it by
+    session rather than by URL, so an unconfigured client silently gets their
+    default city. Saying so explicitly is the difference between searching where
+    the operator actually collects from and searching somewhere else entirely.
+    """
+    throttle.take_turn()
+    request = Request(
+        config.session_url,
+        data=urlencode(config.session_fields).encode("utf-8"),
+        headers={"User-Agent": user_agent, "Accept": ACCEPTED_CONTENT},
+        method="POST",
+    )
+    with opener(request, timeout=config.timeout_seconds) as response:
+        response.read()
 
 
 def _terms_to_ask(terms: Iterable[str], config: AcquisitionConfig) -> list[str]:

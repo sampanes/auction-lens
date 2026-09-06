@@ -25,6 +25,7 @@ from .schema import (
     EmailSecurity,
     InterestRule,
     LargeItemPolicy,
+    LocationPolicy,
     LogisticsConfig,
     ProviderConfig,
     RunMode,
@@ -56,7 +57,7 @@ def load_config(path: str | Path) -> AppConfig:
         valuation=_valuation(root.table("valuation")),
         logistics=_logistics(root.table("logistics")),
         email=_email(root.table("reports").table("email")),
-        allowed_locations=root.table("locations").lowercase_texts("allowed"),
+        locations=_locations(root.table("locations")),
     )
 
 
@@ -100,6 +101,8 @@ def _acquisition(section: Section) -> AcquisitionConfig:
             search_cache_dir=section.text("search_cache_dir", DEFAULT_SEARCH_CACHE_DIR),
             max_searches_per_run=section.integer("max_searches_per_run", 8),
             seconds_between_searches=section.decimal("seconds_between_searches", 5),
+            session_url=section.text("session_url"),
+            session_fields=section.text_map("session_fields"),
         )
 
 
@@ -164,6 +167,15 @@ def _valuation_source(item: Section) -> ValuationSourceConfig:
                 for key, value in item.data.items()
                 if key not in VALUATION_SOURCE_KEYS
             },
+        )
+
+
+def _locations(section: Section) -> LocationPolicy:
+    with in_section(section):
+        return LocationPolicy(
+            allowed=section.lowercase_texts("allowed"),
+            far=section.lowercase_texts("far"),
+            far_minimum_score=section.integer("far_minimum_score", 90),
         )
 
 

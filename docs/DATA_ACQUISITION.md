@@ -122,6 +122,27 @@ is repeatable), `[provider.acquisition] searches`, or the `any_terms` of every
 a configuration that already says it wants a soundbar does not have to say so
 again in a second list.
 
+**Nellis scopes its catalogue to one branch, and chooses it by session.** An
+unconfigured client silently gets the site's default city, Las Vegas -- which is
+the wrong city for everyone who does not live there, and it fails silently: the
+lots look perfectly real, they are just 300 miles away. `?shoppingLocationId=2`
+on the search URL does *not* work; nor do guessed cookie names. The site sets a
+`__shopping-location` cookie in response to a POST:
+
+```toml
+[provider.acquisition]
+session_url = "https://www.nellisauction.com/change-shopping-location"
+
+[provider.acquisition.session_fields]
+shoppingLocationId = "2"   # 1 Las Vegas, 2 Phoenix, 5 Houston,
+                           # 6 Philadelphia, 7 Denver, 8 Dallas
+```
+
+`discover` posts that once at the start of a run, before any search, and the
+searches are made by the same client so they inherit the cookie. A fresh session
+each run costs one request and removes any chance of yesterday's branch quietly
+persisting.
+
 **Two limits apply, and they answer different questions.** The persistent ledger
 counts *runs*, and a whole discovery run is one attempt however many searches it
 makes. An in-memory throttle spaces the searches inside that run

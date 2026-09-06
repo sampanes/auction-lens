@@ -120,6 +120,8 @@ class AcquisitionConfig:
     search_cache_dir: str = DEFAULT_SEARCH_CACHE_DIR
     max_searches_per_run: int = 8
     seconds_between_searches: Decimal = Decimal("5")
+    session_url: str = ""
+    session_fields: dict[str, str] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         _settle(self, "mode", AcquisitionMode)
@@ -282,6 +284,48 @@ class EmailConfig:
 
 
 @dataclass(frozen=True)
+class LocationPolicy:
+    """Which pickup locations are worth collecting from, and which must earn it.
+
+    Distance is not a property of a lot, so it cannot be scored. It is a fact
+    about the person: one branch is on the way home and another is half an hour
+    in the wrong direction. So a far branch is not forbidden, it is held to a
+    higher bar -- only a lot good enough to justify the drive gets through.
+    """
+
+    allowed: tuple[str, ...] = ()
+    far: tuple[str, ...] = ()
+    far_minimum_score: int = 90
+
+    def __post_init__(self) -> None:
+        require_within(
+            self.far_minimum_score,
+            low=LOWEST_SCORE,
+            high=HIGHEST_SCORE,
+            field_name="far_minimum_score",
+        )
+
+    def permits(self, location: str) -> bool:
+        """An empty allow-list means every pickup location is acceptable."""
+        return not self.allowed or _mentions(location, self.allowed)
+
+    def is_far(self, location: str) -> bool:
+        return _mentions(location, self.far)
+
+    def worth_collecting(self, location: str, score: int) -> bool:
+        """Whether this lot, at this score, justifies going to this branch."""
+        if not self.is_far(location):
+            return True
+        return score >= self.far_minimum_score
+
+
+def _mentions(location: str, names: tuple[str, ...]) -> bool:
+    """Match on a name appearing in the branch, so "mesa" finds "Mesa, AZ"."""
+    written = location.lower()
+    return any(name in written for name in names)
+
+
+@dataclass(frozen=True)
 class AppConfig:
     """Everything one configuration file declares, ready for the pipeline."""
 
@@ -293,7 +337,7 @@ class AppConfig:
     valuation: ValuationConfig
     logistics: LogisticsConfig
     email: EmailConfig
-    allowed_locations: tuple[str, ...] = ()
+    locations: LocationPolicy = field(default_factory=LocationPolicy)
 
 
 def _settle(record: Any, field_name: str, options: type[Choice]) -> None:
