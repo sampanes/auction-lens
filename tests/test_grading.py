@@ -6,35 +6,20 @@ import json
 import unittest
 
 from auction_lens.grading import AXES, Grade, Tag, read_grade
+from auction_lens.ingest import canonical_grade
 from auction_lens.models import Listing
 from support import ROOT
 
 GRADE_SAMPLES = ROOT / "fixtures" / "nellis" / "product-grade-samples.json"
 
-# The provider names its axes conditionType, assemblyType, and so on. Renaming
-# them is an ingest adapter's job; until one exists, the test does it here so
-# the recorded samples can still be read with the canonical names.
-PROVIDER_AXIS_NAMES = {
-    "conditionType": "condition",
-    "functionalType": "functional",
-    "damageType": "damage",
-    "missingPartsType": "missing_parts",
-    "assemblyType": "assembly",
-    "packageType": "package",
-}
-
-
-def _canonical(grade: dict) -> dict[str, str]:
-    """One sample's raw grade block, with the axes renamed and rating dropped."""
-    return {
-        PROVIDER_AXIS_NAMES[name]: answer["description"]
-        for name, answer in grade.items()
-        if name in PROVIDER_AXIS_NAMES
-    }
-
 
 def _samples() -> list[dict]:
     return json.loads(GRADE_SAMPLES.read_text(encoding="utf-8"))["samples"]
+
+
+def _canonical_grade(sample: dict) -> dict[str, str]:
+    """Rename a recorded sample's axes the same way the ingest adapter does."""
+    return canonical_grade(sample["grade"])
 
 
 class PolarityTests(unittest.TestCase):
@@ -102,21 +87,21 @@ class RecordedSampleTests(unittest.TestCase):
         }
         for sample in _samples():
             with self.subTest(sample=sample["id"]):
-                grade = read_grade(_canonical(sample["grade"]), sample["grade"]["rating"])
+                grade = read_grade(_canonical_grade(sample), sample["grade"]["rating"])
                 colours = [str(tag.tag) for tag in grade.tags]
                 self.assertEqual(colours, expected[sample["id"]])
 
     def test_the_used_but_otherwise_clean_lot_still_carries_the_top_rating(self):
         # The provider's rating is its own opinion, not a summary of the tags.
         sample = next(s for s in _samples() if s["id"] == "sample-003")
-        grade = read_grade(_canonical(sample["grade"]), sample["grade"]["rating"])
+        grade = read_grade(_canonical_grade(sample), sample["grade"]["rating"])
         self.assertEqual(grade.rating, 5)
         self.assertEqual([tag.label for tag in grade.concerns], ["Used"])
 
     def test_every_axis_the_samples_use_is_one_this_project_knows(self):
         known = {axis.name for axis in AXES}
         for sample in _samples():
-            self.assertEqual(set(_canonical(sample["grade"])) - known, set())
+            self.assertEqual(set(_canonical_grade(sample)) - known, set())
 
 
 class GradedListingTests(unittest.TestCase):
