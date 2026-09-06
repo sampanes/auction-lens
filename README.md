@@ -153,16 +153,20 @@ Every `run` appends one price reading -- time, bid, total cost, bid count -- for
 each reported lot to an ignored `private/watchlist.json`. Scan hourly and a lot
 collects an hourly trail; scan once and it collects a single point.
 
-On top of that trail you record what you think: your own estimate, a state word
-that reads green, amber, or red, stars, and a note. A run never overwrites any
-of it.
+Alongside the trail it keeps what the provider says about the lot: the six
+condition tags it grades (`Used`, `Assembly Required`, `Missing Parts` and the
+rest, each red, amber, or green), its own 1-5 quality rating, and the photo
+gallery -- whose last image is the photograph of the actual lot rather than the
+manufacturer's stock shot.
+
+On top of that you record what *you* think: your own estimate, a verdict, and a
+note. A run never overwrites any of it.
 
 ```cmd
 .venv\Scriptsuction-lens.exe watch ^
   --source nellis ^
   --listing-id synthetic-001 ^
-  --state hunting ^
-  --stars 4 ^
+  --verdict hunting ^
   --estimate 60 ^
   --note "worth it under 40 all in"
 
@@ -171,7 +175,8 @@ of it.
 
 The list prints keenest first, with headroom -- your estimate minus the latest
 total -- so a lot that has already cost more than you said it was worth says so.
-See [the watchlist guide](docs/WATCHLIST.md) for the file format.
+See [the watchlist guide](docs/WATCHLIST.md) for the file format and for the two
+ways a condition grade is easy to read backwards.
 
 ## Provider policy
 

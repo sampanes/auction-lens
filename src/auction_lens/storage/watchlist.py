@@ -6,7 +6,7 @@ read, and edit by hand: what they think a lot is worth, how badly they want it,
 and every price it has stood at since they started watching.
 
 That is why it is JSON and not another SQLite table. The fields a person fills
-in -- estimate, stars, state, note -- are never overwritten by a run. A run only
+in -- estimate, verdict, note -- are never overwritten by a run. A run only
 ever appends one reading per lot it saw, so scanning hourly leaves an hourly
 trail and scanning once leaves a single point.
 """
@@ -26,14 +26,8 @@ from ..fields import (
     parse_whole_number,
 )
 from ..file_io import read_json, write_json_atomically
-from ..models import (
-    FEWEST_STARS,
-    Listing,
-    PriceReading,
-    WatchedItem,
-    WatchState,
-    uid_of,
-)
+from ..grading import ConditionTag, Tag
+from ..models import Listing, PriceReading, Verdict, WatchedItem, uid_of
 
 DEFAULT_WATCHLIST_FILE = "private/watchlist.json"
 
@@ -130,11 +124,12 @@ def _observed(
         listing_id=listing.listing_id,
         title=listing.title,
         url=listing.url,
-        image_url=listing.image_url,
+        photo_urls=listing.photo_urls,
         estimated_retail=listing.estimated_retail,
+        conditions=() if listing.grade is None else listing.grade.tags,
+        quality_rating=None if listing.grade is None else listing.grade.rating,
         my_estimate=None if item is None else item.my_estimate,
-        state=WatchState.WATCHING if item is None else item.state,
-        stars=FEWEST_STARS if item is None else item.stars,
+        verdict=Verdict.WATCHING if item is None else item.verdict,
         note="" if item is None else item.note,
         readings=(*readings, reading),
     )
@@ -143,9 +138,8 @@ def _observed(
 def _as_json(item: WatchedItem) -> dict[str, Any]:
     """Write money as text, so a rounded float can never become the record.
 
-    ``uid`` and ``tag`` are written for a person reading or searching the file.
-    Both are derived -- from source and listing id, and from state -- so editing
-    either of them in place changes nothing.
+    ``uid`` is written for a person reading or searching the file. It is derived
+    from source and listing id, so editing it in place changes nothing.
     """
     return {
         "uid": item.uid,
@@ -153,12 +147,12 @@ def _as_json(item: WatchedItem) -> dict[str, Any]:
         "listing_id": item.listing_id,
         "title": item.title,
         "url": item.url,
-        "image_url": item.image_url,
+        "photo_urls": list(item.photo_urls),
         "estimated_retail": _money(item.estimated_retail),
+        "conditions": [_tag_as_json(tag) for tag in item.conditions],
+        "quality_rating": item.quality_rating,
         "my_estimate": _money(item.my_estimate),
-        "state": str(item.state),
-        "tag": str(item.tag),
-        "stars": item.stars,
+        "verdict": str(item.verdict),
         "note": item.note,
         "readings": [_reading_as_json(reading) for reading in item.readings],
     }
@@ -180,13 +174,14 @@ def _from_json(row: dict[str, Any]) -> WatchedItem:
         listing_id=str(row["listing_id"]),
         title=str(row.get("title", "")),
         url=str(row.get("url", "")),
-        image_url=str(row.get("image_url", "")),
+        photo_urls=tuple(str(url) for url in row.get("photo_urls", [])),
         estimated_retail=parse_optional_money(
             row.get("estimated_retail"), field_name="estimated_retail"
         ),
         my_estimate=parse_optional_money(row.get("my_estimate"), field_name="my_estimate"),
-        state=row.get("state", WatchState.WATCHING),
-        stars=parse_whole_number(row.get("stars"), field_name="stars"),
+        conditions=tuple(_tag_from_json(entry) for entry in row.get("conditions", [])),
+        quality_rating=_optional_rating(row.get("quality_rating")),
+        verdict=row.get("verdict", Verdict.WATCHING),
         note=str(row.get("note", "")),
         readings=tuple(_reading_from_json(entry) for entry in row.get("readings", [])),
     )
@@ -206,3 +201,21 @@ def _reading_from_json(entry: dict[str, Any]) -> PriceReading:
 
 def _money(value: Decimal | None) -> str | None:
     return None if value is None else str(value)
+
+
+def _tag_as_json(tag: ConditionTag) -> dict[str, Any]:
+    """Keep the axis beside the answer, so a report can say what was asked."""
+    return {"axis": tag.axis, "label": tag.label, "tag": str(tag.tag)}
+
+
+def _tag_from_json(entry: dict[str, Any]) -> ConditionTag:
+    return ConditionTag(
+        axis=str(entry.get("axis", "")),
+        label=str(entry.get("label", "")),
+        tag=Tag(str(entry.get("tag", Tag.AMBER))),
+    )
+
+
+def _optional_rating(value: Any) -> int | None:
+    """A provider that does not rate its lots leaves this out entirely."""
+    return None if value is None else parse_whole_number(value, field_name="quality_rating")

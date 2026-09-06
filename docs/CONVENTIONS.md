@@ -36,6 +36,11 @@ them. `valuation/settings.py` gives that table the same two pieces anyway -- a
 `Section` labelled `valuation.sources.<id>`, and a `RequestLimits` record -- so
 an adapter reads its settings exactly the way the loader reads everything else.
 
+`grading.py` is the same rule applied to a provider's vocabulary. A condition
+answer of `Yes` is green on one axis and red on another, so the polarity is
+written once, as a table of axes, and never re-derived at a call site. Anything
+that reads the answer word on its own gets `Assembly Required` backwards.
+
 ## 2. A closed set of words is an enum
 
 If a setting or a status may only be one of a few words, it is a `StrEnum`

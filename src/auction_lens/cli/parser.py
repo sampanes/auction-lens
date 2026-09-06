@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import argparse
 
-from ..models import MOST_STARS, OPERATOR_DECIDABLE, WatchState
+from ..models import OPERATOR_DECIDABLE, Verdict
 from ..storage import DEFAULT_WATCHLIST_FILE
 
 PROGRAM = "auction-lens"
@@ -21,10 +21,12 @@ WATCHLIST = "watchlist"
 CLEAR = "clear"
 LOGISTICS_STATUSES = (*(status.value for status in OPERATOR_DECIDABLE), CLEAR)
 
-# The same shape for the watchlist: every state, plus the word that forgets a lot.
+# The same shape for the watchlist: every verdict, plus the word that forgets
+# a lot. A verdict is the person's own word; the provider's condition tags
+# are the lot's, and nothing on the command line sets those.
 DROP = "drop"
-WATCH_STATES = tuple(state.value for state in WatchState)
-WATCH_ACTIONS = (*WATCH_STATES, DROP)
+VERDICTS = tuple(verdict.value for verdict in Verdict)
+WATCH_ACTIONS = (*VERDICTS, DROP)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -86,8 +88,7 @@ def _add_watch(subparsers) -> None:
     watch.add_argument("--watchlist", default=DEFAULT_WATCHLIST_FILE)
     watch.add_argument("--source", required=True)
     watch.add_argument("--listing-id", required=True)
-    watch.add_argument("--state", choices=WATCH_ACTIONS)
-    watch.add_argument("--stars", type=int, help=f"0 to {MOST_STARS}")
+    watch.add_argument("--verdict", choices=WATCH_ACTIONS)
     watch.add_argument("--estimate", help="what the lot is worth to you, all in")
     watch.add_argument("--note", help="anything the other fields cannot say")
 
@@ -97,5 +98,5 @@ def _add_watchlist(subparsers) -> None:
     watchlist = subparsers.add_parser(WATCHLIST, help="show the lots you are following")
     watchlist.add_argument("--watchlist", default=DEFAULT_WATCHLIST_FILE)
     watchlist.add_argument(
-        "--state", choices=WATCH_STATES, help="show only lots in one state"
+        "--verdict", choices=VERDICTS, help="show only lots you decided one way"
     )

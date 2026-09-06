@@ -9,8 +9,8 @@ acquisition -> ingest -> scoring -> valuation -> reporting
                    \--------- storage ----------/
 ```
 
-`fields` has no project dependencies. `models` depends only on `fields`; both
-sit underneath the rest of the application.
+`fields` has no project dependencies. `grading` depends only on `fields`, and
+`models` on both; all three sit underneath the rest of the application.
 
 This is not a description. It is checked on every run by
 `scripts/check-imports.py`, which holds the layers below as data:
@@ -18,12 +18,13 @@ This is not a description. It is checked on every run by
 | Layer | Modules | May import |
 |---|---|---|
 | 0 | `fields` | nothing in the project |
-| 1 | `env_file`, `file_io`, `models` | layer 0 |
-| 2 | `config` | layers 0-1 |
-| 3 | `logistics` | layers 0-2 |
-| 4 | `acquisition`, `ingest`, `reporting`, `scoring`, `storage`, `valuation` | layers 0-3 |
-| 5 | `pipeline` | layers 0-4 |
-| 6 | `cli` | everything |
+| 1 | `grading` | layer 0 |
+| 2 | `env_file`, `file_io`, `models` | layers 0-1 |
+| 3 | `config` | layers 0-2 |
+| 4 | `logistics` | layers 0-3 |
+| 5 | `acquisition`, `ingest`, `reporting`, `scoring`, `storage`, `valuation` | layers 0-4 |
+| 6 | `pipeline` | layers 0-5 |
+| 7 | `cli` | everything |
 
 Modules on the same line are peers and may not import each other. That is what
 keeps `scoring` readable without `valuation` open beside it.
@@ -33,6 +34,7 @@ keeps `scoring` readable without `valuation` open beside it.
 | Module | Answers |
 |---|---|
 | `fields` | What is this value allowed to be? |
+| `grading` | What does a provider's condition answer mean, and what colour is it? |
 | `models` | What is a listing, a candidate, a valuation? |
 | `config/` | What did the operator's TOML file ask for? |
 | `ingest` | How do canonical JSON and CSV files become listings? |

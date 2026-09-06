@@ -24,6 +24,7 @@ PACKAGE = Path("src/auction_lens")
 # each other, which is what keeps them independently readable and testable.
 LAYERS = (
     ("fields",),
+    ("grading",),
     ("env_file", "file_io", "models"),
     ("config",),
     ("logistics",),
