@@ -19,7 +19,7 @@ This is not a description. It is checked on every run by
 |---|---|---|
 | 0 | `fields` | nothing in the project |
 | 1 | `grading` | layer 0 |
-| 2 | `env_file`, `file_io`, `models` | layers 0-1 |
+| 2 | `env_file`, `file_io`, `models`, `throttle` | layers 0-1 |
 | 3 | `config` | layers 0-2 |
 | 4 | `logistics` | layers 0-3 |
 | 5 | `acquisition`, `ingest`, `reporting`, `scoring`, `storage`, `valuation` | layers 0-4 |
@@ -41,6 +41,7 @@ keeps `scoring` readable without `valuation` open beside it.
 | `ingest/nellis` | How does one saved provider page become a canonical row? |
 | `ingest/turbo_stream` | How is a streamed page payload decoded? |
 | `acquisition/` | May we contact the provider right now, and what did it say? |
+| `acquisition/discover` | Which lots exist, asked once per search term? |
 | `scoring/` | Is this listing worth reporting, and why? |
 | `logistics` | Is getting this item home still an open question? |
 | `valuation/` | What is it actually worth, according to whom? |
@@ -53,7 +54,7 @@ keeps `scoring` readable without `valuation` open beside it.
 | `reporting/delivery` | How does it get sent? |
 | `pipeline` | One whole run, without a command line. |
 | `cli/` | Which arguments map to which command, and how are errors shown? |
-| `file_io`, `env_file` | Shared plumbing with no domain opinions. |
+| `file_io`, `env_file`, `throttle` | Shared plumbing with no domain opinions. |
 
 ## Rules that keep it navigable
 

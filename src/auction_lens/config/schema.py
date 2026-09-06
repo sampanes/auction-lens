@@ -30,9 +30,13 @@ from ..models import HIGHEST_SCORE, LOWEST_SCORE
 
 DEFAULT_USER_AGENT_ENV = "AUCTION_LENS_HTTP_USER_AGENT"
 DEFAULT_CACHE_FILE = "private/cache/provider-response.html"
+DEFAULT_SEARCH_CACHE_DIR = "private/cache/searches"
 DEFAULT_LEDGER_FILE = "private/poll-ledger.json"
 
 HIGHEST_PORT = 65535
+
+# Where a search term is written into the search address.
+QUERY_PLACEHOLDER = "{query}"
 
 # A rate is a proportion, so anything above 1 is a misplaced percentage.
 HIGHEST_RATE = Decimal("1")
@@ -111,6 +115,11 @@ class AcquisitionConfig:
     ledger_file: str = DEFAULT_LEDGER_FILE
     run_mode: RunMode = RunMode.PRODUCTION
     development_minimum_interval_seconds: int = 2
+    search_url_template: str = ""
+    searches: tuple[str, ...] = ()
+    search_cache_dir: str = DEFAULT_SEARCH_CACHE_DIR
+    max_searches_per_run: int = 8
+    seconds_between_searches: Decimal = Decimal("5")
 
     def __post_init__(self) -> None:
         _settle(self, "mode", AcquisitionMode)
@@ -124,6 +133,14 @@ class AcquisitionConfig:
             self.development_minimum_interval_seconds,
             field_name="development_minimum_interval_seconds",
         )
+        require_at_least(self.max_searches_per_run, 1, field_name="max_searches_per_run")
+        require_not_negative(
+            self.seconds_between_searches, field_name="seconds_between_searches"
+        )
+        if self.search_url_template and QUERY_PLACEHOLDER not in self.search_url_template:
+            raise ValueError(
+                "search_url_template must contain {QUERY_PLACEHOLDER}"
+            )
         try:
             ZoneInfo(self.timezone)
         except (ZoneInfoNotFoundError, ValueError) as error:

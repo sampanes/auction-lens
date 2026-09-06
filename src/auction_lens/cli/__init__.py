@@ -7,6 +7,7 @@ import sys
 from ..env_file import load_env_file
 from . import commands
 from .parser import (
+    DISCOVER,
     FETCH,
     LOGISTICS,
     PROGRAM,
@@ -21,6 +22,7 @@ COMMANDS = {
     RUN: commands.run,
     FETCH: commands.fetch,
     PULL: commands.pull,
+    DISCOVER: commands.discover,
     LOGISTICS: commands.logistics,
     WATCH: commands.watch,
     WATCHLIST: commands.watchlist,
@@ -28,7 +30,7 @@ COMMANDS = {
 
 # Only the commands that reach the network or an SMTP server need credentials;
 # the rest record or read local files.
-COMMANDS_NEEDING_ENVIRONMENT = frozenset({RUN, FETCH})
+COMMANDS_NEEDING_ENVIRONMENT = frozenset({RUN, FETCH, DISCOVER})
 
 OPERATOR_ERROR = 2
 

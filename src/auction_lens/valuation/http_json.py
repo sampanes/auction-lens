@@ -23,12 +23,12 @@ from urllib.request import Request, urlopen
 from ..config import Section, ValuationSourceConfig
 from ..fields import parse_decimal, parse_money, parse_utc_datetime, parse_whole_number
 from ..models import Listing, ValuationObservation
+from ..throttle import RequestThrottle
 from .base import SourceResult
 from .http_cache import JsonResponseCache
 from .json_path import read_optional_path, read_path
 from .settings import read_request_limits, settings_of
 from .templates import fill_template
-from .throttle import RequestThrottle
 
 ENVIRONMENT_PREFIX = "env:"
 REQUIRED_FIELD = "typical"

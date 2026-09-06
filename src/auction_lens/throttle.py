@@ -1,10 +1,15 @@
-"""Keeping a valuation source from being called too often within one run.
+"""Keeping a third party from being called too often within one run.
 
-The acquisition fetcher persists its limits because it runs once a day; this
-one is in-memory on purpose, because it bounds a single fan-out over listings.
+Two callers need this and they need the same thing. A valuation fan-out asks
+many sources about many listings; a discovery run asks for several searches in
+a row. Both are one burst inside one run, so both are bounded in memory here.
 
-The numbers arrive already checked, from ``RequestLimits`` in ``settings``.
-This is the mechanism, not the rule.
+The persistent poll ledger in ``acquisition`` answers a different question --
+how often may a run happen at all -- and counts runs, not the requests inside
+one. Keep the two apart: this one forgets everything when the process exits.
+
+The numbers arrive already checked from whichever record owns them. This is
+the mechanism, not the rule.
 """
 
 from __future__ import annotations
