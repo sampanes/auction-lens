@@ -52,6 +52,7 @@ class ScoringContext:
         rule_name: str,
         score: int,
         reasons: Sequence[str],
+        weight: Decimal = Decimal("1"),
     ) -> Candidate:
         """Attach one verdict to the shared facts about this listing."""
         return Candidate(
@@ -64,4 +65,5 @@ class ScoringContext:
             reasons=tuple(reasons),
             change=self.change,
             logistics=self.logistics,
+            weight=weight,
         )

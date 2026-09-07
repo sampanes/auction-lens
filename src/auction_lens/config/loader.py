@@ -100,6 +100,9 @@ def _acquisition(section: Section) -> AcquisitionConfig:
             searches=section.lowercase_texts("searches"),
             search_cache_dir=section.text("search_cache_dir", DEFAULT_SEARCH_CACHE_DIR),
             max_searches_per_run=section.integer("max_searches_per_run", 8),
+            category_url_template=section.text("category_url_template"),
+            categories=section.texts("categories"),
+            max_categories_per_run=section.integer("max_categories_per_run", 12),
             seconds_between_searches=section.decimal("seconds_between_searches", 5),
             session_url=section.text("session_url"),
             session_fields=section.text_map("session_fields"),
@@ -111,6 +114,7 @@ def _scoring(section: Section, conditions: Section, profiles: Section) -> Scorin
         return ScoringConfig(
             anomaly_minimum_retail=section.decimal("anomaly_minimum_retail", 100),
             anomaly_maximum_ratio=section.decimal("anomaly_maximum_ratio", "0.20"),
+            anomaly_weight=section.decimal("anomaly_weight", "0.4"),
             minimum_report_score=section.integer("minimum_report_score", 70),
             ending_soon_minutes=section.integer("ending_soon_minutes", 20),
             condition_penalties=conditions.non_negative_integer_map("penalties"),
@@ -138,6 +142,7 @@ def _interest(item: Section, profiles: Section) -> InterestRule:
             exclude_terms=item.lowercase_texts("exclude_terms"),
             max_total_cost=item.optional_decimal("max_total_cost"),
             minimum_score=item.integer("minimum_score", 0),
+            weight=item.decimal("weight", "1"),
             condition_profile=item.text("condition_profile"),
             condition=resolve_condition_policy(item, profiles),
         )

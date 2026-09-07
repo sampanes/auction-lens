@@ -125,7 +125,7 @@ def readable(identifier: str) -> str:
 def _by_category(candidates: list[Candidate]) -> dict[str, list[Candidate]]:
     """Group findings, ordering both the groups and their contents by score."""
     grouped: dict[str, list[Candidate]] = defaultdict(list)
-    for candidate in sorted(candidates, key=lambda item: item.score, reverse=True):
+    for candidate in sorted(candidates, key=lambda item: item.priority, reverse=True):
         grouped[str(candidate.category)].append(candidate)
     return grouped
 

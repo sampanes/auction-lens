@@ -26,7 +26,7 @@ from urllib.parse import quote_plus, urlencode
 from urllib.request import HTTPCookieProcessor, Request, build_opener
 
 from ..config import AcquisitionConfig, ProviderConfig
-from ..config.schema import QUERY_PLACEHOLDER
+from ..config.schema import CATEGORY_PLACEHOLDER, QUERY_PLACEHOLDER
 from ..throttle import RequestThrottle
 from .cache import ResponseCache
 from .fetch import (
@@ -35,6 +35,7 @@ from .fetch import (
     HTTP_OK,
     authorized_user_agent,
     require_fetch_allowed,
+    require_not_rate_limited,
 )
 from .polling import PollLedger, enforce_request_limits
 
@@ -63,13 +64,10 @@ def discover_searches(
     sleeper: Callable[[float], None] = time.sleep,
 ) -> list[SearchCapture]:
     """Fetch one search page per term, or explain why this run must not."""
-    if not config.search_url_template:
-        raise RuntimeError("provider.acquisition.search_url_template is not configured")
-    wanted = _terms_to_ask(terms, config)
     instant = _timezone_aware(now or datetime.now(UTC))
     opener = session_opener() if opener is None else opener
 
-    addresses = [(term, _address(config, term)) for term in wanted]
+    addresses = _addresses(config, terms)
     # Check every address before making any request, so a run that is going to
     # be refused is refused before it has touched the provider at all.
     for _, url in addresses:
@@ -133,6 +131,32 @@ def choose_branch(
         response.read()
 
 
+def _addresses(config: AcquisitionConfig, terms: Iterable[str]) -> list[tuple[str, str]]:
+    """Every page this run will ask for: the named searches, then the sweep.
+
+    A search finds what a person can name. A category sweep finds what they
+    cannot -- a lot whose title is misspelled, or a thing they would have wanted
+    but would never have thought to type. Both are needed, and each is capped on
+    its own so that a long list of terms can never starve the sweep.
+    """
+    pages = []
+    wanted = _terms_to_ask(terms, config)
+    if wanted:
+        if not config.search_url_template:
+            raise RuntimeError("provider.acquisition.search_url_template is not configured")
+        pages += [(term, _search_address(config, term)) for term in wanted]
+
+    sweep = config.categories[: config.max_categories_per_run]
+    if sweep:
+        if not config.category_url_template:
+            raise RuntimeError("provider.acquisition.category_url_template is not configured")
+        pages += [(name, _category_address(config, name)) for name in sweep]
+
+    if not pages:
+        raise RuntimeError("no search terms; configure searches or pass --search")
+    return pages
+
+
 def _terms_to_ask(terms: Iterable[str], config: AcquisitionConfig) -> list[str]:
     """Take each distinct term once, in the order given, up to the run's cap."""
     seen: dict[str, None] = {}
@@ -140,14 +164,17 @@ def _terms_to_ask(terms: Iterable[str], config: AcquisitionConfig) -> list[str]:
         cleaned = term.strip().lower()
         if cleaned:
             seen.setdefault(cleaned, None)
-    if not seen:
-        raise RuntimeError("no search terms; configure searches or pass --search")
     return list(seen)[: config.max_searches_per_run]
 
 
-def _address(config: AcquisitionConfig, term: str) -> str:
+def _search_address(config: AcquisitionConfig, term: str) -> str:
     """Write the term into the configured search address."""
     return config.search_url_template.replace(QUERY_PLACEHOLDER, quote_plus(term))
+
+
+def _category_address(config: AcquisitionConfig, category: str) -> str:
+    """Write the category name into the configured sweep address."""
+    return config.category_url_template.replace(CATEGORY_PLACEHOLDER, quote_plus(category))
 
 
 def cache_path_for(config: AcquisitionConfig, term: str, url: str) -> Path:
@@ -188,6 +215,7 @@ def _fetch_one(
     except HTTPError as error:
         if error.code == HTTP_NOT_MODIFIED and cache.exists():
             return SearchCapture(term, url, cache.path, True)
+        require_not_rate_limited(error)
         raise
 
     if status != HTTP_OK:

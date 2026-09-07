@@ -43,6 +43,7 @@ def score_retail_anomaly(context: ScoringContext, scoring: ScoringConfig) -> Can
         rule_name=RULE_NAME,
         score=score,
         reasons=reasons,
+        weight=scoring.anomaly_weight,
     )
 
 

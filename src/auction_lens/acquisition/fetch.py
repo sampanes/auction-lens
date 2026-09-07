@@ -24,6 +24,7 @@ ACCEPTED_CONTENT = "text/html,application/xhtml+xml"
 
 HTTP_OK = 200
 HTTP_NOT_MODIFIED = 304
+HTTP_TOO_MANY_REQUESTS = 429
 
 
 @dataclass(frozen=True)
@@ -68,6 +69,7 @@ def fetch_authorized_page(
     except HTTPError as error:
         if error.code == HTTP_NOT_MODIFIED and cache.exists():
             return FetchResult(HTTP_NOT_MODIFIED, cache.path, cache.size(), True)
+        require_not_rate_limited(error)
         raise
 
     if status != HTTP_OK:
@@ -79,6 +81,23 @@ def fetch_authorized_page(
         source_url=config.url,
     )
     return FetchResult(status, cache.path, len(body), False)
+
+
+def require_not_rate_limited(error: HTTPError) -> None:
+    """Turn a provider's "slow down" into an instruction rather than a traceback.
+
+    A 429 is the provider asking for a pause, and the only correct answer is to
+    stop for as long as it asks. Retrying sooner is precisely what turns a
+    polite client into a blocked one, so this refuses loudly and says to wait.
+    """
+    if error.code != HTTP_TOO_MANY_REQUESTS:
+        return
+    retry_after = (error.headers or {}).get("Retry-After", "")
+    pause = f" It asks for {retry_after} seconds." if retry_after else ""
+    raise RuntimeError(
+        f"provider asked for fewer requests (HTTP 429).{pause}"
+        " Wait before running again rather than retrying now."
+    ) from error
 
 
 def require_fetch_allowed(
