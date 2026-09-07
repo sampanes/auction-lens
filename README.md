@@ -122,9 +122,11 @@ Run that command from Windows Task Scheduler, cron, or another scheduler to send
 a periodic digest. Repeated observations are retained so reports can distinguish
 new listings from changed prices.
 
-For Windows, `scripts/run-daily.ps1` is the ready-to-schedule entry point. It reads
-an ignored `data/inbox/listings.json`, uses the ignored personal configuration and
-`.env`, updates SQLite, and emails only lots you marked `hunting`.
+For Windows, `scripts\run-daily.cmd` is the ready-to-schedule entry point. Point
+Task Scheduler at it directly; it finds fresh listings, saves the canonical input,
+uses the ignored personal configuration and `.env`, updates SQLite, emails the
+day's findings, and then emails only lots you marked `hunting`. The equivalent
+PowerShell entry point remains at `scripts\run-daily.ps1`.
 
 ## Getting real listings
 
