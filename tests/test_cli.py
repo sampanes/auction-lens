@@ -8,7 +8,8 @@ import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from unittest.mock import patch
 
-from auction_lens.cli import console, main
+from auction_lens.cli import build_parser, console, main
+from auction_lens.config import load_config
 from auction_lens.models import WatchedItem
 from auction_lens.storage import WatchlistStore
 from support import EXAMPLE_CONFIG, ROOT, SYNTHETIC_LISTINGS, temporary_directory
@@ -79,14 +80,18 @@ class RunCommandTests(unittest.TestCase):
 
 
 class WatchlistCommandTests(unittest.TestCase):
-    def test_email_requires_the_configuration_that_names_the_account(self):
+    def test_email_says_so_when_the_configuration_has_it_switched_off(self):
+        # --config now defaults, so the remaining guard is the one that matters:
+        # a configuration that never enabled email cannot send any.
         with temporary_directory() as directory:
-            with self.assertRaisesRegex(RuntimeError, "--config is required"):
+            with self.assertRaisesRegex(RuntimeError, "email reporting is disabled"):
                 run_cli(
                     [
                         "watchlist",
                         "--watchlist",
                         str(directory / "watchlist.json"),
+                        "--config",
+                        str(EXAMPLE_CONFIG),
                         "--env-file",
                         str(directory / "absent.env"),
                         "--email",
@@ -151,6 +156,60 @@ class LogisticsCommandTests(unittest.TestCase):
             "--listing-id",
             "synthetic-001",
         ]
+
+
+class SetupCommandTests(unittest.TestCase):
+    """The first command on a machine git could not fully equip."""
+
+    def test_it_creates_the_two_files_a_fresh_clone_lacks(self):
+        with temporary_directory() as directory:
+            config, env_file = directory / "local.toml", directory / ".env"
+            message = run_cli(
+                ["setup", "--config", str(config), "--env-file", str(env_file)]
+            )
+            self.assertTrue(config.exists())
+            self.assertTrue(env_file.exists())
+            self.assertIn("AUCTION_LENS_HTTP_USER_AGENT", env_file.read_text(encoding="utf-8"))
+            self.assertIn("contact address", message)
+
+    def test_the_configuration_it_writes_actually_loads(self):
+        with temporary_directory() as directory:
+            config = directory / "local.toml"
+            run_cli(["setup", "--config", str(config), "--env-file", str(directory / ".env")])
+            self.assertTrue(load_config(config).interests)
+
+    def test_running_it_again_never_overwrites_your_answers(self):
+        mine = "# mine, do not clobber"
+        with temporary_directory() as directory:
+            config, env_file = directory / "local.toml", directory / ".env"
+            config.write_text(mine, encoding="utf-8")
+            env_file.write_text(mine, encoding="utf-8")
+            message = run_cli(
+                ["setup", "--config", str(config), "--env-file", str(env_file)]
+            )
+            self.assertEqual(config.read_text(encoding="utf-8"), mine)
+            self.assertEqual(env_file.read_text(encoding="utf-8"), mine)
+            self.assertIn("left alone", message)
+
+
+class DefaultsTests(unittest.TestCase):
+    def test_the_configuration_flag_can_be_left_off(self):
+        # One door: the file a person edits is where every command looks.
+        for command in ("run", "fetch", "discover", "pull", "daily", "watchlist"):
+            with self.subTest(command=command):
+                self.assertEqual(_parsed_default(command, "config"), "config/local.toml")
+
+    def test_daily_writes_where_it_then_reads(self):
+        self.assertEqual(_parsed_default("daily", "output"), "data/inbox/listings.json")
+
+
+def _parsed_default(command: str, option: str):
+    action = next(
+        sub
+        for sub in build_parser()._subparsers._group_actions[0].choices[command]._actions
+        if sub.dest == option
+    )
+    return action.default
 
 
 class PullCommandTests(unittest.TestCase):

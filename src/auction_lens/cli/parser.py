@@ -10,7 +10,14 @@ from ..storage import DEFAULT_WATCHLIST_FILE
 PROGRAM = "auction-lens"
 DEFAULT_DATABASE = "data/auction-lens.sqlite3"
 DEFAULT_ENV_FILE = ".env"
+# The one configuration a person actually edits. Every command defaults to
+# it, so the flag only has to be typed when working on something else.
+DEFAULT_CONFIG = "config/local.toml"
+DEFAULT_INBOX = "data/inbox/listings.json"
+EXAMPLE_CONFIG = "config/providers/nellis.example.toml"
 
+SETUP = "setup"
+DAILY = "daily"
 RUN = "run"
 FETCH = "fetch"
 PULL = "pull"
@@ -37,6 +44,9 @@ def build_parser() -> argparse.ArgumentParser:
         description="Normalize, score, remember, and report auction listings.",
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
+    # The two doors most people need, before the tools for one job each.
+    _add_setup(subparsers)
+    _add_daily(subparsers)
     _add_run(subparsers)
     _add_fetch(subparsers)
     _add_discover(subparsers)
@@ -47,10 +57,44 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _add_setup(subparsers) -> None:
+    """First command on a new machine: make the files git cannot carry."""
+    setup = subparsers.add_parser(
+        SETUP, help="create the ignored config and .env this machine needs"
+    )
+    setup.add_argument("--config", default=DEFAULT_CONFIG, help="configuration to create")
+    setup.add_argument("--env-file", default=DEFAULT_ENV_FILE, help="settings file to create")
+
+
+def _add_daily(subparsers) -> None:
+    """The whole day's work in one word.
+
+    Discovery and analysis remain separate commands because each is useful on
+    its own, but nobody wants to type both every morning.
+    """
+    daily = subparsers.add_parser(
+        DAILY, help="find lots, score them, and report what matters"
+    )
+    daily.add_argument("--config", default=DEFAULT_CONFIG)
+    daily.add_argument(
+        "--output", default=DEFAULT_INBOX, help="where the found lots are written"
+    )
+    daily.add_argument("--database", default=DEFAULT_DATABASE)
+    daily.add_argument("--watchlist", default=DEFAULT_WATCHLIST_FILE)
+    daily.add_argument("--env-file", default=DEFAULT_ENV_FILE)
+    daily.add_argument(
+        "--search", action="append", default=[], metavar="TERM",
+        help="search term; repeatable. Defaults to the configured or wanted terms",
+    )
+    daily.add_argument("--email", action="store_true", help="send the report as well")
+
+
 def _add_run(subparsers) -> None:
     run = subparsers.add_parser(RUN, help="ingest listings, evaluate them, and render a report")
     run.add_argument("--input", required=True, help="canonical .json or .csv listing file")
-    run.add_argument("--config", required=True, help="TOML provider and scoring configuration")
+    run.add_argument(
+        "--config", default=DEFAULT_CONFIG, help="TOML provider and scoring configuration"
+    )
     run.add_argument("--database", default=DEFAULT_DATABASE)
     run.add_argument(
         "--watchlist",
@@ -67,7 +111,7 @@ def _add_run(subparsers) -> None:
 
 def _add_fetch(subparsers) -> None:
     fetch = subparsers.add_parser(FETCH, help="fetch one authorized public provider page")
-    fetch.add_argument("--config", required=True, help="TOML provider configuration")
+    fetch.add_argument("--config", default=DEFAULT_CONFIG, help="TOML provider configuration")
     fetch.add_argument(
         "--env-file", default=DEFAULT_ENV_FILE, help="optional local KEY=VALUE settings file"
     )
@@ -78,7 +122,9 @@ def _add_discover(subparsers) -> None:
     discover = subparsers.add_parser(
         DISCOVER, help="ask the provider's search for lots and write them as canonical JSON"
     )
-    discover.add_argument("--config", required=True, help="TOML provider configuration")
+    discover.add_argument(
+        "--config", default=DEFAULT_CONFIG, help="TOML provider configuration"
+    )
     discover.add_argument("--output", required=True, help="canonical .json file to write")
     discover.add_argument(
         "--search",
@@ -98,7 +144,7 @@ def _add_pull(subparsers) -> None:
     pull = subparsers.add_parser(
         PULL, help="read saved provider pages into a canonical listing file"
     )
-    pull.add_argument("--config", required=True, help="TOML provider configuration")
+    pull.add_argument("--config", default=DEFAULT_CONFIG, help="TOML provider configuration")
     pull.add_argument(
         "--input", required=True, help="a saved .html page, or a directory of them"
     )
@@ -140,7 +186,7 @@ def _add_watchlist(subparsers) -> None:
         "--email", action="store_true", help="email the selected lots after showing them"
     )
     watchlist.add_argument(
-        "--config", help="TOML configuration; required when --email is used"
+        "--config", default=DEFAULT_CONFIG, help="TOML configuration, used when emailing"
     )
     watchlist.add_argument(
         "--env-file", default=DEFAULT_ENV_FILE, help="optional local KEY=VALUE settings file"

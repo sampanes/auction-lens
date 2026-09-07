@@ -156,6 +156,33 @@ out; nothing can be bid on any more.
 A search result carries no taxonomy, so discovered lots have no `category`. Only
 a lot's own page has one, which is what `pull` is still for.
 
+### 2026-09-07 rate measurement: what pacing the provider tolerates
+
+Measured, not guessed, because this is the number that decides whether a run
+finishes. It cannot live in `config/local.toml`, which git does not carry.
+
+| run | pacing | requests | result |
+| --- | --- | --- | --- |
+| 8 searches then 12 categories | 5s | 21 attempted | 429 on the 9th |
+| 1 search then 1 category | 10s | 2 | both fine |
+| 8 searches then 12 categories | 10s | 21 | all fine, 3m24s |
+
+The first failure looked like a rejected category address, since the eight
+searches before it all succeeded and the first category did not. The two-request
+probe disproved that: the same category address, asked for on its own, was
+answered normally. So the refusal was cumulative volume, not the address.
+
+The ceiling sits near ten requests in a burst. At 5s a run offers twelve a
+minute and is cut off; at 10s it offers six and is not. `seconds_between_searches
+= 10` is therefore the measured floor, not a guess, and a scheduled run has all
+the time in the world to spend on it.
+
+Two consequences worth remembering. A 429 is answered by waiting rather than
+retrying, so a run abandons its remaining addresses -- which is why the pages it
+already fetched have to be readable from the cache. And raising
+`max_categories_per_run` raises the request count directly, so it and the pacing
+are one decision, not two.
+
 ### Sweeping categories: finding what nobody thought to type
 
 A search term only finds what an operator can name. It cannot find a lot titled
