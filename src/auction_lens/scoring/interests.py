@@ -54,6 +54,7 @@ def _score_rule(
         rule_name=rule.name,
         score=score,
         reasons=reasons,
+        weight=rule.weight,
     )
 
 

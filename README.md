@@ -87,8 +87,13 @@ describes a whole page of them rather than one. Terms come from `--search`, or
 from `[provider.acquisition] searches`, or failing both from the `any_terms` of
 your `[[interests]]` -- so what you want is written down once.
 
+A term only finds what you can name. `[provider.acquisition] categories` sweeps
+the provider's own categories as well, which is how a misspelled listing or a
+thing you never thought to type still turns up. Searches and the sweep are
+capped separately, so a long list of terms cannot starve the sweep.
+
 A whole discovery run counts as a single attempt against the configured daily
-limit, and the searches inside it are spaced apart. Each term's page is cached
+limit, and the requests inside it are spaced apart. Each term's page is cached
 and revalidated, so an unchanged page costs nothing.
 
 Some providers scope their catalogue to one branch and choose it by session
@@ -171,6 +176,12 @@ Interests describe *why* an item is useful. Each `[[interests]]` rule has its ow
 condition policy, allowing one known-broken listing to fail a `purpose = "use"`
 rule while matching a carefully constrained `purpose = "salvage"` rule. Broad
 anomaly discovery has a separate condition policy as well.
+
+Each rule also has a `weight`, defaulting to `1`. It decides reading order, not
+eligibility: a wanted item at a fair price ranks above something you never asked
+for at a steep discount. Weight is deliberately kept out of every threshold, so
+`[scoring] anomaly_weight = 0.4` sinks the catch-all in the report without ever
+silencing it, and raising a weight can never push a lot past a bar it failed.
 
 Valuation sources are ordinary `[[valuation.sources]]` TOML entries. Built-in
 adapters support human-reviewed XML catalogs, research-link templates, and

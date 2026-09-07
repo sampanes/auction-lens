@@ -156,6 +156,34 @@ out; nothing can be bid on any more.
 A search result carries no taxonomy, so discovered lots have no `category`. Only
 a lot's own page has one, which is what `pull` is still for.
 
+### Sweeping categories: finding what nobody thought to type
+
+A search term only finds what an operator can name. It cannot find a lot titled
+`inflattable bounce house`, and it cannot find an oscilloscope for someone who
+never wrote the word down. The site's own search publishes the filters it
+supports, and two of them make a sweep possible:
+
+- `Taxonomy Level 1=<category>` restricts results to one of its 17 categories.
+- `sortBy=retail_price_desc` puts the most valuable lots on the first page.
+
+So `categories` in `provider.acquisition` names the categories to sweep, and
+`category_url_template` says how to write one into an address, exactly as
+`search_url_template` does for a term. Searches are asked for first, then the
+sweep; each has its own cap so a long list of terms cannot starve the sweep.
+
+A page carries `algolia.nbHits` and `nbPages`. Beware the fallback: when a query
+matches nothing, the provider drops the filters and reports the entire
+multi-city catalogue, so an implausibly large `nbHits` means "no match", not
+"many matches".
+
+### Being asked to slow down
+
+A 429 is the provider asking for a pause, and the only correct answer is to stop
+for as long as it asks. `require_not_rate_limited` turns that response into an
+instruction naming the `Retry-After` wait, and discovery abandons the rest of
+the run rather than working through the remaining addresses. Retrying sooner is
+what turns a polite client into a blocked one.
+
 ### Reading a saved page
 
 The data is not plain JSON in the HTML. It arrives in a single streamed chunk at

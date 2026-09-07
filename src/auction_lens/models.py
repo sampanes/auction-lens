@@ -276,6 +276,18 @@ class Candidate:
     change: ObservationChange
     valuation: ValuationSummary | None = None
     logistics: LogisticsAssessment | None = None
+    weight: Decimal = Decimal("1")
+
+    @property
+    def priority(self) -> Decimal:
+        """Reading order: how good this is, scaled by how much it was wanted.
+
+        Deliberately separate from ``score``. Score answers "is this worth
+        reporting at all", and every configured bar is tuned against it.
+        Priority answers "what should be read first". Folding the two together
+        would let a weight quietly push a lot past a bar it never cleared.
+        """
+        return self.score * self.weight
 
 
 @dataclass(frozen=True)

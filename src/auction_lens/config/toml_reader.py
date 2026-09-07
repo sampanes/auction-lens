@@ -107,6 +107,23 @@ class Section:
             normalized.append(value.strip().lower())
         return tuple(normalized)
 
+    def texts(self, key: str) -> tuple[str, ...]:
+        """Read a list of free text, exactly as written.
+
+        Unlike ``lowercase_texts``, this keeps the case given, because some
+        values are proper names a provider matches literally rather than
+        vocabulary this program matches case-insensitively.
+        """
+        values = self.data.get(key, [])
+        if not isinstance(values, list):
+            raise ValueError(f"{self.label(key)} must be an array")
+        kept = []
+        for index, value in enumerate(values):
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(f"{self.label(key)}[{index}] must be non-empty text")
+            kept.append(value.strip())
+        return tuple(kept)
+
     def text_map(self, key: str) -> dict[str, str]:
         """Read a table of named text, where no record can name the keys."""
         table = self.table(key)

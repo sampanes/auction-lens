@@ -122,6 +122,44 @@ class InterestScoringTests(unittest.TestCase):
         return next(item for item in candidates if item.category == "wanted")
 
 
+class InterestWeightTests(unittest.TestCase):
+    """Weight decides what is read first, never what is allowed through."""
+
+    def setUp(self):
+        self.config = example_config()
+        self.listings = example_listings()
+
+    def test_a_wanted_lot_outranks_a_bargain_nobody_asked_for(self):
+        scored = evaluate(self.listings[SOUNDBAR], self.config)
+        candidates = {item.category: item for item in scored}
+        wanted, anomaly = candidates["wanted"], candidates["anomaly"]
+        # The anomaly scores higher on raw discount; wanting the thing decides.
+        self.assertGreater(anomaly.score, wanted.score)
+        self.assertGreater(wanted.priority, anomaly.priority)
+
+    def test_a_sunken_weight_still_reports_the_lot(self):
+        # The catch-all exists to surface things no rule mentions, so weighting
+        # it down must reorder it, not silence it.
+        config = replace(
+            self.config, scoring=replace(self.config.scoring, anomaly_weight=Decimal("0"))
+        )
+        candidates = evaluate(self.listings[LASER_LEVEL], config)
+        anomaly = next(item for item in candidates if item.category == "anomaly")
+        self.assertEqual(anomaly.priority, 0)
+        self.assertGreaterEqual(anomaly.score, config.scoring.minimum_report_score)
+
+    def test_raising_a_weight_cannot_push_a_lot_past_a_bar_it_failed(self):
+        eager = InterestRule(name="soundbar", any_terms=("sound bar",), minimum_score=99,
+                             weight=Decimal("10"))
+        config = replace(self.config, interests=(eager,))
+        scored = evaluate(self.listings[SOUNDBAR], config)
+        self.assertEqual([item for item in scored if item.category == "wanted"], [])
+
+    def test_a_negative_weight_is_refused(self):
+        with self.assertRaisesRegex(ValueError, "weight"):
+            InterestRule(name="anything", weight=Decimal("-1"))
+
+
 class AnomalyScoringTests(unittest.TestCase):
     def setUp(self):
         self.config = example_config()

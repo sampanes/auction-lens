@@ -82,11 +82,16 @@ class RecordingOpener:
         self.response_headers: dict[str, str] = {}
         self.posted: list[bytes | None] = []
         self.raise_not_modified = False
+        self.raise_rate_limited = False
 
     def __call__(self, request, timeout):
         self.urls.append(request.full_url)
         self.headers.append(dict(request.headers))
         self.posted.append(request.data)
+        if self.raise_rate_limited:
+            raise HTTPError(
+                request.full_url, 429, "Too Many Requests", {"Retry-After": "120"}, None
+            )
         if self.raise_not_modified:
             raise HTTPError(request.full_url, 304, "Not Modified", {}, None)
         return FakeResponse(self.body, headers=self.response_headers)
@@ -231,6 +236,62 @@ class DiscoveryTests(unittest.TestCase):
                     session_url="http://example.invalid/change-shopping-location",
                 )
         self.assertEqual(self.opener.urls, [])
+
+    def test_a_category_sweep_is_asked_for_after_the_named_searches(self):
+        with temporary_directory() as directory:
+            captures = self._discover(
+                directory,
+                ["soundbar"],
+                category_url_template="https://example.invalid/search?taxonomy={category}",
+                categories=("Toys & Games", "Home Improvement"),
+            )
+        self.assertEqual(
+            [capture.term for capture in captures],
+            ["soundbar", "Toys & Games", "Home Improvement"],
+        )
+        self.assertIn("taxonomy=Toys+%26+Games", self.opener.urls[1])
+
+    def test_a_sweep_needs_no_search_terms_at_all(self):
+        # The whole point is finding what nobody thought to type.
+        with temporary_directory() as directory:
+            captures = self._discover(
+                directory,
+                [],
+                category_url_template="https://example.invalid/search?taxonomy={category}",
+                categories=("Baby",),
+            )
+        self.assertEqual([capture.term for capture in captures], ["Baby"])
+
+    def test_a_long_list_of_terms_cannot_starve_the_sweep(self):
+        with temporary_directory() as directory:
+            captures = self._discover(
+                directory,
+                ["one", "two", "three"],
+                max_searches_per_run=1,
+                category_url_template="https://example.invalid/search?taxonomy={category}",
+                categories=("Baby", "Electronics", "Toys & Games"),
+                max_categories_per_run=2,
+            )
+        self.assertEqual([capture.term for capture in captures], ["one", "Baby", "Electronics"])
+
+    def test_a_sweep_with_no_configured_address_says_so(self):
+        with temporary_directory() as directory:
+            with self.assertRaisesRegex(RuntimeError, "category_url_template"):
+                self._discover(directory, [], categories=("Baby",))
+
+    def test_being_asked_to_slow_down_says_to_wait_rather_than_retrying(self):
+        self.opener.raise_rate_limited = True
+        with temporary_directory() as directory:
+            with self.assertRaisesRegex(RuntimeError, "429"):
+                self._discover(directory, ["soundbar", "monitor"])
+        # It stopped at the first refusal instead of working through the list.
+        self.assertEqual(len(self.opener.urls), 1)
+
+    def test_the_wait_the_provider_asked_for_is_repeated_back(self):
+        self.opener.raise_rate_limited = True
+        with temporary_directory() as directory:
+            with self.assertRaisesRegex(RuntimeError, "120 seconds"):
+                self._discover(directory, ["soundbar"])
 
     def test_a_disabled_provider_is_never_contacted(self):
         with temporary_directory() as directory:

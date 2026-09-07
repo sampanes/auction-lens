@@ -37,6 +37,7 @@ HIGHEST_PORT = 65535
 
 # Where a search term is written into the search address.
 QUERY_PLACEHOLDER = "{query}"
+CATEGORY_PLACEHOLDER = "{category}"
 
 # A rate is a proportion, so anything above 1 is a misplaced percentage.
 HIGHEST_RATE = Decimal("1")
@@ -119,6 +120,12 @@ class AcquisitionConfig:
     searches: tuple[str, ...] = ()
     search_cache_dir: str = DEFAULT_SEARCH_CACHE_DIR
     max_searches_per_run: int = 8
+    # A sweep answers what a search term cannot: what is here that I would
+    # want but would never have thought to type. Capped separately from the
+    # searches so a long list of terms can never starve it.
+    category_url_template: str = ""
+    categories: tuple[str, ...] = ()
+    max_categories_per_run: int = 12
     seconds_between_searches: Decimal = Decimal("5")
     session_url: str = ""
     session_fields: dict[str, str] = field(default_factory=dict)
@@ -136,6 +143,9 @@ class AcquisitionConfig:
             field_name="development_minimum_interval_seconds",
         )
         require_at_least(self.max_searches_per_run, 1, field_name="max_searches_per_run")
+        require_at_least(
+            self.max_categories_per_run, 1, field_name="max_categories_per_run"
+        )
         require_not_negative(
             self.seconds_between_searches, field_name="seconds_between_searches"
         )
@@ -169,6 +179,10 @@ class InterestRule:
     exclude_terms: tuple[str, ...] = ()
     max_total_cost: Decimal | None = None
     minimum_score: int = 0
+    # How much this interest matters next to the others. It ranks matches
+    # rather than admitting them, so raising it can never smuggle a lot past
+    # a threshold; it only decides what gets read first.
+    weight: Decimal = Decimal("1")
     condition_profile: str = ""
     condition: ConditionPolicy = field(default_factory=ConditionPolicy)
 
@@ -179,6 +193,7 @@ class InterestRule:
             high=HIGHEST_SCORE,
             field_name="minimum_score",
         )
+        require_not_negative(self.weight, field_name="weight")
         if self.max_total_cost is not None:
             require_not_negative(self.max_total_cost, field_name="max_total_cost")
 
@@ -244,6 +259,9 @@ class ScoringConfig:
 
     anomaly_minimum_retail: Decimal = Decimal("100")
     anomaly_maximum_ratio: Decimal = Decimal("0.20")
+    # A steep discount on something nobody asked for is worth less than a fair
+    # price on something wanted, so the catch-all ranks below stated interests.
+    anomaly_weight: Decimal = Decimal("0.4")
     minimum_report_score: int = 70
     ending_soon_minutes: int = 20
     condition_penalties: dict[str, int] = field(default_factory=dict)
@@ -261,6 +279,7 @@ class ScoringConfig:
             self.anomaly_minimum_retail, field_name="anomaly_minimum_retail"
         )
         _require_rate(self.anomaly_maximum_ratio, field_name="anomaly_maximum_ratio")
+        require_not_negative(self.anomaly_weight, field_name="anomaly_weight")
         require_not_negative(self.ending_soon_minutes, field_name="ending_soon_minutes")
 
 
