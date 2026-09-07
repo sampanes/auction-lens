@@ -122,6 +122,57 @@ class InterestScoringTests(unittest.TestCase):
         return next(item for item in candidates if item.category == "wanted")
 
 
+class MinimumRetailTests(unittest.TestCase):
+    """The floor that separates a thing from its accessories."""
+
+    def setUp(self):
+        self.config = example_config()
+        self.listings = example_listings()
+
+    def _rule(self, **overrides):
+        settings = {"name": "guitar", "any_terms": ("guitar",), "minimum_retail": Decimal("60")}
+        settings.update(overrides)
+        return replace(self.config, interests=(InterestRule(**settings),))
+
+    def _matches(self, config, **listing_overrides):
+        listing = replace(self.listings[SOUNDBAR], **listing_overrides)
+        return [item.rule_name for item in evaluate(listing, config) if item.category == "wanted"]
+
+    def test_an_accessory_worth_less_than_the_floor_is_not_the_thing(self):
+        # A guitar cable says "guitar" as loudly as a guitar does.
+        self.assertEqual(
+            self._matches(self._rule(), title="Guitar Cable 10ft", estimated_retail=Decimal("15")),
+            [],
+        )
+
+    def test_the_thing_itself_still_matches(self):
+        self.assertEqual(
+            self._matches(
+                self._rule(), title="Fender Guitar", estimated_retail=Decimal("300")
+            ),
+            ["guitar"],
+        )
+
+    def test_a_floor_nobody_can_check_is_not_cleared(self):
+        self.assertEqual(
+            self._matches(self._rule(), title="Some Guitar", estimated_retail=None), []
+        )
+
+    def test_a_rule_naming_no_floor_still_takes_anything(self):
+        self.assertEqual(
+            self._matches(
+                self._rule(minimum_retail=None),
+                title="Guitar Cable 10ft",
+                estimated_retail=Decimal("15"),
+            ),
+            ["guitar"],
+        )
+
+    def test_a_negative_floor_is_refused(self):
+        with self.assertRaisesRegex(ValueError, "minimum_retail"):
+            InterestRule(name="x", minimum_retail=Decimal("-1"))
+
+
 class InterestWeightTests(unittest.TestCase):
     """Weight decides what is read first, never what is allowed through."""
 

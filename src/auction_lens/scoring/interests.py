@@ -59,7 +59,7 @@ def _score_rule(
 
 
 def matches_terms(listing: Listing, total_cost: Decimal, rule: InterestRule) -> bool:
-    """Apply one rule's term filters and its cost ceiling."""
+    """Apply one rule's term filters, its value floor, and its cost ceiling."""
     searchable = _searchable_text(listing)
     if rule.any_terms and not any(term in searchable for term in rule.any_terms):
         return False
@@ -67,7 +67,22 @@ def matches_terms(listing: Listing, total_cost: Decimal, rule: InterestRule) -> 
         return False
     if any(term in searchable for term in rule.exclude_terms):
         return False
+    if not _worth_at_least(listing, rule.minimum_retail):
+        return False
     return rule.max_total_cost is None or total_cost <= rule.max_total_cost
+
+
+def _worth_at_least(listing: Listing, floor: Decimal | None) -> bool:
+    """Whether the lot is stated to be worth what the rule asked for.
+
+    A floor nobody can check is not cleared: when a rule names one and the
+    listing states no retail at all, the claim is unproven and the rule declines
+    it rather than assuming in its favour.
+    """
+    if floor is None:
+        return True
+    retail = listing.estimated_retail
+    return retail is not None and retail >= floor
 
 
 def _searchable_text(listing: Listing) -> str:

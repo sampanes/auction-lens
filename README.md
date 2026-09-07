@@ -177,6 +177,11 @@ condition policy, allowing one known-broken listing to fail a `purpose = "use"`
 rule while matching a carefully constrained `purpose = "salvage"` rule. Broad
 anomaly discovery has a separate condition policy as well.
 
+Each rule also has a `minimum_retail`, the floor that separates a thing from its
+accessories: a guitar cable says "guitar" as loudly as a guitar does, and only
+the stated value tells them apart. It pairs with `max_total_cost` -- what a lot
+must be worth, and what it may cost.
+
 Each rule also has a `weight`, defaulting to `1`. It decides reading order, not
 eligibility: a wanted item at a fair price ranks above something you never asked
 for at a steep discount. Weight is deliberately kept out of every threshold, so
