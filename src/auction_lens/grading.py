@@ -11,6 +11,22 @@ parts are missing" is a risk a bidder should see rather than a blank space. And
 it keeps the axis beside the answer, so a report can say which question a red
 tag is answering.
 
+The polarity mirrors the provider and is not ours to improve. Their page shows
+two pill colours and calls a used lot red, so this table does too. That looks
+miscalibrated -- most lots in a returns auction are used, untested, or want
+assembling, so most tags come out red and the colour appears to say little --
+and softening them to amber is a tempting change that has been tried and
+reverted. It is wrong because the operator reads these tags beside the page
+itself: a report that disagrees with the listing it links to is worse than a
+report that is merely emphatic. A red the operator does not mind is theirs to
+ignore, exactly as they ignore it in the app.
+
+Amber is the one addition, and only where the provider shows nothing at all: an
+axis it graded but could not answer. That is not a disagreement with the page,
+it is the blank space on it given a name.
+
+RecordedSampleTests guards this against a well-meaning correction.
+
 The vocabulary was read off real listings on 2026-09-06; see
 docs/DATA_ACQUISITION.md for how, and fixtures/nellis/product-grade-samples.json
 for the samples.

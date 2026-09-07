@@ -77,7 +77,14 @@ class RatingTests(unittest.TestCase):
 
 
 class RecordedSampleTests(unittest.TestCase):
-    """The vocabulary recorded from real listings still reads the way it did."""
+    """The tags still say what the provider's own page says.
+
+    This is the guard on a deliberate decision, not a snapshot for its own sake.
+    The polarity looks harsh -- a used lot is red -- and softening it is a
+    tempting change. It is the wrong change: the operator reads these tags
+    beside the listing they link to, so disagreeing with the page is worse than
+    agreeing with it emphatically. See the note in grading.py.
+    """
 
     def test_every_recorded_sample_maps_to_the_colours_that_were_observed(self):
         expected = {
