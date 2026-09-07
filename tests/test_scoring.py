@@ -136,12 +136,15 @@ class MinimumRetailTests(unittest.TestCase):
 
     def _matches(self, config, **listing_overrides):
         listing = replace(self.listings[SOUNDBAR], **listing_overrides)
-        return [item.rule_name for item in evaluate(listing, config) if item.category == "wanted"]
+        scored = evaluate(listing, config)
+        return [item.rule_name for item in scored if item.category == "wanted"]
 
     def test_an_accessory_worth_less_than_the_floor_is_not_the_thing(self):
         # A guitar cable says "guitar" as loudly as a guitar does.
         self.assertEqual(
-            self._matches(self._rule(), title="Guitar Cable 10ft", estimated_retail=Decimal("15")),
+            self._matches(
+                self._rule(), title="Guitar Cable 10ft", estimated_retail=Decimal("15")
+            ),
             [],
         )
 
