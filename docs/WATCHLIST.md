@@ -165,12 +165,12 @@ readable is reported against the entry it broke, as in
 
 Say what you think of a lot. Only the flags you pass are changed:
 
-```powershell
-.\.venv\Scripts\auction-lens.exe watch `
-  --source nellis `
-  --listing-id synthetic-001 `
-  --verdict hunting `
-  --estimate 60 `
+```cmd
+.venv\Scripts\auction-lens.exe watch ^
+  --source nellis ^
+  --listing-id synthetic-001 ^
+  --verdict hunting ^
+  --estimate 60 ^
   --note "worth it under 40 all in"
 ```
 
@@ -180,9 +180,9 @@ plain text when it is redirected or piped, so a saved list never carries escape
 sequences. The colour word is always printed either way: colour is how a line is
 skimmed, never the only place the news is.
 
-```powershell
-.\.venv\Scripts\auction-lens.exe watchlist
-.\.venv\Scripts\auction-lens.exe watchlist --verdict hunting
+```cmd
+.venv\Scripts\auction-lens.exe watchlist
+.venv\Scripts\auction-lens.exe watchlist --verdict hunting
 ```
 
 ```
@@ -205,8 +205,8 @@ before bidding again.
 
 Stop following a lot entirely, forgetting its trail:
 
-```powershell
-.\.venv\Scripts\auction-lens.exe watch --source nellis --listing-id synthetic-001 --verdict drop
+```cmd
+.venv\Scripts\auction-lens.exe watch --source nellis --listing-id synthetic-001 --verdict drop
 ```
 
 ## Emailing your flags
@@ -215,10 +215,10 @@ Every reported lot begins as `watching`; `hunting` is the explicit flag that
 means you are actively chasing it. Send only those flags to the email account
 already configured for reports:
 
-```powershell
-.\.venv\Scripts\auction-lens.exe watchlist `
-  --verdict hunting `
-  --config config\local.toml `
+```cmd
+.venv\Scripts\auction-lens.exe watchlist ^
+  --verdict hunting ^
+  --config config\local.toml ^
   --email
 ```
 

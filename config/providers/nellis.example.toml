@@ -14,7 +14,18 @@ mode = "authorized_http"
 #   searches = ["soundbar", "monitor"]   # optional; defaults to the
 #                                          # any_terms of every interest
 #   max_searches_per_run = 8
-#   seconds_between_searches = 5
+#   seconds_between_searches = 10
+#
+# A category sweep finds what a search term cannot: a lot whose title is
+# misspelled, or a thing nobody thought to type. A live deployment sets:
+#   category_url_template = "https://provider.example/search?query=&Category={category}"
+#   categories = ["Electronics", "Home Improvement"]
+#   max_categories_per_run = 12
+#
+# Pacing is measured, not guessed: this provider refuses a burst at around ten
+# requests, so ten seconds between them is the floor. See the rate measurement
+# in docs/DATA_ACQUISITION.md. Every category raises the request count by one,
+# so the cap and the pacing are a single decision.
 
 [economics]
 # Listing-level values override this event-dependent fallback.

@@ -22,12 +22,66 @@ from ..storage import (
     WatchlistStore,
 )
 from ..valuation import ValuationEngine
-from .parser import CLEAR, DROP
+from .parser import CLEAR, DROP, EXAMPLE_CONFIG, PROGRAM
 
 PAGE_SUFFIX = ".html"
 LISTINGS_KEY = "listings"
 
 SUCCESS = 0
+
+
+ENV_TEMPLATE = """# Local settings for Auction Lens. Ignored by git; never commit it.
+
+# Required before any request. The provider has to be able to tell who is
+# asking, so this must contain a real contact address you read.
+AUCTION_LENS_HTTP_USER_AGENT=AuctionLens/1.0 (contact: you@example.com)
+
+# Only needed if [reports.email] enabled = true in your configuration.
+AUCTION_LENS_SMTP_HOST=
+AUCTION_LENS_SMTP_USERNAME=
+AUCTION_LENS_SMTP_PASSWORD=
+AUCTION_LENS_EMAIL_FROM=
+AUCTION_LENS_EMAIL_TO=
+"""
+
+
+def setup(args: argparse.Namespace) -> int:
+    """Create the two ignored files a fresh clone cannot carry, and say what to edit.
+
+    Both are deliberately absent from git: one holds what a person wants, the
+    other holds their secrets. A new machine therefore starts unable to run, and
+    the only cure is a command that says so and fixes it.
+    """
+    config, env_file = Path(args.config), Path(args.env_file)
+    print(_created(config, Path(EXAMPLE_CONFIG).read_text(encoding="utf-8")))
+    print(_created(env_file, ENV_TEMPLATE))
+    print()
+    print("Before the first run, edit:")
+    print(f"  {env_file}: put a real contact address in AUCTION_LENS_HTTP_USER_AGENT")
+    print(f"  {config}: [locations] allowed, and the [[interests]] you actually want")
+    print()
+    print(f"Then: {PROGRAM} daily")
+    return SUCCESS
+
+
+def _created(path: Path, contents: str) -> str:
+    """Write a starting file, and never overwrite one somebody has edited."""
+    if path.exists():
+        return f"[OK] {path} already exists, left alone"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(contents, encoding="utf-8")
+    return f"[OK] wrote {path}"
+
+
+def daily(args: argparse.Namespace) -> int:
+    """Find lots, score them, and report what matters: the whole day in one word.
+
+    Discovery and analysis stay separate commands because each is useful alone
+    -- a parser can be corrected and re-run without asking the provider again --
+    but nobody wants to type both every morning.
+    """
+    discover(args)
+    return run(argparse.Namespace(**{**vars(args), "input": args.output}))
 
 
 def run(args: argparse.Namespace) -> int:
@@ -186,8 +240,6 @@ def watchlist(args: argparse.Namespace) -> int:
         end="",
     )
     if args.email:
-        if not args.config:
-            raise RuntimeError("--config is required when emailing a watchlist")
         config = load_config(args.config)
         if not config.email.enabled:
             raise RuntimeError("email reporting is disabled in the selected configuration")

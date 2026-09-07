@@ -21,34 +21,62 @@ canonical JSON or CSV, live HTTP sources, or a combination of both.
 - Remembers observations and price changes in SQLite.
 - Renders plain-text and HTML reports and can send them over SMTP.
 
-## Quick start
+## Start here
 
-Python 3.11 or newer is required. The application uses only the standard library;
-on Windows, installation also supplies the IANA time-zone database used for
-provider-local request limits.
+Python 3.11 or newer. The application uses only the standard library; on Windows,
+installation also supplies the IANA time-zone database used for provider-local
+request limits.
 
-```powershell
+```cmd
 python -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -e .
-.\.venv\Scripts\auction-lens.exe run `
-  --input fixtures\synthetic\listings.json `
-  --config config\providers\nellis.example.toml `
-  --database data\auction-lens.sqlite3
+.venv\Scripts\python.exe -m pip install -e .
+.venv\Scripts\auction-lens.exe setup
 ```
 
-The bundled records are synthetic and use `example.invalid` URLs. They exercise
-the Nellis-shaped configuration without accessing Nellis Auction.
+`setup` writes the two files git cannot carry, because one holds what you want
+and the other holds your secrets:
 
-A live deployment can fetch configured pages with:
+| file | what it is | what you must edit |
+| --- | --- | --- |
+| `.env` | ignored settings and credentials | `AUCTION_LENS_HTTP_USER_AGENT` must contain a real contact address. Nothing will make a request without it. |
+| `config\local.toml` | ignored personal configuration | `[locations] allowed`, and the `[[interests]]` describing what you actually want |
 
-```powershell
-.\.venv\Scripts\auction-lens.exe fetch --config config\local.toml
+Neither is ever overwritten, so `setup` is safe to re-run.
+
+Then one command does the day's work -- find lots, score them, report what
+matters:
+
+```cmd
+.venv\Scripts\auction-lens.exe daily
 ```
 
-The fetcher uses an identifiable User-Agent, records attempts before connecting,
-and caches responses atomically. Production mode caps requests per provider-local
-day with a configurable interval. Development mode permits repeated requests with
-an optional spacing delay.
+Add `--email` to send it. Every command defaults to `config\local.toml`, so the
+`--config` flag is only needed when pointing somewhere else.
+
+To try the scoring without contacting any provider, the bundled records are
+synthetic and use `example.invalid` addresses:
+
+```cmd
+.venv\Scripts\auction-lens.exe run ^
+  --input fixtures\synthetic\listings.json ^
+  --config config\providers\nellis.example.toml
+```
+
+### The other commands
+
+`daily` is `discover` followed by `run`. Both remain separate because each is
+useful alone -- a parser can be corrected and re-run without asking the provider
+again -- but neither has to be typed day to day.
+
+| command | when you want it |
+| --- | --- |
+| `setup` | first run on a new machine |
+| `daily` | every day: find, score, report |
+| `discover` | find lots and write them, without scoring |
+| `fetch` / `pull` | save one page; read saved pages back |
+| `run` | score a listing file you already have |
+| `watch` / `watchlist` | record what you think of a lot; read what you are following |
+| `logistics` | record how a bulky lot would be collected |
 
 ## Email reports
 
@@ -60,8 +88,8 @@ By default the CLI loads non-empty values from an ignored `.env` file in the
 working directory. Existing process environment variables take precedence. Gmail
 accounts normally require an app password rather than the ordinary account password.
 
-```powershell
-.\.venv\Scripts\auction-lens.exe run --input listings.json --config config\local.toml --email
+```cmd
+.venv\Scripts\auction-lens.exe run --input listings.json --config config\local.toml --email
 ```
 
 Run that command from Windows Task Scheduler, cron, or another scheduler to send
@@ -76,9 +104,9 @@ an ignored `data/inbox/listings.json`, uses the ignored personal configuration a
 
 One command asks the provider's search and writes listings ready to score:
 
-```powershell
-.\.venv\Scripts\auction-lens.exe discover `
-  --config config\local.toml `
+```cmd
+.venv\Scripts\auction-lens.exe discover ^
+  --config config\local.toml ^
   --output data\inbox\listings.json
 ```
 
@@ -123,10 +151,10 @@ reads saved pages into the canonical file `run` analyses. Keeping them apart
 means a parser can be corrected and re-run over pages already on disk without
 asking the provider again.
 
-```powershell
-.\.venv\Scripts\auction-lens.exe pull `
-  --config config\local.toml `
-  --input private\cache\pages `
+```cmd
+.venv\Scripts\auction-lens.exe pull ^
+  --config config\local.toml ^
+  --input private\cache\pages ^
   --output data\inbox\listings.json
 ```
 
@@ -208,12 +236,12 @@ blanket rejection.
 
 Save a decision for one listing in the same ignored SQLite database:
 
-```powershell
-.\.venv\Scripts\auction-lens.exe logistics `
-  --source provider-id `
-  --listing-id stable-id `
-  --status feasible `
-  --added-cost 25 `
+```cmd
+.venv\Scripts\auction-lens.exe logistics ^
+  --source provider-id ^
+  --listing-id stable-id ^
+  --status feasible ^
+  --added-cost 25 ^
   --note "Handling arranged"
 ```
 
@@ -236,15 +264,15 @@ manufacturer's stock shot.
 On top of that you record what *you* think: your own estimate, a verdict, and a
 note. A run never overwrites any of it.
 
-```powershell
-.\.venv\Scripts\auction-lens.exe watch `
-  --source nellis `
-  --listing-id synthetic-001 `
-  --verdict hunting `
-  --estimate 60 `
+```cmd
+.venv\Scripts\auction-lens.exe watch ^
+  --source nellis ^
+  --listing-id synthetic-001 ^
+  --verdict hunting ^
+  --estimate 60 ^
   --note "worth it under 40 all in"
 
-.\.venv\Scripts\auction-lens.exe watchlist
+.venv\Scripts\auction-lens.exe watchlist
 ```
 
 The list prints keenest first, with headroom -- your estimate minus the latest
@@ -254,10 +282,10 @@ ways a condition grade is easy to read backwards.
 
 Email only the lots you explicitly flagged as `hunting`:
 
-```powershell
-.\.venv\Scripts\auction-lens.exe watchlist `
-  --verdict hunting `
-  --config config\local.toml `
+```cmd
+.venv\Scripts\auction-lens.exe watchlist ^
+  --verdict hunting ^
+  --config config\local.toml ^
   --email
 ```
 
@@ -282,8 +310,8 @@ suite touches the network, an SMTP server, or a real provider.
 
 Install the development tools once, then run the check wrapper:
 
-```powershell
-.\.venv\Scripts\python.exe -m pip install -e ".[dev]"
+```cmd
+.venv\Scripts\python.exe -m pip install -e ".[dev]"
 scripts\test.cmd
 ```
 
