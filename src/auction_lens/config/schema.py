@@ -178,6 +178,10 @@ class InterestRule:
     all_terms: tuple[str, ...] = ()
     exclude_terms: tuple[str, ...] = ()
     max_total_cost: Decimal | None = None
+    # The floor that separates a thing from its accessories. A guitar cable
+    # says "guitar" as loudly as a guitar does, and only the value tells them
+    # apart. Paired with max_total_cost: what it is worth, what it may cost.
+    minimum_retail: Decimal | None = None
     minimum_score: int = 0
     # How much this interest matters next to the others. It ranks matches
     # rather than admitting them, so raising it can never smuggle a lot past
@@ -196,6 +200,8 @@ class InterestRule:
         require_not_negative(self.weight, field_name="weight")
         if self.max_total_cost is not None:
             require_not_negative(self.max_total_cost, field_name="max_total_cost")
+        if self.minimum_retail is not None:
+            require_not_negative(self.minimum_retail, field_name="minimum_retail")
 
 
 @dataclass(frozen=True)

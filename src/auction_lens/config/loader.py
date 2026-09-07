@@ -141,6 +141,7 @@ def _interest(item: Section, profiles: Section) -> InterestRule:
             all_terms=item.lowercase_texts("all_terms"),
             exclude_terms=item.lowercase_texts("exclude_terms"),
             max_total_cost=item.optional_decimal("max_total_cost"),
+            minimum_retail=item.optional_decimal("minimum_retail"),
             minimum_score=item.integer("minimum_score", 0),
             weight=item.decimal("weight", "1"),
             condition_profile=item.text("condition_profile"),
