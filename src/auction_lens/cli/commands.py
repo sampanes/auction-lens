@@ -14,7 +14,13 @@ from ..file_io import read_json, write_json_atomically
 from ..ingest import load_listings, read_saved_page, read_search_page, unique_lots
 from ..models import LogisticsDecision, LogisticsStatus, WatchedItem
 from ..pipeline import analyze_listings
-from ..reporting import render_text, render_watchlist, send_email, send_watchlist_email
+from ..reporting import (
+    render_text,
+    render_watchlist,
+    send_email,
+    send_watchlist_email,
+    send_webhook,
+)
 from ..storage import (
     Database,
     LogisticsDecisionStore,
@@ -42,6 +48,10 @@ AUCTION_LENS_SMTP_USERNAME=
 AUCTION_LENS_SMTP_PASSWORD=
 AUCTION_LENS_EMAIL_FROM=
 AUCTION_LENS_EMAIL_TO=
+
+# Only needed if [reports.webhook] enabled = true. Treat it as a password:
+# anyone holding this address can post into the channel.
+AUCTION_LENS_WEBHOOK_URL=
 """
 
 
@@ -107,6 +117,11 @@ def run(args: argparse.Namespace) -> int:
         if not config.email.enabled:
             raise RuntimeError("email reporting is disabled in the selected configuration")
         send_email(result.candidates, config.email)
+    if args.webhook:
+        if not config.webhook.enabled:
+            raise RuntimeError("webhook reporting is disabled in the selected configuration")
+        send_webhook(result.candidates, config.webhook)
+        print(f"Posted {len(result.candidates)} match(es) to the webhook.")
     return SUCCESS
 
 

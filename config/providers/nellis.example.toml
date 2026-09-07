@@ -121,6 +121,15 @@ adapter = "reference"
 categories = ["guitar", "music gear"]
 url_template = "https://example.invalid/music-price-guide?q={query}"
 
+# A webhook is the errand email is not: somebody ran the command and wants the
+# answer on their phone now. The address is a secret, so only the name of the
+# variable holding it appears here.
+[reports.webhook]
+enabled = false
+url_env = "AUCTION_LENS_WEBHOOK_URL"
+max_items = 10
+username = "Auction Lens"
+
 [reports.email]
 enabled = false
 subject = "Auction Lens: {{ match_count }} promising listings"

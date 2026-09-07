@@ -38,7 +38,7 @@ and the other holds your secrets:
 
 | file | what it is | what you must edit |
 | --- | --- | --- |
-| `.env` | ignored settings and credentials | `AUCTION_LENS_HTTP_USER_AGENT` must contain a real contact address. Nothing will make a request without it. |
+| `.env` | ignored settings and credentials | `AUCTION_LENS_HTTP_USER_AGENT` must contain a real contact address. Nothing will make a request without it. Mail and webhook secrets live here too, never in the config. |
 | `config\local.toml` | ignored personal configuration | `[locations] allowed`, and the `[[interests]]` describing what you actually want |
 
 Neither is ever overwritten, so `setup` is safe to re-run.
@@ -77,6 +77,32 @@ again -- but neither has to be typed day to day.
 | `run` | score a listing file you already have |
 | `watch` / `watchlist` | record what you think of a lot; read what you are following |
 | `logistics` | record how a bulky lot would be collected |
+
+## Chat webhook
+
+Email is the scheduled digest; it arrives whether or not anybody asked. A
+webhook is the other errand -- you ran the command and want the answer on your
+phone within seconds -- so it posts one message rather than a document.
+
+```cmd
+.venv\Scripts\auction-lens.exe daily --webhook
+```
+
+Turn it on with `[reports.webhook] enabled = true` and put the address in
+`AUCTION_LENS_WEBHOOK_URL`. The address is a secret and is read only from the
+environment, exactly as the mail password is: anyone holding it can post into
+the channel, so it must never reach the configuration file or a commit.
+
+Each lot becomes a card titled with the listing and linked to it. A provider
+that publishes app links serves that same address into its own app on a phone,
+so tapping a card opens the listing where you would want it and no second,
+app-flavoured address is needed. The card is coloured by the provider's own
+worst condition tag, and carries cost, stated retail and the share of it, the
+branch, the conditions, and which rule matched.
+
+`max_items` caps how many cards a message carries. The service accepts at most
+ten embeds and rejects the whole message if given more, so ten is a ceiling
+rather than a preference.
 
 ## Email reports
 
