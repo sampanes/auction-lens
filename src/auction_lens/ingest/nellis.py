@@ -117,6 +117,20 @@ def read_search_page(html: str, *, source: str, page_url: str) -> list[dict[str,
     ]
 
 
+def read_saved_page(html: str, *, source: str, page_url: str = "") -> list[dict[str, Any]]:
+    """Read one saved page, whichever kind it is, into canonical rows.
+
+    Discovery saves search pages and fetching saves product pages, and both land
+    in the same cache. Which one a file holds is stated in the payload itself,
+    so a reader can tell rather than having to be told. Returning a list either
+    way means a caller never has to know which it got.
+    """
+    routes = _payload(html).get("loaderData") or {}
+    if SEARCH_ROUTE in routes:
+        return read_search_page(html, source=source, page_url=page_url)
+    return [read_product_page(html, source=source)]
+
+
 def _product_addresses(html: str, page_url: str) -> dict[str, str]:
     """Match each result to the address the page itself links it at."""
     return {

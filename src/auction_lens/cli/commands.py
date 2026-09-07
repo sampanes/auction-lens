@@ -7,11 +7,11 @@ import sys
 from dataclasses import replace
 from pathlib import Path
 
-from ..acquisition import discover_searches, fetch_authorized_page
+from ..acquisition import METADATA_SUFFIX, discover_searches, fetch_authorized_page
 from ..config import AppConfig, load_config
 from ..fields import parse_money
-from ..file_io import write_json_atomically
-from ..ingest import load_listings, read_product_page, read_search_page
+from ..file_io import read_json, write_json_atomically
+from ..ingest import load_listings, read_saved_page, read_search_page, unique_lots
 from ..models import LogisticsDecision, LogisticsStatus, WatchedItem
 from ..pipeline import analyze_listings
 from ..reporting import render_text, render_watchlist, send_email, send_watchlist_email
@@ -77,21 +77,20 @@ def discover(args: argparse.Namespace) -> int:
         config.provider, config.acquisition, _search_terms(config, args.search)
     )
 
-    rows: dict[str, dict] = {}
+    found = []
     for capture in captures:
         listed = read_search_page(
             capture.path.read_text(encoding="utf-8", errors="replace"),
             source=config.provider.provider_id,
             page_url=capture.url,
         )
-        # One lot can answer two searches; the first sighting is the same lot.
-        for row in listed:
-            rows.setdefault(row["inventory_id"] or row["listing_id"], row)
+        found.extend(listed)
         state = "unchanged" if capture.reused_cache else "fetched"
         print(f"  {capture.term}: {len(listed)} lot(s) ({state})")
 
-    write_json_atomically(Path(args.output), {LISTINGS_KEY: list(rows.values())})
-    print(f"Found {len(rows)} lot(s) from {len(captures)} search(es) into {args.output}.")
+    rows = unique_lots(found)
+    write_json_atomically(Path(args.output), {LISTINGS_KEY: rows})
+    print(f"Found {len(rows)} lot(s) from {len(captures)} page(s) into {args.output}.")
     return SUCCESS
 
 
@@ -116,18 +115,20 @@ def pull(args: argparse.Namespace) -> int:
     rows, failures = [], []
     for page in pages:
         try:
-            rows.append(
-                read_product_page(
+            rows.extend(
+                read_saved_page(
                     page.read_text(encoding="utf-8", errors="replace"),
                     source=config.provider.provider_id,
+                    page_url=_saved_page_url(page),
                 )
             )
         except ValueError as error:
             # One page the provider changed must not lose the other fifty.
             failures.append(f"{page.name}: {error}")
 
-    write_json_atomically(Path(args.output), {LISTINGS_KEY: rows})
-    print(f"Read {len(rows)} of {len(pages)} saved page(s) into {args.output}.")
+    lots = unique_lots(rows)
+    write_json_atomically(Path(args.output), {LISTINGS_KEY: lots})
+    print(f"Read {len(lots)} lot(s) from {len(pages)} saved page(s) into {args.output}.")
     for failure in failures:
         print(f"  [!] {failure}")
     return SUCCESS
@@ -209,6 +210,16 @@ def _stated_opinions(args: argparse.Namespace) -> dict:
     if args.note is not None:
         changes["note"] = args.note.strip()
     return changes
+
+
+def _saved_page_url(page: Path) -> str:
+    """The address a saved page came from, recorded beside it when it was cached.
+
+    A search page describes many lots and links each one relatively, so the
+    address it was fetched from is what turns those links back into real ones.
+    """
+    metadata = read_json(page.with_suffix(page.suffix + METADATA_SUFFIX), default={})
+    return str(metadata.get("source_url", ""))
 
 
 def _saved_pages(source: Path) -> list[Path]:

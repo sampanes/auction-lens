@@ -186,6 +186,20 @@ what turns a polite client into a blocked one.
 
 ### Reading a saved page
 
+Both kinds of saved page read back offline. `read_saved_page` looks at which
+route the payload carries and dispatches accordingly, so a cached search page
+yields all its lots and a cached product page yields its one. This matters
+because a run that is cut short partway -- by a 429, say -- has already written
+real pages to the cache, and losing them would mean asking the provider for
+them all over again.
+
+Whole pages of lots overlap: one lot answers two searches, or appears in a
+search and again in a category sweep. `unique_lots` keeps the first sighting,
+keyed on the physical item where the provider names one, so that both `discover`
+and `pull` reach the same answer about what counts as the same lot.
+
+### Reading a saved page: details
+
 The data is not plain JSON in the HTML. It arrives in a single streamed chunk at
 the bottom of the response, written as a flat array of interned values plus
 indexes describing the object graph: a scalar is itself, an array is a list of
