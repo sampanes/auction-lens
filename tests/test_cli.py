@@ -170,8 +170,31 @@ class PullCommandTests(unittest.TestCase):
             )
             payload = json.loads(output.read_text(encoding="utf-8"))
 
-        self.assertIn("Read 1 of 1 saved page(s)", message)
+        self.assertIn("Read 1 lot(s) from 1 saved page(s)", message)
         self.assertEqual(payload["listings"][0]["grade"]["condition"], "Used")
+
+    def test_a_saved_search_page_yields_every_lot_it_lists(self):
+        # Discovery caches search pages; if only product pages could be read
+        # back, a run cut short would throw away everything it had fetched.
+        with temporary_directory() as directory:
+            page = directory / "search.html"
+            page.write_text(
+                (ROOT / "fixtures" / "nellis" / "search-page.html").read_text(encoding="utf-8"),
+                encoding="utf-8",
+            )
+            (directory / "search.html.metadata.json").write_text(
+                json.dumps({"source_url": "https://example.invalid/search?query=soundbar"}),
+                encoding="utf-8",
+            )
+            output = directory / "listings.json"
+            message = run_cli(
+                ["pull", "--config", str(EXAMPLE_CONFIG), "--input", str(directory),
+                 "--output", str(output)]
+            )
+            rows = json.loads(output.read_text(encoding="utf-8"))["listings"]
+
+        self.assertIn("Read 2 lot(s) from 1 saved page(s)", message)
+        self.assertEqual(rows[0]["url"], "https://example.invalid/p/Example-Sound-Bar/900000101")
 
     def test_a_page_the_provider_has_changed_is_named_and_the_batch_survives(self):
         with temporary_directory() as directory:
@@ -188,7 +211,7 @@ class PullCommandTests(unittest.TestCase):
             )
             payload = json.loads(output.read_text(encoding="utf-8"))
 
-        self.assertIn("Read 1 of 2 saved page(s)", message)
+        self.assertIn("Read 1 lot(s) from 2 saved page(s)", message)
         self.assertIn("changed.html", message)
         self.assertEqual(len(payload["listings"]), 1)
 

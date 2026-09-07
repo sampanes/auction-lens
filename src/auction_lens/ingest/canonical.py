@@ -9,12 +9,27 @@ from __future__ import annotations
 
 import csv
 import json
+from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
 from ..models import Listing
 
 LISTINGS_KEY = "listings"
+
+
+def unique_lots(rows: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Keep each lot once, however many pages happened to list it.
+
+    A search page and a category sweep both describe whole pages of lots, so one
+    lot routinely appears in two of them. The second sighting is the same lot as
+    the first, and identity is the physical item where the provider names it, so
+    that a lot relisted after failing to sell is still recognised as itself.
+    """
+    seen: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        seen.setdefault(str(row.get("inventory_id") or row["listing_id"]), row)
+    return list(seen.values())
 
 # Excel, Notepad, and PowerShell all write a byte-order mark ahead of the first
 # character. Reading as utf-8-sig accepts a file with or without one.
