@@ -1,25 +1,21 @@
-# Scheduled daily run: email today's findings, then the lots marked hunting.
+# Scheduled daily run: discover and email today's findings, then email hunting lots.
 # Register with Windows Task Scheduler; it exits non-zero if anything fails.
 
 $ErrorActionPreference = "Stop"
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $python = Join-Path $repoRoot ".venv\Scripts\python.exe"
-$inputPath = Join-Path $repoRoot "data\inbox\listings.json"
 
 if (-not (Test-Path -LiteralPath $python)) {
     throw "Virtual environment not found. Follow the README quick start first."
 }
-if (-not (Test-Path -LiteralPath $inputPath)) {
-    throw "No canonical input found at $inputPath"
-}
-
 Push-Location $repoRoot
 try {
-    & $python -m auction_lens run `
-        --input $inputPath `
+    & $python -m auction_lens daily `
         --config "config\local.toml" `
+        --output "data\inbox\listings.json" `
         --database "data\auction-lens.sqlite3" `
+        --watchlist "private\watchlist.json" `
         --env-file ".env" `
         --email
     if ($LASTEXITCODE -ne 0) {
