@@ -18,6 +18,7 @@ from .schema import (
     ScoringConfig,
     ValuationConfig,
     ValuationSourceConfig,
+    WebhookConfig,
 )
 from .toml_reader import Section, in_section
 
@@ -28,6 +29,7 @@ __all__ = [
     "ConditionPolicy",
     "EconomicsConfig",
     "EmailConfig",
+    "WebhookConfig",
     "EmailSecurity",
     "InterestRule",
     "LargeItemPolicy",

@@ -87,6 +87,9 @@ def _add_daily(subparsers) -> None:
         help="search term; repeatable. Defaults to the configured or wanted terms",
     )
     daily.add_argument("--email", action="store_true", help="send the report as well")
+    daily.add_argument(
+        "--webhook", action="store_true", help="post the report to chat as well"
+    )
 
 
 def _add_run(subparsers) -> None:
@@ -106,6 +109,9 @@ def _add_run(subparsers) -> None:
     )
     run.add_argument(
         "--email", action="store_true", help="send the report using configured SMTP settings"
+    )
+    run.add_argument(
+        "--webhook", action="store_true", help="post the report to the configured chat webhook"
     )
 
 

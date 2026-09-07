@@ -32,6 +32,7 @@ from .schema import (
     ScoringConfig,
     ValuationConfig,
     ValuationSourceConfig,
+    WebhookConfig,
 )
 from .toml_reader import Section, in_section
 
@@ -57,6 +58,7 @@ def load_config(path: str | Path) -> AppConfig:
         valuation=_valuation(root.table("valuation")),
         logistics=_logistics(root.table("logistics")),
         email=_email(root.table("reports").table("email")),
+        webhook=_webhook(root.table("reports").table("webhook")),
         locations=_locations(root.table("locations")),
     )
 
@@ -191,6 +193,16 @@ def _logistics(section: Section) -> LogisticsConfig:
             large_item_policy=section.text("large_item_policy", LargeItemPolicy.ASK),
             manual_handling_limit_lb=section.decimal("manual_handling_limit_lb", 75),
             large_dimension_threshold_in=section.decimal("large_dimension_threshold_in", 60),
+        )
+
+
+def _webhook(section: Section) -> WebhookConfig:
+    with in_section(section):
+        return WebhookConfig(
+            enabled=section.flag("enabled", False),
+            url_env=section.text("url_env", "AUCTION_LENS_WEBHOOK_URL"),
+            max_items=section.integer("max_items", 10),
+            username=section.text("username", "Auction Lens"),
         )
 
 

@@ -309,6 +309,24 @@ class EmailConfig:
 
 
 @dataclass(frozen=True)
+class WebhookConfig:
+    """Where a report is posted for somebody waiting on it, and what it may say.
+
+    The address itself is a secret -- anyone holding it can post into the
+    channel -- so only the name of the variable holding it lives here, exactly
+    as the email credentials do.
+    """
+
+    enabled: bool = False
+    url_env: str = "AUCTION_LENS_WEBHOOK_URL"
+    max_items: int = 10
+    username: str = "Auction Lens"
+
+    def __post_init__(self) -> None:
+        require_at_least(self.max_items, 1, field_name="max_items")
+
+
+@dataclass(frozen=True)
 class LocationPolicy:
     """Which pickup locations are worth collecting from, and which must earn it.
 
@@ -362,6 +380,7 @@ class AppConfig:
     valuation: ValuationConfig
     logistics: LogisticsConfig
     email: EmailConfig
+    webhook: WebhookConfig = field(default_factory=WebhookConfig)
     locations: LocationPolicy = field(default_factory=LocationPolicy)
 
 
