@@ -17,6 +17,7 @@ CHECKED_SUFFIXES = {
     ".py",
     ".toml",
     ".md",
+    ".cmd",
     ".ps1",
     ".yml",
     ".yaml",
