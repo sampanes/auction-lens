@@ -129,23 +129,23 @@ rather than a preference.
 
 ## Email reports
 
-For Gmail, use the guided setup from the repository root:
+The command that prepares a new machine also asks for the mail settings:
 
 ```cmd
-scripts\setup-gmail.cmd
+.venv\Scripts\auction-lens.exe setup --email
 ```
 
-The CMD wrapper links to Google's App Password page, then uses PowerShell to read
-the password without displaying it, remove Google's formatting spaces, fill the
-existing ignored `.env`, enable email reporting, and validate the result without
-printing secrets.
-See the complete [Gmail setup and delivery test](docs/GMAIL.md), including the
-equivalent manual steps and troubleshooting.
+It asks for the host, the sending address, the recipient, and the password,
+which is never echoed. The five values go into the ignored `.env`, leaving its
+comments alone; then it reads the configuration back and says whether
+`[reports.email]` is on. It reports that rather than editing it, because
+`enabled = true` is one line you own and a helper that rewrites TOML is how a
+configuration quietly gets corrupted.
 
-For another SMTP provider, enable `[reports.email]` in a local configuration,
-then set the named environment variables for the SMTP host, username, password,
-sender, and recipient. Keep the local configuration and credentials out of
-version control.
+Any SMTP host works. Gmail additionally needs 2-Step Verification and an app
+password rather than the account password, and the command says so when the
+host is a Gmail one; the full walk-through is in
+[Gmail setup and delivery test](docs/GMAIL.md).
 
 By default the CLI loads non-empty values from an ignored `.env` file in the
 working directory. Existing process environment variables take precedence. Gmail

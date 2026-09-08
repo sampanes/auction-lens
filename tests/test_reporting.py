@@ -6,6 +6,7 @@ import os
 import unittest
 from dataclasses import replace
 from decimal import Decimal
+from inspect import signature
 from unittest.mock import patch
 
 from auction_lens.env_file import load_env_file
@@ -130,10 +131,18 @@ class EmailDeliveryTests(unittest.TestCase):
     def test_a_watchlist_email_does_not_expose_its_local_file_path(self, smtp_ssl):
         items = (WatchedItem(source="nellis", listing_id="1", title="Flagged monitor"),)
         with patch.dict("os.environ", SMTP_ENVIRONMENT, clear=False):
-            send_watchlist_email(items, self.config.email, path=r"C:\Users\person\private.json")
+            send_watchlist_email(items, self.config.email)
 
         message = smtp_ssl.return_value.__enter__.return_value.send_message.call_args.args[0]
         self.assertNotIn("C:\\Users", message.as_string())
+        self.assertIn("Flagged monitor", message.as_string())
+
+    def test_there_is_no_parameter_a_local_path_could_arrive_through(self):
+        # The terminal report still shows the path, because that is your own
+        # screen. An email leaves the machine, so the guarantee is structural
+        # rather than a caller remembering not to pass one.
+        taken = signature(send_watchlist_email).parameters
+        self.assertNotIn("path", taken)
 
 
 class BothRenderingsSayTheSameThingTests(unittest.TestCase):

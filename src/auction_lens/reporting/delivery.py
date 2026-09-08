@@ -41,9 +41,7 @@ def send_email(candidates: list[Candidate], config: EmailConfig) -> None:
     _deliver(message, config, account)
 
 
-def send_watchlist_email(
-    items: tuple[WatchedItem, ...], config: EmailConfig, *, path: str = ""
-) -> None:
+def send_watchlist_email(items: tuple[WatchedItem, ...], config: EmailConfig) -> None:
     """Send selected lots without exposing the local watchlist path."""
     account = _account_from_environment(config)
     message = EmailMessage()

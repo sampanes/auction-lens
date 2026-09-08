@@ -16,33 +16,33 @@ sign in, and create an app password named `Auction Lens`. Google commonly
 displays the generated 16-character password in spaced groups. The spaces are
 formatting, not part of the password.
 
-## Guided setup on Windows
+## Guided setup
 
-From the repository root, run:
-
-```cmd
-scripts\setup-gmail.cmd
-```
-
-The script:
-
-1. Creates the normal ignored config and `.env` files if needed.
-2. Prompts for the sending Gmail address and report recipient.
-3. Reads the App Password without displaying it.
-4. Removes Google's formatting spaces automatically.
-5. Writes the five SMTP settings to `.env`, enables `[reports.email]`, and sets
-   Gmail's SSL/465 transport in `config\local.toml`.
-6. Validates the result without printing any credential value.
-
-It does not send a message. Re-run only the validation at any time with:
+The same command that prepares a new machine also asks for the mail settings:
 
 ```cmd
-scripts\setup-gmail.cmd -CheckOnly
+.venv\Scripts\auction-lens.exe setup --email
 ```
 
-The CMD file is only the convenient entry point. It delegates to
-`setup-gmail.ps1`, because PowerShell can hide the password while it is entered
-and update the local files without echoing credential values.
+It:
+
+1. Creates the ignored config and `.env` if they are not there yet.
+2. Asks for the SMTP host, offering `smtp.gmail.com`, and prints Google's
+   App Password link when the host is a Gmail one.
+3. Asks for the sending address and the recipient, which defaults to the sender.
+4. Reads the password without echoing it, and drops the spaces Google displays
+   it in -- pasting it exactly as shown is the usual way this step fails.
+5. Writes the five settings into `.env`, leaving its comments and every other
+   line alone.
+6. Reads the configuration back and says whether `[reports.email]` is on.
+
+It never sends a message and never prints the password. The last step reports
+rather than edits: `enabled = true` is one line you own, and a setup helper that
+rewrites TOML is how a configuration quietly gets corrupted. Port 465 and SSL
+are already the defaults, so for Gmail there is nothing else to change.
+
+Nothing here is Gmail-only. Any SMTP host is accepted; Gmail just gets a note
+about the thing it alone requires.
 
 The `.env` file is ignored but is still plain text on the local computer. Treat
 it like any other credentials file: do not paste it into an issue, chat, log, or
