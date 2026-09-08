@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, replace
 
 from ..config import ValuationConfig, ValuationSourceConfig
@@ -9,6 +10,8 @@ from ..models import Listing, ResearchLink, ValuationObservation, ValuationSumma
 from .aggregation import combine_into_bands
 from .base import ValuationAdapter
 from .registry import create_adapter
+
+LOGGER = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -46,7 +49,14 @@ class ValuationEngine:
                 result = source.adapter.collect(listing)
             except Exception as error:
                 # One optional source failing must not erase the other evidence.
-                errors.append(f"{source.config.source_id}: {type(error).__name__}: {error}")
+                LOGGER.warning(
+                    "valuation source %s unavailable (%s)",
+                    source.config.source_id,
+                    type(error).__name__,
+                )
+                errors.append(
+                    f"{source.config.source_id}: unavailable ({type(error).__name__})"
+                )
                 continue
             observations.extend(self._in_configured_currency(result.observations, source))
             research_links.extend(result.research_links)

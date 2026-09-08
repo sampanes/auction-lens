@@ -106,6 +106,10 @@ class AcquisitionConfig:
     """How, and how often, the fetcher may contact the provider."""
 
     mode: AcquisitionMode = AcquisitionMode.MANUAL
+    # Choosing authorized_http describes the transport. This separate switch
+    # records the operator's affirmative decision that they actually have
+    # permission to use it; copied public configuration must fail closed.
+    authorization_confirmed: bool = False
     url: str = ""
     user_agent_env: str = DEFAULT_USER_AGENT_ENV
     timezone: str = "UTC"
@@ -129,6 +133,9 @@ class AcquisitionConfig:
     seconds_between_searches: Decimal = Decimal("5")
     session_url: str = ""
     session_fields: dict[str, str] = field(default_factory=dict)
+    # A POST that establishes branch-scoping session state can fall outside
+    # permission to poll public pages, so it needs its own confirmation.
+    session_change_authorized: bool = False
 
     def __post_init__(self) -> None:
         _settle(self, "mode", AcquisitionMode)

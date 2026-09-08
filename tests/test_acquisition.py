@@ -6,8 +6,10 @@ import unittest
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from unittest.mock import patch
+from urllib.request import Request
 
 from auction_lens.acquisition import fetch_authorized_page
+from auction_lens.http_safety import PublicHttpsRedirectHandler
 from support import (
     NELLIS_BROWSE_FIXTURE,
     FakeResponse,
@@ -16,7 +18,7 @@ from support import (
     temporary_directory,
 )
 
-CONTACT_USER_AGENT = "AuctionLens test contact=test@example.invalid"
+CONTACT_USER_AGENT = "AuctionLens test contact=operator@auction-lens.dev"
 
 
 class AuthorizedFetchTests(unittest.TestCase):
@@ -38,8 +40,21 @@ class AuthorizedFetchTests(unittest.TestCase):
 
         self.assertEqual(result.status, 200)
         self.assertEqual(cached, b"<html>fixture</html>")
-        self.assertIn("test@example.invalid", opener.calls[0][0].get_header("User-agent"))
+        self.assertIn("operator@auction-lens.dev", opener.calls[0][0].get_header("User-agent"))
         self.assertIn("fixture-v1", metadata)
+
+    @patch("auction_lens.acquisition.fetch.public_https_opener")
+    def test_the_default_fetch_path_uses_the_redirect_safe_opener(self, opener_factory):
+        opener = RecordingOpener(FakeResponse(b"<html>fixture</html>"))
+        opener_factory.return_value = opener
+        with temporary_directory() as directory:
+            acquisition = self._acquisition(directory)
+            with self._environment(acquisition):
+                fetch_authorized_page(
+                    self.config.provider, acquisition, now=self._instant()
+                )
+        opener_factory.assert_called_once_with()
+        self.assertEqual(opener.request_count, 1)
 
     def test_second_request_inside_the_interval_is_refused(self):
         opener = RecordingOpener(FakeResponse(b"<html>fixture</html>"))
@@ -119,6 +134,42 @@ class AuthorizedFetchTests(unittest.TestCase):
                 fetch_authorized_page(provider, acquisition, now=self._instant(), opener=opener)
         self.assertEqual(opener.request_count, 0)
 
+    def test_authorized_http_requires_an_explicit_permission_confirmation(self):
+        opener = RecordingOpener(FakeResponse(b""))
+        with temporary_directory() as directory:
+            acquisition = replace(
+                self._acquisition(directory), authorization_confirmed=False
+            )
+            with self._environment(acquisition):
+                with self.assertRaisesRegex(
+                    RuntimeError, "authorization_confirmed = true"
+                ):
+                    fetch_authorized_page(
+                        self.config.provider,
+                        acquisition,
+                        now=self._instant(),
+                        opener=opener,
+                    )
+        self.assertEqual(opener.request_count, 0)
+
+    def test_text_that_says_true_is_not_an_authorization_confirmation(self):
+        opener = RecordingOpener(FakeResponse(b""))
+        with temporary_directory() as directory:
+            acquisition = replace(
+                self._acquisition(directory), authorization_confirmed="true"
+            )
+            with self._environment(acquisition):
+                with self.assertRaisesRegex(
+                    RuntimeError, "authorization_confirmed = true"
+                ):
+                    fetch_authorized_page(
+                        self.config.provider,
+                        acquisition,
+                        now=self._instant(),
+                        opener=opener,
+                    )
+        self.assertEqual(opener.request_count, 0)
+
     def test_a_non_https_url_is_refused(self):
         opener = RecordingOpener(FakeResponse(b""))
         with temporary_directory() as directory:
@@ -138,9 +189,69 @@ class AuthorizedFetchTests(unittest.TestCase):
             acquisition = self._acquisition(directory)
             agent = {acquisition.user_agent_env: "AuctionLens"}
             with patch.dict("os.environ", agent, clear=False):
-                with self.assertRaisesRegex(RuntimeError, "authorized contact email"):
+                with self.assertRaisesRegex(RuntimeError, "operator's contact email"):
                     fetch_authorized_page(
                         self.config.provider, acquisition, now=self._instant(), opener=opener
+                    )
+        self.assertEqual(opener.request_count, 0)
+
+    def test_non_public_targets_are_refused_before_any_request(self):
+        opener = RecordingOpener(FakeResponse(b""))
+        targets = (
+            "https://localhost/listings",
+            "https://auction-server/listings",
+            "https://127.0.0.1/listings",
+            "https://127.1/listings",
+            "https://10.20.30.40/listings",
+            "https://169.254.169.254/latest",
+            "https://240.0.0.1/listings",
+            "https://[::1]/listings",
+        )
+        with temporary_directory() as directory:
+            for target in targets:
+                with self.subTest(target=target):
+                    acquisition = replace(self._acquisition(directory), url=target)
+                    with self._environment(acquisition):
+                        with self.assertRaisesRegex(ValueError, "public"):
+                            fetch_authorized_page(
+                                self.config.provider,
+                                acquisition,
+                                now=self._instant(),
+                                opener=opener,
+                            )
+        self.assertEqual(opener.request_count, 0)
+
+    def test_an_example_contact_address_is_refused(self):
+        opener = RecordingOpener(FakeResponse(b""))
+        with temporary_directory() as directory:
+            acquisition = self._acquisition(directory)
+            agent = {
+                acquisition.user_agent_env: "AuctionLens/1.0 (contact: you@example.com)"
+            }
+            with patch.dict("os.environ", agent, clear=False):
+                with self.assertRaisesRegex(RuntimeError, "example or placeholder"):
+                    fetch_authorized_page(
+                        self.config.provider,
+                        acquisition,
+                        now=self._instant(),
+                        opener=opener,
+                    )
+        self.assertEqual(opener.request_count, 0)
+
+    def test_a_subdomain_of_an_example_contact_address_is_refused(self):
+        opener = RecordingOpener(FakeResponse(b""))
+        with temporary_directory() as directory:
+            acquisition = self._acquisition(directory)
+            agent = {
+                acquisition.user_agent_env: "AuctionLens contact=you@docs.example.com"
+            }
+            with patch.dict("os.environ", agent, clear=False):
+                with self.assertRaisesRegex(RuntimeError, "example or placeholder"):
+                    fetch_authorized_page(
+                        self.config.provider,
+                        acquisition,
+                        now=self._instant(),
+                        opener=opener,
                     )
         self.assertEqual(opener.request_count, 0)
 
@@ -148,6 +259,7 @@ class AuthorizedFetchTests(unittest.TestCase):
         return replace(
             self.config.acquisition,
             mode="authorized_http",
+            authorization_confirmed=True,
             url="https://example.invalid/public-listings",
             timezone="America/Phoenix",
             max_requests_per_day=2,
@@ -163,6 +275,44 @@ class AuthorizedFetchTests(unittest.TestCase):
 
     def _instant(self):
         return datetime(2026, 9, 4, 16, tzinfo=UTC)
+
+
+class PublicRedirectTests(unittest.TestCase):
+    def setUp(self):
+        self.handler = PublicHttpsRedirectHandler()
+        self.request = Request("https://provider.example/listings")
+
+    def test_a_redirect_cannot_leave_the_authorized_host(self):
+        with self.assertRaisesRegex(RuntimeError, "different origin.*reconfirm"):
+            self._redirect("https://other.example/listings")
+
+    def test_a_redirect_cannot_downgrade_from_https(self):
+        with self.assertRaisesRegex(ValueError, "public HTTPS"):
+            self._redirect("http://provider.example/listings")
+
+    def test_a_redirect_cannot_reach_a_private_address(self):
+        with self.assertRaisesRegex(ValueError, "non-public IP"):
+            self._redirect("https://127.0.0.1/listings")
+
+    def test_a_redirect_cannot_switch_ports_on_the_same_host(self):
+        with self.assertRaisesRegex(RuntimeError, "different origin.*reconfirm"):
+            self._redirect("https://provider.example:444/listings")
+
+    def test_a_same_host_public_https_redirect_is_allowed(self):
+        redirected = self._redirect("https://provider.example/current-listings")
+        self.assertEqual(
+            redirected.full_url, "https://provider.example/current-listings"
+        )
+
+    def _redirect(self, target):
+        return self.handler.redirect_request(
+            self.request,
+            None,
+            302,
+            "Found",
+            {},
+            target,
+        )
 
 
 class BrowseFixtureTests(unittest.TestCase):

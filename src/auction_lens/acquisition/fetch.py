@@ -8,15 +8,16 @@ is made, and revalidates the cached copy instead of re-downloading it.
 from __future__ import annotations
 
 import os
+import re
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from urllib.error import HTTPError
-from urllib.parse import urlsplit
-from urllib.request import Request, urlopen
+from urllib.request import Request
 
 from ..config import AcquisitionConfig, AcquisitionMode, ProviderConfig
+from ..http_safety import public_https_opener, require_public_https
 from .cache import ResponseCache
 from .polling import PollLedger, enforce_request_limits
 
@@ -25,6 +26,17 @@ ACCEPTED_CONTENT = "text/html,application/xhtml+xml"
 HTTP_OK = 200
 HTTP_NOT_MODIFIED = 304
 HTTP_TOO_MANY_REQUESTS = 429
+
+CONTACT_ADDRESS = re.compile(
+    r"[A-Z0-9.!#$%&'*+/=?^_`{|}~-]+@"
+    r"[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?"
+    r"(?:\.[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?)+",
+    re.IGNORECASE,
+)
+PLACEHOLDER_CONTACT_DOMAINS = frozenset(
+    {"example.com", "example.net", "example.org", "localhost"}
+)
+PLACEHOLDER_CONTACT_SUFFIXES = (".example", ".invalid", ".localhost", ".test")
 
 
 @dataclass(frozen=True)
@@ -40,12 +52,13 @@ def fetch_authorized_page(
     config: AcquisitionConfig,
     *,
     now: datetime | None = None,
-    opener: Callable = urlopen,
+    opener: Callable | None = None,
 ) -> FetchResult:
     """Fetch the configured page, or explain why this run must not."""
     require_fetch_allowed(provider, config, config.url)
     user_agent = authorized_user_agent(config)
     instant = _timezone_aware(now or datetime.now(UTC))
+    opener = public_https_opener() if opener is None else opener
 
     ledger = PollLedger.at(config.ledger_file)
     enforce_request_limits(ledger.attempts(), config, instant)
@@ -112,23 +125,38 @@ def require_fetch_allowed(
         raise RuntimeError("provider is disabled")
     if config.mode != AcquisitionMode.AUTHORIZED_HTTP:
         raise RuntimeError("provider must use authorized_http acquisition mode")
-    _require_public_https(url)
+    if config.authorization_confirmed is not True:
+        raise RuntimeError(
+            "[provider.acquisition] authorization_confirmed = true is required "
+            "before contacting the provider"
+        )
+    require_public_https(url)
 
 
 def authorized_user_agent(config: AcquisitionConfig) -> str:
     """The provider must be able to tell who is making the request."""
     user_agent = os.getenv(config.user_agent_env, "").strip()
-    if "@" not in user_agent:
-        raise RuntimeError(f"{config.user_agent_env} must contain the authorized contact email")
+    addresses = CONTACT_ADDRESS.findall(user_agent)
+    if not addresses:
+        raise RuntimeError(
+            f"{config.user_agent_env} must contain the authorized operator's "
+            "contact email"
+        )
+    if all(_placeholder_contact(address) for address in addresses):
+        raise RuntimeError(
+            f"{config.user_agent_env} must contain the authorized operator's "
+            "contact email, not an example or placeholder address"
+        )
     return user_agent
 
 
-def _require_public_https(value: str) -> None:
-    parsed = urlsplit(value)
-    if parsed.scheme != "https" or not parsed.hostname:
-        raise ValueError("authorized source URL must be public HTTPS")
-    if parsed.username or parsed.password:
-        raise ValueError("credentials are not allowed in the source URL")
+def _placeholder_contact(address: str) -> bool:
+    domain = address.rsplit("@", 1)[-1].lower()
+    registered_example = any(
+        domain == placeholder or domain.endswith(f".{placeholder}")
+        for placeholder in PLACEHOLDER_CONTACT_DOMAINS
+    )
+    return registered_example or domain.endswith(PLACEHOLDER_CONTACT_SUFFIXES)
 
 
 def _timezone_aware(instant: datetime) -> datetime:

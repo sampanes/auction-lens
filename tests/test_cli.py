@@ -4,12 +4,16 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import unittest
+import warnings
 from contextlib import redirect_stderr, redirect_stdout
+from getpass import GetPassWarning
 from unittest.mock import patch
 
 from auction_lens.cli import build_parser, console, main
 from auction_lens.config import load_config
+from auction_lens.env_file import load_env_file
 from auction_lens.models import WatchedItem
 from auction_lens.storage import WatchlistStore
 from support import EXAMPLE_CONFIG, ROOT, SYNTHETIC_LISTINGS, temporary_directory
@@ -27,6 +31,49 @@ def run_cli(argv: list[str]) -> str:
     return buffer.getvalue()
 
 
+def _enable_email(config) -> None:
+    text = config.read_text(encoding="utf-8")
+    config.write_text(
+        text.replace(
+            "[reports.email]\nenabled = false",
+            "[reports.email]\nenabled = true",
+        ),
+        encoding="utf-8",
+    )
+
+
+def _config_copy(directory, *, email_enabled=False):
+    config = directory / "config.toml"
+    config.write_text(EXAMPLE_CONFIG.read_text(encoding="utf-8"), encoding="utf-8")
+    if email_enabled:
+        _enable_email(config)
+    return config
+
+
+def _ready_config(directory, *, email_enabled=False, development=False):
+    config = _config_copy(directory, email_enabled=email_enabled)
+    text = config.read_text(encoding="utf-8")
+    text = text.replace("authorization_confirmed = false", "authorization_confirmed = true")
+    text = text.replace(
+        "[provider.acquisition]\n",
+        '[provider.acquisition]\nsearch_url_template = '
+        '"https://auctions.example.invalid/search?query={query}"\n',
+    )
+    if development:
+        text = text.replace(
+            "[provider.acquisition]\n",
+            '[provider.acquisition]\nrun_mode = "development"\n',
+        )
+    config.write_text(text, encoding="utf-8")
+    return config
+
+
+def _loaded_values(env_file) -> dict[str, str]:
+    with patch.dict(os.environ, {}, clear=True):
+        load_env_file(env_file)
+        return dict(os.environ)
+
+
 class RunCommandTests(unittest.TestCase):
     def test_run_prints_a_report_and_creates_the_database(self):
         with temporary_directory() as directory:
@@ -37,9 +84,22 @@ class RunCommandTests(unittest.TestCase):
 
     def test_email_is_refused_when_the_configuration_disables_it(self):
         with temporary_directory() as directory:
-            argv = self._run_argv(directory, directory / "observations.sqlite3") + ["--email"]
+            database = directory / "observations.sqlite3"
+            argv = self._run_argv(directory, database) + ["--email"]
             with self.assertRaisesRegex(RuntimeError, "email reporting is disabled"):
                 run_cli(argv)
+            self.assertFalse(database.exists())
+
+    def test_missing_mail_settings_are_refused_before_state_is_created(self):
+        with temporary_directory() as directory:
+            config = _config_copy(directory, email_enabled=True)
+            database = directory / "observations.sqlite3"
+            argv = self._run_argv(directory, database)
+            argv[argv.index(str(EXAMPLE_CONFIG))] = str(config)
+            with patch.dict(os.environ, {}, clear=True):
+                with self.assertRaisesRegex(RuntimeError, "missing email environment"):
+                    run_cli(argv + ["--email"])
+            self.assertFalse(database.exists())
 
     def test_console_reports_bad_input_without_a_traceback(self):
         with temporary_directory() as directory:
@@ -84,12 +144,16 @@ class WatchlistCommandTests(unittest.TestCase):
         # --config now defaults, so the remaining guard is the one that matters:
         # a configuration that never enabled email cannot send any.
         with temporary_directory() as directory:
+            watchlist = directory / "watchlist.json"
+            WatchlistStore(watchlist).save(
+                WatchedItem(source="synthetic", listing_id="one")
+            )
             with self.assertRaisesRegex(RuntimeError, "email reporting is disabled"):
                 run_cli(
                     [
                         "watchlist",
                         "--watchlist",
-                        str(directory / "watchlist.json"),
+                        str(watchlist),
                         "--config",
                         str(EXAMPLE_CONFIG),
                         "--env-file",
@@ -99,7 +163,30 @@ class WatchlistCommandTests(unittest.TestCase):
                 )
 
     @patch("auction_lens.cli.commands.send_watchlist_email")
-    def test_email_sends_only_the_selected_verdict(self, send_watchlist_email):
+    def test_an_empty_selection_does_not_send_an_email(self, send_watchlist_email):
+        with temporary_directory() as directory:
+            message = run_cli(
+                [
+                    "watchlist",
+                    "--watchlist",
+                    str(directory / "watchlist.json"),
+                    "--verdict",
+                    "hunting",
+                    "--config",
+                    str(EXAMPLE_CONFIG),
+                    "--env-file",
+                    str(directory / "absent.env"),
+                    "--email",
+                ]
+            )
+        send_watchlist_email.assert_not_called()
+        self.assertIn("No selected lots; no email sent", message)
+
+    @patch("auction_lens.cli.commands.check_email_ready")
+    @patch("auction_lens.cli.commands.send_watchlist_email")
+    def test_email_sends_only_the_selected_verdict(
+        self, send_watchlist_email, check_email_ready
+    ):
         with temporary_directory() as directory:
             watchlist = directory / "watchlist.json"
             store = WatchlistStore(watchlist)
@@ -131,6 +218,7 @@ class WatchlistCommandTests(unittest.TestCase):
 
         selected = send_watchlist_email.call_args.args[0]
         self.assertEqual([item.listing_id for item in selected], ["1"])
+        check_email_ready.assert_called_once()
 
 
 class LogisticsCommandTests(unittest.TestCase):
@@ -195,73 +283,255 @@ class SetupCommandTests(unittest.TestCase):
 class MailSetupTests(unittest.TestCase):
     """Filling in the five mail variables without ever showing the password."""
 
-    ANSWERS = ["smtp.gmail.com", "me@example.invalid", "", "  abcd efgh ijkl mnop  "]
+    ANSWERS = [
+        "smtp.gmail.com",
+        "sender@example.invalid",
+        "",
+        "",
+        "  abcd efgh ijkl mnop  ",
+    ]
 
-    def _setup_email(self, directory, answers=None):
+    def _setup_email(self, directory, answers=None, *, email_enabled=True):
         typed = list(self.ANSWERS if answers is None else answers)
         config, env_file = directory / "local.toml", directory / ".env"
         run_cli(["setup", "--config", str(config), "--env-file", str(env_file)])
+        if email_enabled:
+            _enable_email(config)
         with patch("builtins.input", side_effect=lambda _: typed.pop(0)):
             with patch("auction_lens.cli.commands.getpass", side_effect=lambda _: typed.pop(0)):
-                message = run_cli(
-                    ["setup", "--config", str(config), "--env-file", str(env_file), "--email"]
-                )
-        return config, env_file, message
+                with patch("sys.stdin.isatty", return_value=True):
+                    buffer = io.StringIO()
+                    with redirect_stdout(buffer):
+                        exit_code = main(
+                            [
+                                "setup",
+                                "--config",
+                                str(config),
+                                "--env-file",
+                                str(env_file),
+                                "--email",
+                            ]
+                        )
+        return config, env_file, buffer.getvalue(), exit_code
 
     def test_the_answers_reach_the_env_file(self):
         with temporary_directory() as directory:
-            _, env_file, _ = self._setup_email(directory)
-            written = env_file.read_text(encoding="utf-8")
-        self.assertIn("AUCTION_LENS_SMTP_HOST=smtp.gmail.com", written)
-        self.assertIn("AUCTION_LENS_SMTP_USERNAME=me@example.invalid", written)
+            _, env_file, _, exit_code = self._setup_email(directory)
+            values = _loaded_values(env_file)
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(values["AUCTION_LENS_SMTP_HOST"], "smtp.gmail.com")
+        self.assertEqual(values["AUCTION_LENS_SMTP_USERNAME"], "sender@example.invalid")
+        self.assertEqual(values["AUCTION_LENS_EMAIL_FROM"], "sender@example.invalid")
 
     def test_an_empty_recipient_means_send_it_to_yourself(self):
         with temporary_directory() as directory:
-            _, env_file, _ = self._setup_email(directory)
-            written = env_file.read_text(encoding="utf-8")
-        self.assertIn("AUCTION_LENS_EMAIL_TO=me@example.invalid", written)
+            _, env_file, _, _ = self._setup_email(directory)
+            values = _loaded_values(env_file)
+        self.assertEqual(values["AUCTION_LENS_EMAIL_TO"], "sender@example.invalid")
 
     def test_the_spaces_a_provider_displays_are_not_part_of_the_password(self):
         # Google shows an app password in four groups of four and people paste
         # it exactly as shown, which is the usual way this step fails.
         with temporary_directory() as directory:
-            _, env_file, _ = self._setup_email(directory)
-            written = env_file.read_text(encoding="utf-8")
-        self.assertIn("AUCTION_LENS_SMTP_PASSWORD=abcdefghijklmnop", written)
+            _, env_file, _, _ = self._setup_email(directory)
+            values = _loaded_values(env_file)
+        self.assertEqual(values["AUCTION_LENS_SMTP_PASSWORD"], "abcdefghijklmnop")
 
     def test_the_password_is_never_printed(self):
         with temporary_directory() as directory:
-            _, _, message = self._setup_email(directory)
+            _, _, message, _ = self._setup_email(directory)
         self.assertNotIn("abcd", message)
         self.assertIn("neither printed nor logged", message)
 
     def test_the_comments_in_the_env_file_survive(self):
         with temporary_directory() as directory:
-            _, env_file, _ = self._setup_email(directory)
+            _, env_file, _, _ = self._setup_email(directory)
             written = env_file.read_text(encoding="utf-8")
         self.assertIn("never commit it", written)
-        self.assertIn("AUCTION_LENS_HTTP_USER_AGENT=AuctionLens/1.0", written)
+        self.assertIn("AUCTION_LENS_HTTP_USER_AGENT=", written)
 
-    def test_any_host_is_accepted_not_only_the_suggested_one(self):
-        answers = ["mail.fastmail.com", "me@example.invalid", "you@example.invalid", "secret"]
+    def test_another_hosts_username_sender_and_password_are_preserved(self):
+        answers = [
+            "mail.example.invalid",
+            "account-id",
+            "sender@example.invalid",
+            "recipient@example.invalid",
+            '  secret phrase "as typed"  ',
+        ]
         with temporary_directory() as directory:
-            _, env_file, _ = self._setup_email(directory, answers)
-            written = env_file.read_text(encoding="utf-8")
-        self.assertIn("AUCTION_LENS_SMTP_HOST=mail.fastmail.com", written)
-        self.assertIn("AUCTION_LENS_EMAIL_TO=you@example.invalid", written)
+            _, env_file, _, _ = self._setup_email(directory, answers)
+            values = _loaded_values(env_file)
+        self.assertEqual(values["AUCTION_LENS_SMTP_HOST"], "mail.example.invalid")
+        self.assertEqual(values["AUCTION_LENS_SMTP_USERNAME"], "account-id")
+        self.assertEqual(values["AUCTION_LENS_EMAIL_FROM"], "sender@example.invalid")
+        self.assertEqual(values["AUCTION_LENS_EMAIL_TO"], "recipient@example.invalid")
+        self.assertEqual(values["AUCTION_LENS_SMTP_PASSWORD"], answers[-1])
+
+    def test_configured_environment_variable_names_are_used(self):
+        with temporary_directory() as directory:
+            config, env_file = directory / "local.toml", directory / ".env"
+            run_cli(["setup", "--config", str(config), "--env-file", str(env_file)])
+            _enable_email(config)
+            replacements = {
+                "AUCTION_LENS_SMTP_HOST": "CUSTOM_MAIL_HOST",
+                "AUCTION_LENS_SMTP_USERNAME": "CUSTOM_MAIL_USER",
+                "AUCTION_LENS_SMTP_PASSWORD": "CUSTOM_MAIL_SECRET",
+                "AUCTION_LENS_EMAIL_FROM": "CUSTOM_MAIL_FROM",
+                "AUCTION_LENS_EMAIL_TO": "CUSTOM_MAIL_TO",
+            }
+            text = config.read_text(encoding="utf-8")
+            for old, new in replacements.items():
+                text = text.replace(f'"{old}"', f'"{new}"')
+            config.write_text(text, encoding="utf-8")
+            _, env_file, _, _ = self._setup_existing_email(config, env_file)
+            values = _loaded_values(env_file)
+        self.assertEqual(values["CUSTOM_MAIL_HOST"], "smtp.gmail.com")
+        self.assertEqual(values["CUSTOM_MAIL_USER"], "sender@example.invalid")
+        self.assertEqual(values["CUSTOM_MAIL_SECRET"], "abcdefghijklmnop")
+
+    def _setup_existing_email(self, config, env_file):
+        typed = list(self.ANSWERS)
+        with patch("builtins.input", side_effect=lambda _: typed.pop(0)):
+            with patch("auction_lens.cli.commands.getpass", side_effect=lambda _: typed.pop(0)):
+                with patch("sys.stdin.isatty", return_value=True):
+                    buffer = io.StringIO()
+                    with redirect_stdout(buffer):
+                        exit_code = main(
+                            ["setup", "--config", str(config), "--env-file", str(env_file),
+                             "--email"]
+                        )
+        return config, env_file, buffer.getvalue(), exit_code
 
     def test_it_says_which_line_still_has_to_be_changed_by_hand(self):
         # The example config ships with email off, and this reads the switch
         # with the real loader rather than guessing at the file.
         with temporary_directory() as directory:
-            _, _, message = self._setup_email(directory)
+            _, _, message, exit_code = self._setup_email(directory, email_enabled=False)
         self.assertIn("enabled = false", message)
+        self.assertIn("delivery is not ready", message)
+        self.assertEqual(exit_code, 2)
+
+    def test_noninteractive_setup_fails_before_writing_a_password(self):
+        with temporary_directory() as directory:
+            config, env_file = directory / "local.toml", directory / ".env"
+            run_cli(["setup", "--config", str(config), "--env-file", str(env_file)])
+            before = env_file.read_text(encoding="utf-8")
+            answers = iter(self.ANSWERS[:-1])
+            errors = io.StringIO()
+            with patch("builtins.input", side_effect=lambda _: next(answers)):
+                with patch("sys.stdin.isatty", return_value=False):
+                    with patch("auction_lens.cli.commands.getpass") as hidden_prompt:
+                        with redirect_stdout(io.StringIO()):
+                            with redirect_stderr(errors):
+                                exit_code = console(
+                                    ["setup", "--config", str(config), "--env-file",
+                                     str(env_file), "--email"]
+                                )
+            hidden_prompt.assert_not_called()
+            self.assertEqual(env_file.read_text(encoding="utf-8"), before)
+        self.assertEqual(exit_code, 2)
+        self.assertIn("interactive terminal", errors.getvalue())
+
+    def test_an_echoing_password_fallback_is_refused_before_input(self):
+        with temporary_directory() as directory:
+            config, env_file = directory / "local.toml", directory / ".env"
+            run_cli(["setup", "--config", str(config), "--env-file", str(env_file)])
+            before = env_file.read_text(encoding="utf-8")
+            answers = iter(self.ANSWERS[:-1])
+            errors = io.StringIO()
+
+            def insecure_prompt(_):
+                warnings.warn("would echo", GetPassWarning, stacklevel=2)
+                self.fail("warning should stop the fallback before it reads input")
+
+            with patch("builtins.input", side_effect=lambda _: next(answers)):
+                with patch("sys.stdin.isatty", return_value=True):
+                    with patch("auction_lens.cli.commands.getpass", insecure_prompt):
+                        with redirect_stdout(io.StringIO()):
+                            with redirect_stderr(errors):
+                                exit_code = console(
+                                    [
+                                        "setup",
+                                        "--config",
+                                        str(config),
+                                        "--env-file",
+                                        str(env_file),
+                                        "--email",
+                                    ]
+                                )
+            self.assertEqual(env_file.read_text(encoding="utf-8"), before)
+        self.assertEqual(exit_code, 2)
+        self.assertIn("secure password input is unavailable", errors.getvalue())
+
+
+class DailyCommandTests(unittest.TestCase):
+    @patch("auction_lens.cli.commands.discover")
+    def test_report_preflight_happens_before_discovery(self, discover):
+        with temporary_directory() as directory:
+            output = directory / "listings.json"
+            with self.assertRaisesRegex(RuntimeError, "email reporting is disabled"):
+                run_cli(
+                    [
+                        "daily",
+                        "--config",
+                        str(EXAMPLE_CONFIG),
+                        "--output",
+                        str(output),
+                        "--env-file",
+                        str(directory / "absent.env"),
+                        "--email",
+                    ]
+                )
+        discover.assert_not_called()
+        self.assertFalse(output.exists())
+
+
+class DoctorCommandTests(unittest.TestCase):
+    def test_it_checks_a_ready_daily_run_without_network_access(self):
+        with temporary_directory() as directory:
+            config = _ready_config(directory, email_enabled=True)
+            env_file = directory / ".env"
+            env_file.write_text(
+                "AUCTION_LENS_HTTP_USER_AGENT=AuctionLens/1.0 "
+                "(contact: operator@auction-lens.dev)\n"
+                "AUCTION_LENS_SMTP_HOST=smtp.example.invalid\n"
+                "AUCTION_LENS_SMTP_USERNAME=synthetic-user\n"
+                "AUCTION_LENS_SMTP_PASSWORD=synthetic-secret\n"
+                "AUCTION_LENS_EMAIL_FROM=sender@example.invalid\n"
+                "AUCTION_LENS_EMAIL_TO=recipient@example.invalid\n",
+                encoding="utf-8",
+            )
+            with patch.dict(os.environ, {}, clear=True):
+                message = run_cli(
+                    ["doctor", "--config", str(config), "--env-file", str(env_file),
+                     "--email"]
+                )
+        self.assertIn("discovery is configured and authorized", message)
+        self.assertIn("email is enabled", message)
+        self.assertIn("no network requests were made", message)
+
+    def test_it_refuses_development_pacing_for_an_unattended_run(self):
+        with temporary_directory() as directory:
+            config = _ready_config(directory, development=True)
+            with self.assertRaisesRegex(RuntimeError, 'run_mode = "production"'):
+                run_cli(
+                    ["doctor", "--config", str(config), "--env-file",
+                     str(directory / "absent.env")]
+                )
+
+    def test_the_windows_runner_preflights_email_without_requiring_a_webhook(self):
+        script = (ROOT / "scripts" / "run-daily.cmd").read_text(encoding="utf-8")
+        self.assertIn('"%AUCTION_LENS%" doctor --email', script)
+        self.assertIn('"%AUCTION_LENS%" daily --email', script)
+        self.assertNotIn("daily --email --webhook", script)
 
 
 class DefaultsTests(unittest.TestCase):
     def test_the_configuration_flag_can_be_left_off(self):
         # One door: the file a person edits is where every command looks.
-        for command in ("run", "fetch", "discover", "pull", "daily", "watchlist"):
+        for command in (
+            "doctor", "run", "fetch", "discover", "pull", "daily", "watchlist"
+        ):
             with self.subTest(command=command):
                 self.assertEqual(_parsed_default(command, "config"), "config/local.toml")
 

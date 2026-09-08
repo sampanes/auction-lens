@@ -9,6 +9,7 @@ from . import commands
 from .parser import (
     DAILY,
     DISCOVER,
+    DOCTOR,
     FETCH,
     LOGISTICS,
     PROGRAM,
@@ -22,6 +23,7 @@ from .parser import (
 
 COMMANDS = {
     SETUP: commands.setup,
+    DOCTOR: commands.doctor,
     DAILY: commands.daily,
     RUN: commands.run,
     FETCH: commands.fetch,
@@ -32,9 +34,9 @@ COMMANDS = {
     WATCHLIST: commands.watchlist,
 }
 
-# Only the commands that reach the network or an SMTP server need credentials;
-# the rest record or read local files.
-COMMANDS_NEEDING_ENVIRONMENT = frozenset({RUN, FETCH, DISCOVER, DAILY})
+# Commands that validate or use provider and delivery settings load the ignored
+# environment file first; the rest record or read local files.
+COMMANDS_NEEDING_ENVIRONMENT = frozenset({DOCTOR, RUN, FETCH, DISCOVER, DAILY})
 
 OPERATOR_ERROR = 2
 

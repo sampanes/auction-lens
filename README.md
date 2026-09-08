@@ -71,6 +71,7 @@ again -- but neither has to be typed day to day.
 | command | when you want it |
 | --- | --- |
 | `setup` | first run on a new machine |
+| `doctor` | check authorization, configuration, and delivery settings without network access |
 | `daily` | every day: find, score, report |
 | `discover` | find lots and write them, without scoring |
 | `fetch` / `pull` | save one page; read saved pages back |
@@ -135,16 +136,19 @@ The command that prepares a new machine also asks for the mail settings:
 .venv\Scripts\auction-lens.exe setup --email
 ```
 
-It asks for the host, the sending address, the recipient, and the password,
-which is never echoed. The five values go into the ignored `.env`, leaving its
-comments alone; then it reads the configuration back and says whether
+It asks for the host, SMTP username, From address, recipient, and password,
+which is never echoed. The five values use the environment-variable names from
+your configuration and go into the ignored `.env`, leaving its comments alone;
+then it says whether
 `[reports.email]` is on. It reports that rather than editing it, because
 `enabled = true` is one line you own and a helper that rewrites TOML is how a
-configuration quietly gets corrupted.
+configuration quietly gets corrupted. The command exits non-zero while that
+switch is off, so automation cannot mistake saved credentials for readiness.
 
-Any SMTP host works. Gmail additionally needs 2-Step Verification and an app
-password rather than the account password, and the command says so when the
-host is a Gmail one; the full walk-through is in
+Other SMTP hosts are supported when the configured port and security mode suit
+the service. Gmail additionally needs 2-Step Verification and an app password
+rather than the account password, and the command says so for `smtp.gmail.com`;
+the full walk-through is in
 [Gmail setup and delivery test](docs/GMAIL.md).
 
 By default the CLI loads non-empty values from an ignored `.env` file in the
@@ -159,14 +163,23 @@ Run that command from Windows Task Scheduler, cron, or another scheduler to send
 a periodic digest. Repeated observations are retained so reports can distinguish
 new listings from changed prices.
 
-For Windows, `scripts\run-daily.cmd` is the ready-to-schedule entry point. Point
-Task Scheduler at it directly: it finds today's lots, scores them, emails and
-posts the findings, then emails the lots you marked `hunting`. It names no paths,
-because every path it would name is already a default -- so moving a file is a
-configuration edit rather than a script edit.
+Before scheduling, check the local prerequisites without contacting the
+provider or mail server:
 
-It asks for the webhook, so it exits non-zero until `AUCTION_LENS_WEBHOOK_URL` is
-set. Delete `--webhook` from the script if you only want the email.
+```cmd
+.venv\Scripts\auction-lens.exe doctor --email
+```
+
+`doctor` is the unattended-run gate: it also requires
+`[provider.acquisition] run_mode = "production"`, so development pacing cannot
+accidentally become a scheduled polling policy.
+
+For Windows, `scripts\run-daily.cmd` is the ready-to-schedule entry point. Point
+Task Scheduler at it directly: it runs the local preflight, finds today's lots,
+scores and emails the findings, then emails the lots you marked `hunting` when
+that selection is non-empty. It names no paths, because every path it would name
+is already a default -- so moving a file is a configuration edit rather than a
+script edit. Webhook delivery remains an explicit, separately configured choice.
 
 ## Getting real listings
 

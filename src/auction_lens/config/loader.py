@@ -88,6 +88,7 @@ def _acquisition(section: Section) -> AcquisitionConfig:
     with in_section(section):
         return AcquisitionConfig(
             mode=section.text("mode", AcquisitionMode.MANUAL),
+            authorization_confirmed=section.flag("authorization_confirmed", False),
             url=section.text("url"),
             user_agent_env=section.text("user_agent_env", DEFAULT_USER_AGENT_ENV),
             timezone=section.text("timezone", "UTC"),
@@ -110,6 +111,9 @@ def _acquisition(section: Section) -> AcquisitionConfig:
             seconds_between_searches=section.decimal("seconds_between_searches", 5),
             session_url=section.text("session_url"),
             session_fields=section.text_map("session_fields"),
+            session_change_authorized=section.flag(
+                "session_change_authorized", False
+            ),
         )
 
 

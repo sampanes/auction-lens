@@ -18,14 +18,23 @@ The authorized HTTP fetcher supports configurable request limits, identifies the
 operator via User-Agent, uses conditional cache headers when available, and records
 attempts before connecting so a failed job cannot retry rapidly.
 
-A fetch happens only when all four of these hold, and is refused with a specific
+A fetch happens only when all five of these hold, and is refused with a specific
 error otherwise:
 
 1. `[provider] enabled = true`;
 2. `[provider.acquisition] mode = "authorized_http"` and a public HTTPS `url`
    carrying no credentials;
-3. the configured User-Agent variable is set and contains a contact address; and
-4. the request is within the configured limits for the run mode.
+3. `[provider.acquisition] authorization_confirmed = true`, set privately by an
+   operator who has permission for this provider and this use;
+4. the configured User-Agent variable is set and contains a plausible,
+   non-placeholder contact address supplied by the authorized operator; and
+5. the request is within the configured limits for the run mode.
+
+Authorization is not a property of the repository. Provider permission can be
+personal, conditional, revocable, and non-transferable, so the tracked example
+deliberately sets `authorization_confirmed = false`. Copying it never grants the
+next operator permission; each operator must confirm their own authorization in
+an ignored local configuration.
 
 Its two explicit modes control request cadence:
 
@@ -106,8 +115,9 @@ A live check on 2026-09-06: two searches returned 158 distinct lots in two
 requests.
 
 `discover` fetches one search page per term through the same guards as `fetch`
--- provider enabled, `authorized_http` mode, public HTTPS, an identifying
-User-Agent carrying a contact address -- and writes canonical JSON.
+-- provider enabled, `authorized_http` mode, explicit authorization, public
+HTTPS, and an identifying User-Agent carrying the operator's non-placeholder
+contact address -- and writes canonical JSON.
 
 ```cmd
 .venv\Scripts\auction-lens.exe discover ^
@@ -132,14 +142,23 @@ on the search URL does *not* work; nor do guessed cookie names. The site sets a
 ```toml
 [provider.acquisition]
 session_url = "https://www.nellisauction.com/change-shopping-location"
+# Fail closed. Change this only after receiving specific permission for the POST.
+session_change_authorized = false
 
 [provider.acquisition.session_fields]
 shoppingLocationId = "2"   # 1 Las Vegas, 2 Phoenix, 5 Houston,
                            # 6 Philadelphia, 7 Denver, 8 Dallas
 ```
 
-`discover` posts that once at the start of a run, before any search, and the
-searches are made by the same client so they inherit the cookie. A fresh session
+Because that request establishes branch-scoping session state, general
+permission to poll public pages does not imply permission to make it. `discover`
+refuses the POST until the operator changes that narrower gate to `true` in the
+ignored local configuration, and they should do so only after the provider
+specifically authorizes this branch-scoping request. Permission limited to
+passive read-only polling -- or permission that prohibits simulated user
+interactions -- does not, by itself, establish that authorization. With the
+gate confirmed, `discover` posts once at the start of a run and makes the
+searches through the same client so they inherit the cookie. A fresh session
 each run costs one request and removes any chance of yesterday's branch quietly
 persisting.
 
