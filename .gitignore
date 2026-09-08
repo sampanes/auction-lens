@@ -14,3 +14,4 @@ config/local.toml
 data/inbox/*
 !data/inbox/.gitkeep
 private/
+/AGENTS.md
