@@ -41,9 +41,10 @@ It:
 It never sends a message and never prints the password. The last step reports
 rather than edits: `enabled = true` is one line you own, and a setup helper that
 rewrites TOML is how a configuration quietly gets corrupted. Port 465 and SSL
-are already the defaults, so for Gmail there is nothing else to change. The
-command exits non-zero until email is enabled, so a scheduler cannot mistake
-"credentials saved" for "ready to deliver."
+are already the defaults, so for Gmail there is nothing else to change. Saving
+the settings succeeds either way: setup did what it was asked. Whether delivery
+is ready is a separate question, and `auction-lens doctor --email` is the
+command that answers it -- that is the one a scheduler should ask.
 
 Other SMTP hosts are accepted, but their port and security mode must be set in
 `[reports.email]`. Their passwords are stored exactly as entered; only the Gmail
