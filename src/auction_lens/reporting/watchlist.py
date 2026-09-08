@@ -39,8 +39,27 @@ COLOURS = {Tag.RED: "31", Tag.AMBER: "33", Tag.GREEN: "32"}
 ESCAPE = "\x1b"
 PLAIN = f"{ESCAPE}[0m"
 
-CARD_STYLE = "border:1px solid #ddd;border-radius:8px;padding:14px;margin:12px 0"
-PHOTO_STYLE = "display:block;max-width:100%;height:auto;margin-top:12px"
+BODY_STYLE = "font-family:Arial,sans-serif;max-width:680px;margin:auto;color:#202124"
+CARD_STYLE = (
+    "border:1px solid #dadce0;border-radius:12px;padding:20px;margin:16px 0;"
+    "background:#ffffff"
+)
+PHOTO_STYLE = (
+    "display:block;width:100%;max-height:360px;object-fit:cover;border-radius:8px;"
+    "margin:16px 0"
+)
+FACT_STYLE = (
+    "display:inline-block;background:#f1f3f4;border-radius:6px;padding:7px 10px;"
+    "margin:0 6px 7px 0;font-size:14px"
+)
+BUTTON_STYLE = (
+    "display:inline-block;background:#1967d2;color:#ffffff;text-decoration:none;"
+    "font-weight:bold;border-radius:6px;padding:10px 16px"
+)
+TAG_STYLES = {
+    Tag.RED: "background:#fce8e6;color:#a50e0e",
+    Tag.AMBER: "background:#fef7e0;color:#7c4a03",
+}
 
 
 def render_watchlist(
@@ -61,16 +80,27 @@ def render_watchlist_html(items: tuple[WatchedItem, ...], *, path: str = "") -> 
         return f"<p>Watchlist is empty{escape(_at(path))}.</p>"
     cards = "".join(_html_card(item) for item in sorted(items, key=_keenness))
     headline = f"Following {len(items)} lot(s){_at(path)}."
-    return f"<h2>{escape(headline)}</h2>{cards}"
+    return "".join(
+        (
+            f"<div style='{BODY_STYLE}'>",
+            "<p style='color:#5f6368;font-size:12px;font-weight:bold;"
+            "letter-spacing:1px'>AUCTION LENS</p>",
+            f"<h2 style='margin:0 0 8px'>{escape(headline)}</h2>",
+            "<p style='color:#5f6368;margin-top:0'>The lots you marked for a closer look.</p>",
+            cards,
+            "</div>",
+        )
+    )
 
 
 def _html_card(item: WatchedItem) -> str:
     concerns = _html_conditions(item.conditions)
     facts = (*_value_facts(item), *_price_facts(item))
-    details = "".join(f"<li>{escape(fact)}</li>" for fact in facts)
+    details = "".join(f"<span style='{FACT_STYLE}'>{escape(fact)}</span>" for fact in facts)
     note = f"<p><strong>Note:</strong> {escape(item.note)}</p>" if item.note else ""
     link = (
-        f"<p><a href='{escape(item.url, quote=True)}'>View listing</a></p>"
+        f"<p style='margin-bottom:0'><a href='{escape(item.url, quote=True)}' "
+        f"style='{BUTTON_STYLE}'>View listing</a></p>"
         if item.url
         else ""
     )
@@ -84,14 +114,15 @@ def _html_card(item: WatchedItem) -> str:
     return "".join(
         (
             f"<article style='{CARD_STYLE}'>",
-            f"<h3>{escape(item.title or item.uid)}</h3>",
-            f"<p><strong>{escape(str(item.verdict).upper())}</strong> "
+            f"<h3 style='margin:0 0 8px'>{escape(item.title or item.uid)}</h3>",
+            f"<p style='margin:0 0 14px;color:#1967d2;font-weight:bold'>"
+            f"{escape(str(item.verdict).upper())} &nbsp; "
             f"{escape(stars_of(item.quality_rating))}</p>",
             concerns,
-            f"<ul>{details}</ul>" if details else "",
+            photo,
+            f"<div>{details}</div>" if details else "",
             note,
             link,
-            photo,
             "</article>",
         )
     )
@@ -182,13 +213,14 @@ def _html_conditions(conditions: tuple[ConditionTag, ...]) -> str:
     concerns = tuple(tag for tag in conditions if tag.is_concerning)
     if not concerns:
         return f"<p>Condition: {ALL_CLEAR}</p>"
-    rows = []
+    badges = []
     for shade, labels in _concern_groups(concerns):
-        rows.append(
-            f"<li><strong>{escape(str(shade).upper())}:</strong> "
-            f"{escape(', '.join(labels))}</li>"
+        badges.append(
+            f"<span style='display:inline-block;{TAG_STYLES[shade]};border-radius:999px;"
+            f"padding:5px 9px;margin:0 6px 7px 0;font-size:13px;font-weight:bold'>"
+            f"{escape(str(shade).upper())}: {escape(', '.join(labels))}</span>"
         )
-    return "<ul>" + "".join(rows) + "</ul>"
+    return "<div>" + "".join(badges) + "</div>"
 
 
 def _concern_groups(

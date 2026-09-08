@@ -129,9 +129,23 @@ rather than a preference.
 
 ## Email reports
 
-Enable `[reports.email]` in a local configuration, then set the named environment
-variables for the SMTP host, username, password, sender, and recipient. Keep the
-local configuration and credentials out of version control.
+For Gmail, use the guided setup from the repository root:
+
+```cmd
+scripts\setup-gmail.cmd
+```
+
+The CMD wrapper links to Google's App Password page, then uses PowerShell to read
+the password without displaying it, remove Google's formatting spaces, fill the
+existing ignored `.env`, enable email reporting, and validate the result without
+printing secrets.
+See the complete [Gmail setup and delivery test](docs/GMAIL.md), including the
+equivalent manual steps and troubleshooting.
+
+For another SMTP provider, enable `[reports.email]` in a local configuration,
+then set the named environment variables for the SMTP host, username, password,
+sender, and recipient. Keep the local configuration and credentials out of
+version control.
 
 By default the CLI loads non-empty values from an ignored `.env` file in the
 working directory. Existing process environment variables take precedence. Gmail

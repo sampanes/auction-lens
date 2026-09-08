@@ -120,11 +120,20 @@ class EmailDeliveryTests(unittest.TestCase):
             send_watchlist_email(items, self.config.email)
 
         message = smtp_ssl.return_value.__enter__.return_value.send_message.call_args.args[0]
-        self.assertEqual(message["Subject"], "Auction Lens watchlist: 1 selected lot(s)")
+        self.assertEqual(message["Subject"], "Auction Lens watchlist: 1 selected lot")
         plain = message.get_body(preferencelist=("plain",)).get_content()
         markup = message.get_body(preferencelist=("html",)).get_content()
         self.assertIn("Flagged monitor", plain)
         self.assertIn("Flagged monitor", markup)
+
+    @patch("auction_lens.reporting.delivery.smtplib.SMTP_SSL")
+    def test_a_watchlist_email_does_not_expose_its_local_file_path(self, smtp_ssl):
+        items = (WatchedItem(source="nellis", listing_id="1", title="Flagged monitor"),)
+        with patch.dict("os.environ", SMTP_ENVIRONMENT, clear=False):
+            send_watchlist_email(items, self.config.email, path=r"C:\Users\person\private.json")
+
+        message = smtp_ssl.return_value.__enter__.return_value.send_message.call_args.args[0]
+        self.assertNotIn("C:\\Users", message.as_string())
 
 
 class BothRenderingsSayTheSameThingTests(unittest.TestCase):

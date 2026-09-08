@@ -19,7 +19,7 @@ from .watchlist import render_watchlist, render_watchlist_html
 
 SMTP_TIMEOUT_SECONDS = 30
 MATCH_COUNT_PLACEHOLDER = "{{ match_count }}"
-WATCHLIST_SUBJECT = "Auction Lens watchlist: {count} selected lot(s)"
+WATCHLIST_SUBJECT = "Auction Lens watchlist: {selection}"
 
 
 @dataclass(frozen=True)
@@ -44,15 +44,20 @@ def send_email(candidates: list[Candidate], config: EmailConfig) -> None:
 def send_watchlist_email(
     items: tuple[WatchedItem, ...], config: EmailConfig, *, path: str = ""
 ) -> None:
-    """Send the followed lots selected by the operator."""
+    """Send selected lots without exposing the local watchlist path."""
     account = _account_from_environment(config)
     message = EmailMessage()
-    message["Subject"] = WATCHLIST_SUBJECT.format(count=len(items))
+    message["Subject"] = WATCHLIST_SUBJECT.format(selection=_selection(len(items)))
     message["From"] = account.sender
     message["To"] = account.recipient
-    message.set_content(render_watchlist(items, path=path))
-    message.add_alternative(render_watchlist_html(items, path=path), subtype="html")
+    message.set_content(render_watchlist(items))
+    message.add_alternative(render_watchlist_html(items), subtype="html")
     _deliver(message, config, account)
+
+
+def _selection(count: int) -> str:
+    noun = "lot" if count == 1 else "lots"
+    return f"{count} selected {noun}"
 
 
 def _deliver(message: EmailMessage, config: EmailConfig, account: MailAccount) -> None:
