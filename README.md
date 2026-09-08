@@ -123,10 +123,13 @@ a periodic digest. Repeated observations are retained so reports can distinguish
 new listings from changed prices.
 
 For Windows, `scripts\run-daily.cmd` is the ready-to-schedule entry point. Point
-Task Scheduler at it directly; it finds fresh listings, saves the canonical input,
-uses the ignored personal configuration and `.env`, updates SQLite, emails the
-day's findings, and then emails only lots you marked `hunting`. The equivalent
-PowerShell entry point remains at `scripts\run-daily.ps1`.
+Task Scheduler at it directly: it finds today's lots, scores them, emails and
+posts the findings, then emails the lots you marked `hunting`. It names no paths,
+because every path it would name is already a default -- so moving a file is a
+configuration edit rather than a script edit.
+
+It asks for the webhook, so it exits non-zero until `AUCTION_LENS_WEBHOOK_URL` is
+set. Delete `--webhook` from the script if you only want the email.
 
 ## Getting real listings
 

@@ -225,8 +225,7 @@ already configured for reports:
 The plain-text alternative contains everything the terminal view does. The HTML
 version uses phone-friendly cards and includes the actual-lot photo and a direct
 link. `scripts\run-daily.cmd` runs this after refreshing prices, so the scheduled
-message reflects the newest scan. `scripts\run-daily.ps1` provides the same
-workflow for PowerShell users.
+message reflects the newest scan.
 
 Marking a lot `passed` is usually better than dropping it: the entry stays, so a
 later run does not silently start following it again.
