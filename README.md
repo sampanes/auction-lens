@@ -422,6 +422,12 @@ Install the development tools once, then run the check wrapper:
 scripts\test.cmd
 ```
 
+`docs/SIMPLICITY.md` is the standard every change is measured against, and the
+first thing to read before writing any: what "one door", "one authority per
+fact", and "nothing bespoke" actually mean here, with the checklist to apply to
+a diff. It is deliberately about the shape of a change rather than its
+formatting, which ruff already settles.
+
 `docs/ARCHITECTURE.md` is the map: which module answers which question, and the
 direction dependencies are allowed to run -- a layering that is checked, not
 just described. `docs/CONVENTIONS.md` is the house style: where a validation
