@@ -17,19 +17,36 @@ from ..models import Listing
 
 LISTINGS_KEY = "listings"
 
+# Unlike price and closing time, these facts do not change between two pages
+# that show the same physical item. A later category sweep or product page may
+# know one that the first search did not.
+STABLE_IDENTITY_FIELDS = ("brand", "model", "category")
+
 
 def unique_lots(rows: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
     """Keep each lot once, however many pages happened to list it.
 
     A search page and a category sweep both describe whole pages of lots, so one
-    lot routinely appears in two of them. The second sighting is the same lot as
-    the first, and identity is the physical item where the provider names it, so
-    that a lot relisted after failing to sell is still recognised as itself.
+    lot routinely appears in two of them. The first sighting keeps every
+    auction-state value, while a later one may fill a missing stable identity
+    fact. Identity is the physical item where the provider names it, so that a
+    lot relisted after failing to sell is still recognised as itself.
     """
-    seen: dict[str, dict[str, Any]] = {}
+    seen: dict[tuple[str, str], dict[str, Any]] = {}
     for row in rows:
-        seen.setdefault(str(row.get("inventory_id") or row["listing_id"]), row)
+        key = (
+            str(row.get("source") or ""),
+            str(row.get("inventory_id") or row["listing_id"]),
+        )
+        if key not in seen:
+            seen[key] = dict(row)
+            continue
+        first = seen[key]
+        for field in STABLE_IDENTITY_FIELDS:
+            if not first.get(field) and row.get(field):
+                first[field] = row[field]
     return list(seen.values())
+
 
 # Excel, Notepad, and PowerShell all write a byte-order mark ahead of the first
 # character. Reading as utf-8-sig accepts a file with or without one.

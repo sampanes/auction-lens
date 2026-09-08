@@ -202,6 +202,7 @@ class AuthorizedFetchTests(unittest.TestCase):
             "https://auction-server/listings",
             "https://127.0.0.1/listings",
             "https://127.1/listings",
+            "https://0x7f.1/listings",
             "https://10.20.30.40/listings",
             "https://169.254.169.254/latest",
             "https://240.0.0.1/listings",
@@ -298,11 +299,9 @@ class PublicRedirectTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "different origin.*reconfirm"):
             self._redirect("https://provider.example:444/listings")
 
-    def test_an_unusually_spelled_address_is_stopped_by_the_origin_rule(self):
-        # 0x7f.1 is a legacy spelling of a loopback address. Recognising the
-        # spelling is not what protects the operator here: the redirect is not
-        # the authorized origin, which is true of every address it could name.
-        with self.assertRaisesRegex(RuntimeError, "different origin.*reconfirm"):
+    def test_a_redirect_cannot_use_legacy_numeric_address_spelling(self):
+        # DNS understands this as 127.0.0.1 even though ip_address does not.
+        with self.assertRaisesRegex(ValueError, "fully qualified host"):
             self._redirect("https://0x7f.1/listings")
 
     def test_a_same_host_public_https_redirect_is_allowed(self):

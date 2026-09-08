@@ -126,9 +126,14 @@ class TemplateTests(unittest.TestCase):
         url = fill_template("https://example.invalid/s?q={query}&b={brand}", listing)
         self.assertEqual(url, "https://example.invalid/s?q=Ex+Co+SB+21&b=Ex+Co")
 
-    def test_a_listing_without_brand_or_model_falls_back_to_its_title(self):
-        listing = replace(example_listings()[SOUNDBAR], brand="", model="", title="Odd Lot")
-        self.assertEqual(fill_template("{query}", listing), "Odd+Lot")
+    def test_incomplete_structured_identity_falls_back_to_the_whole_title(self):
+        original = example_listings()[SOUNDBAR]
+        for brand, model in (("", ""), ("Example", ""), ("", "T100")):
+            with self.subTest(brand=brand, model=model):
+                listing = replace(
+                    original, brand=brand, model=model, title="Example T100 Speaker"
+                )
+                self.assertEqual(fill_template("{query}", listing), "Example+T100+Speaker")
 
 
 class JsonPathTests(unittest.TestCase):

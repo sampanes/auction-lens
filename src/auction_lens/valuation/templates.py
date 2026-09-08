@@ -14,9 +14,10 @@ PLACEHOLDERS = ("query", "brand", "model", "category")
 
 
 def research_query(listing: Listing) -> str:
-    """Prefer brand and model; fall back to the title when they are missing."""
-    identifying = [value for value in (listing.brand, listing.model) if value]
-    return " ".join(identifying) or listing.title
+    """Use precise structured identity, or the whole title when it is incomplete."""
+    if listing.brand and listing.model:
+        return f"{listing.brand} {listing.model}"
+    return listing.title
 
 
 def fill_template(template: str, listing: Listing) -> str:

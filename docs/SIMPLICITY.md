@@ -5,8 +5,8 @@ Each one is competent, and each one leaves it slightly more complicated than
 they found it -- never unreasonably, always for a defensible reason. This file
 exists so the standard is written down once instead of re-argued every time.
 
-It is not a style guide. Formatting is settled by ruff. This is about the
-shape of a change.
+It is not a style guide. Routine style checks are settled by ruff. This is about
+the shape of a change.
 
 ## The one sentence
 
@@ -89,7 +89,7 @@ signature is a promise: every parameter must be used, every name must be true.
 
 ### 8. Prefer the standard library and the boring solution
 
-Zero runtime dependencies is a feature. So is choosing the obvious approach over
+Few runtime dependencies is a feature. So is choosing the obvious approach over
 the clever one. If a solution needs a paragraph to justify, it probably needs a
 different solution.
 

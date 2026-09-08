@@ -17,6 +17,7 @@ DEFAULT_INBOX = "data/inbox/listings.json"
 EXAMPLE_CONFIG = "config/providers/nellis.example.toml"
 
 SETUP = "setup"
+PROFILE = "profile"
 DOCTOR = "doctor"
 DAILY = "daily"
 RUN = "run"
@@ -47,6 +48,7 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command", required=True)
     # The operator-facing doors come first, before the tools for one job each.
     _add_setup(subparsers)
+    _add_profile(subparsers)
     _add_doctor(subparsers)
     _add_daily(subparsers)
     _add_run(subparsers)
@@ -71,6 +73,14 @@ def _add_setup(subparsers) -> None:
         action="store_true",
         help="also ask for the mail settings, without echoing the password",
     )
+
+
+def _add_profile(subparsers) -> None:
+    """Read back what the stable, human-owned configuration means."""
+    profile = subparsers.add_parser(
+        PROFILE, help="explain the configured interests and practical limits"
+    )
+    profile.add_argument("--config", default=DEFAULT_CONFIG)
 
 
 def _add_doctor(subparsers) -> None:

@@ -87,6 +87,10 @@ The `product` object answers three questions this project had open:
 - **There are two ids.** `id` names the auction and builds the page URL;
   `inventoryNumber` names the physical item and survives it being relisted.
   Both are carried into the canonical row, as `listing_id` and `inventory_id`.
+- **Product pages carry identity fields that search hits omit.** The observed
+  detail payload has `brand`, `taxonomyLevel1`, and `taxonomyLevel2`. It does not
+  have a separate model or model-number field, so the title remains the honest
+  model evidence rather than being split by guesswork.
 
 Two traps are worth stating out loud, because a parser gets them wrong silently:
 
@@ -172,8 +176,22 @@ Each term's page is cached separately and revalidated with `If-None-Match`, so a
 provider can answer 304 and send nothing. Lots the page marks as closed are left
 out; nothing can be bid on any more.
 
-A search result carries no taxonomy, so discovered lots have no `category`. Only
-a lot's own page has one, which is what `pull` is still for.
+A search result object carries no taxonomy, brand, or model field. The surrounding
+search route does retain two useful pieces of context, however:
+
+- a category sweep records its selected `Taxonomy Level 1` filter and repeats
+  that value in the taxonomy facet; and
+- the brand facet names provider-recognized brands present on the page.
+
+Auction Lens records the category only when those two category signals agree. It
+records a brand only when the longest matching brand facet begins the title as
+whole words. Requiring the prefix avoids calling an accessory by the brand of a
+product named later in its title. It never guesses a model; valuation falls back
+to the complete title until both brand and model are actually known.
+
+When the same lot appears first in an ordinary search and later in a category
+sweep, canonical deduplication retains that later identity evidence without an
+extra request. Its merge rules are described under "Reading a saved page."
 
 ### 2026-09-07 rate measurement: what pacing the provider tolerates
 
@@ -240,9 +258,10 @@ real pages to the cache, and losing them would mean asking the provider for
 them all over again.
 
 Whole pages of lots overlap: one lot answers two searches, or appears in a
-search and again in a category sweep. `unique_lots` keeps the first sighting,
-keyed on the physical item where the provider names one, so that both `discover`
-and `pull` reach the same answer about what counts as the same lot.
+search and again in a category sweep. `unique_lots` keys it by provider and
+physical item where available. It keeps the first page's auction-state values,
+then fills only a missing stable `brand`, `model`, or `category` from later
+sightings. Both `discover` and `pull` therefore reach the same answer.
 
 ### Reading a saved page: details
 

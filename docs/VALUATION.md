@@ -29,8 +29,10 @@ weight = 1.0
 ```
 
 Templates may use `{query}`, `{brand}`, `{model}`, and `{category}`. Values are
-URL-encoded. A reference adapter never contacts the site; it puts a convenient
-link in the report for human research.
+URL-encoded. `{query}` uses brand and model when both are known; with either one
+missing it uses the complete listing title, because a broad brand-only search is
+worse than the provider's own description. A reference adapter never contacts
+the site; it puts a convenient link in the report for human research.
 
 `weight` controls how much an observation influences the aggregate. Sample size
 also contributes, but is capped so one enormous dataset cannot automatically

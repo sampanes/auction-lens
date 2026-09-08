@@ -81,6 +81,12 @@ as one uninterrupted 16-character value.
 
 ## Prove delivery
 
+The daily HTML report uses the final gallery image for each card: the
+provider's photograph of the actual lot, not the first stock image. Images stay
+at their HTTPS addresses instead of being downloaded or attached, and each one
+opens its listing when selected. The plain-text alternative remains complete
+when a mail client chooses not to load remote images.
+
 Use a real lot already present in the watchlist so the message has a useful
 photo and link. Mark it `hunting` if needed:
 

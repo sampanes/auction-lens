@@ -15,7 +15,7 @@ from ..acquisition import (
     discover_searches,
     fetch_authorized_page,
 )
-from ..config import AppConfig, EmailConfig, RunMode, load_config
+from ..config import AppConfig, EmailConfig, RunMode, load_config, render_profile
 from ..env_file import write_settings
 from ..fields import parse_money
 from ..file_io import read_json, write_json_atomically
@@ -84,6 +84,12 @@ def setup(args: argparse.Namespace) -> int:
     print()
     print(f"Then: {PROGRAM} daily")
     print(f"To be emailed the report: {PROGRAM} setup --email")
+    return SUCCESS
+
+
+def profile(args: argparse.Namespace) -> int:
+    """Explain the stable operator choices without consulting any runtime state."""
+    print(render_profile(load_config(args.config)), end="")
     return SUCCESS
 
 

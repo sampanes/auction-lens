@@ -2,7 +2,13 @@
 
 ## Profile wizard and scenario planner
 
-Status: planned, after reliable provider normalization.
+Status: read-only profile explanation implemented; guided editing remains
+planned after reliable provider normalization.
+
+`auction-lens profile` is the first, deliberately read-only slice. It renders
+the effective configuration in plain language without reading credentials or
+runtime data. A future editor should reuse that explanation as its confirmation
+screen rather than inventing a second representation of the rules.
 
 The underlying TOML remains the source of truth, but routine configuration should
 not require hand-editing it. A future guided editor should:
