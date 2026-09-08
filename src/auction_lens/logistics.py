@@ -3,6 +3,12 @@
 The thresholds here are deliberately coarse. Auction Lens does not model a
 person's vehicle, helpers, or doorways; it only notices that a lot is heavy or
 bulky enough that someone should think before bidding, and says so once.
+
+What can be collected is a fact about the operator rather than about the lot,
+and it changes: the day a trailer arrives, every oversized lot becomes an
+ordinary one. So this asks instead of excluding, and the day it stops being a
+question is a single setting -- large_item_policy = "allow" -- rather than a
+filter to find and unpick across a dozen interest rules.
 """
 
 from __future__ import annotations
@@ -33,7 +39,7 @@ def assess_logistics(
         )
 
     heavy = _is_heavy(listing, config)
-    oversized = _is_oversized(listing, config)
+    oversized = _is_oversized(listing, config) or _declares_oversized(listing, config)
     if not heavy and not oversized:
         return LogisticsAssessment(status=LogisticsStatus.ORDINARY)
     if config.large_item_policy == LargeItemPolicy.REJECT:
@@ -58,6 +64,26 @@ def _is_oversized(listing: Listing, config: LogisticsConfig) -> bool:
     )
 
 
+def _declares_oversized(listing: Listing, config: LogisticsConfig) -> bool:
+    """Take the provider's word for it when it never published a measurement.
+
+    Thresholds only work on lots that state weight and dimensions, and many
+    state neither while announcing the same fact in words: "truck/trailer pickup
+    only" is a measurement, written for a human. The phrases are configured
+    rather than built in, because each provider says it differently.
+    """
+    searchable = listing.searchable_text
+    return any(term in searchable for term in config.oversized_terms)
+
+
+def _transport_question(listing: Listing) -> str:
+    """Quote the measurement where there is one, and the claim where there is not."""
+    if not listing.package_dimensions_in:
+        return "The listing states this is oversized; confirm the planned transport."
+    dimensions = DIMENSION_JOINER.join(str(value) for value in listing.package_dimensions_in)
+    return f"Confirm the {dimensions} in item fits the planned transport."
+
+
 def _open_questions(listing: Listing, *, heavy: bool, oversized: bool) -> tuple[str, ...]:
     """Ask only about stages the listing itself has not already answered.
 
@@ -66,10 +92,7 @@ def _open_questions(listing: Listing, *, heavy: bool, oversized: bool) -> tuple[
     """
     questions = []
     if oversized:
-        dimensions = DIMENSION_JOINER.join(
-            str(value) for value in listing.package_dimensions_in
-        )
-        questions.append(f"Confirm the {dimensions} in item fits the planned transport.")
+        questions.append(_transport_question(listing))
     if heavy:
         weight = listing.handling_weight_lb
         if listing.loading_assistance:

@@ -248,6 +248,7 @@ class LogisticsConfig:
     large_item_policy: LargeItemPolicy = LargeItemPolicy.ASK
     manual_handling_limit_lb: Decimal = Decimal("75")
     large_dimension_threshold_in: Decimal = Decimal("60")
+    oversized_terms: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         _settle(self, "large_item_policy", LargeItemPolicy)
