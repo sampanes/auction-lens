@@ -19,7 +19,7 @@ canonical JSON or CSV, live HTTP sources, or a combination of both.
 - Filters pickup locations with case-insensitive configured names.
 - Enforces configurable HTTP request limits to avoid unnecessary load.
 - Remembers observations and price changes in SQLite.
-- Renders plain-text and HTML reports and can send them over SMTP.
+- Renders plain-text and photo-backed HTML reports and can send them over SMTP.
 
 ## Start here
 
@@ -71,6 +71,7 @@ again -- but neither has to be typed day to day.
 | command | when you want it |
 | --- | --- |
 | `setup` | first run on a new machine |
+| `profile` | read back what your interests and practical limits mean |
 | `doctor` | check authorization, configuration, and delivery settings without network access |
 | `daily` | every day: find, score, report |
 | `discover` | find lots and write them, without scoring |
@@ -78,6 +79,25 @@ again -- but neither has to be typed day to day.
 | `run` | score a listing file you already have |
 | `watch` / `watchlist` | record what you think of a lot; read what you are following |
 | `logistics` | record how a bulky lot would be collected |
+
+## Read your profile
+
+The TOML is the source of truth, but it does not have to be read like source
+code. One command translates its stable operator choices into plain language:
+
+```cmd
+.venv\Scripts\auction-lens.exe profile
+```
+
+It explains each interest and its effective condition rules, the general
+bargain rule, locations, large-item handling, report length, and whether
+valuation is active. Empty settings are stated rather than skipped. The command
+does not read credentials, listings, history, or the network, and it never
+writes the configuration.
+
+Temporary circumstances remain temporary. For example, a branch already on
+today's route is supplied to `daily --visiting`; it is not silently saved into
+the stable profile.
 
 ## How long the report is
 
@@ -355,7 +375,7 @@ Save a decision for one listing in the same ignored SQLite database:
 
 Use `--status infeasible` to suppress the listing or `--status clear` to ask
 again. Added logistics cost participates in configured price ceilings. The future
-profile questionnaire is deliberately separate; see [the roadmap](docs/ROADMAP.md).
+guided profile editor is deliberately separate; see [the roadmap](docs/ROADMAP.md).
 
 ## Watchlist
 

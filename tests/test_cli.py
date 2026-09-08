@@ -280,6 +280,26 @@ class SetupCommandTests(unittest.TestCase):
             self.assertIn("left alone", message)
 
 
+class ProfileCommandTests(unittest.TestCase):
+    def test_it_reads_only_the_selected_config(self):
+        with temporary_directory() as directory:
+            config = _config_copy(directory)
+            before = config.read_bytes()
+            files_before = tuple(directory.iterdir())
+            with patch("auction_lens.cli.load_env_file") as load_env:
+                with patch("auction_lens.cli.commands.discover_searches") as discover:
+                    with patch("auction_lens.cli.commands.fetch_authorized_page") as fetch:
+                        message = run_cli(["profile", "--config", str(config)])
+
+            self.assertEqual(config.read_bytes(), before)
+            self.assertEqual(tuple(directory.iterdir()), files_before)
+        load_env.assert_not_called()
+        discover.assert_not_called()
+        fetch.assert_not_called()
+        self.assertIn("Auction Lens profile", message)
+        self.assertIn("TEMPORARY CIRCUMSTANCES", message)
+
+
 class MailSetupTests(unittest.TestCase):
     """Filling in the five mail variables without ever showing the password."""
 
@@ -538,7 +558,7 @@ class DefaultsTests(unittest.TestCase):
     def test_the_configuration_flag_can_be_left_off(self):
         # One door: the file a person edits is where every command looks.
         for command in (
-            "doctor", "run", "fetch", "discover", "pull", "daily", "watchlist"
+            "profile", "doctor", "run", "fetch", "discover", "pull", "daily", "watchlist"
         ):
             with self.subTest(command=command):
                 self.assertEqual(_parsed_default(command, "config"), "config/local.toml")

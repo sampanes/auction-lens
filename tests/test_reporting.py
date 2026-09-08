@@ -78,6 +78,42 @@ class HtmlReportTests(unittest.TestCase):
         self.assertIn("https://example.invalid/auction/synthetic-001", report)
         self.assertIn("Estimated total: $20.70", report)
 
+    def test_card_links_the_actual_lot_photo_to_the_listing(self):
+        candidate = evaluate(self.listings[SOUNDBAR], self.config)[0]
+
+        report = render_html([candidate])
+
+        self.assertIn(
+            "<a href='https://example.invalid/auction/synthetic-001'>"
+            "<img src='https://example.invalid/photo/synthetic-001-shelf.jpg'",
+            report,
+        )
+        self.assertNotIn("synthetic-001-stock.jpg", report)
+
+    def test_photo_and_listing_addresses_are_escaped(self):
+        candidate = evaluate(self.listings[SOUNDBAR], self.config)[0]
+        listing = replace(
+            candidate.listing,
+            url="https://example.invalid/lot?next='details'&view=full",
+            photo_urls=("https://example.invalid/lot.jpg?size='full'&crop=none",),
+        )
+
+        report = render_html([replace(candidate, listing=listing)])
+
+        self.assertIn("next=&#x27;details&#x27;&amp;view=full", report)
+        self.assertIn("size=&#x27;full&#x27;&amp;crop=none", report)
+
+    def test_non_https_photos_are_not_embedded_in_email(self):
+        candidate = evaluate(self.listings[SOUNDBAR], self.config)[0]
+        listing = replace(
+            candidate.listing,
+            photo_urls=("http://example.invalid/photo/lot.jpg",),
+        )
+
+        report = render_html([replace(candidate, listing=listing)])
+
+        self.assertNotIn("<img", report)
+
     def test_listing_title_is_escaped(self):
         candidate = evaluate(self.listings[SOUNDBAR], self.config)[0]
         listing = replace(candidate.listing, title="<script>alert(1)</script>")
@@ -177,6 +213,16 @@ class EmailDeliveryTests(unittest.TestCase):
         markup = message.get_body(preferencelist=("html",)).get_content()
         self.assertIn("Flagged monitor", plain)
         self.assertIn("Flagged monitor", markup)
+
+    @patch("auction_lens.reporting.delivery.smtplib.SMTP_SSL")
+    def test_a_daily_email_includes_the_actual_lot_photo(self, smtp_ssl):
+        with patch.dict("os.environ", SMTP_ENVIRONMENT, clear=False):
+            send_email(self.candidates, self.email)
+
+        message = smtp_ssl.return_value.__enter__.return_value.send_message.call_args.args[0]
+        markup = message.get_body(preferencelist=("html",)).get_content()
+        self.assertIn("synthetic-002-shelf.jpg", markup)
+        self.assertNotIn("synthetic-002-stock.jpg", markup)
 
     @patch("auction_lens.reporting.delivery.smtplib.SMTP_SSL")
     def test_a_watchlist_email_does_not_expose_its_local_file_path(self, smtp_ssl):

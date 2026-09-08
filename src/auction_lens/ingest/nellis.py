@@ -21,7 +21,7 @@ from __future__ import annotations
 import json
 import re
 from typing import Any
-from urllib.parse import urljoin
+from urllib.parse import unquote_plus, urljoin
 
 from .turbo_stream import decode
 
@@ -39,6 +39,15 @@ PRODUCT_ROUTE = "routes/p.$title.$productId._index"
 # one request describes a whole page of lots rather than one lot.
 SEARCH_ROUTE = "routes/search"
 PRODUCTS_KEY = "products"
+
+# Search hits omit taxonomy and brand, but the surrounding route keeps the
+# filter that produced the page and the provider's brand vocabulary. These are
+# evidence only when they also agree with the page itself; a search term alone
+# is never treated as a category or brand.
+CATEGORY_FILTER = "Taxonomy Level 1"
+TAXONOMY_FACET = "taxonomy1"
+BRAND_FACET = "brand"
+WORD_PATTERN = re.compile(r"[^\W_]+")
 
 # Each result is linked from the rendered markup, and the link ends in the
 # auction id, which is how a product is matched to its own address.
@@ -66,7 +75,14 @@ def read_product_page(html: str, *, source: str) -> dict[str, Any]:
     return _row(_product(html), source=source, url=_canonical_url(html))
 
 
-def _row(product: dict[str, Any], *, source: str, url: str) -> dict[str, Any]:
+def _row(
+    product: dict[str, Any],
+    *,
+    source: str,
+    url: str,
+    category: str = "",
+    brand: str = "",
+) -> dict[str, Any]:
     """The one mapping from a provider product to a canonical row.
 
     A product object is the same shape whether it came from its own page or from
@@ -88,9 +104,13 @@ def _row(product: dict[str, Any], *, source: str, url: str) -> dict[str, Any]:
         "grade": canonical_grade(grade),
         "quality_rating": grade.get(RATING_KEY),
     }
-    category = _category(product)
+    category = _category(product) or category
     if category:
         row["category"] = category
+    direct_brand = str(product.get("brand") or "").strip()
+    brand = direct_brand or brand
+    if brand:
+        row["brand"] = brand
     return row
 
 
@@ -100,18 +120,26 @@ def read_search_page(html: str, *, source: str, page_url: str) -> list[dict[str,
     This is the polite way to discover lots: one request describes a whole page
     of them, where asking for each product page separately would be forty.
 
-    A search result carries no taxonomy, so ``category`` is absent on these rows;
-    a lot's own page has it, for a rule that needs to match on it. Lots the page
+    A result object carries no taxonomy or brand. The surrounding route does
+    retain an applied category filter and its brand facet, so those can supply
+    conservative context without asking for every lot's own page. Lots the page
     marks as closed are left out, because nothing can be bid on any more.
     """
     payload = _payload(html)
-    products = (payload.get("loaderData") or {}).get(SEARCH_ROUTE) or {}
-    listed = products.get(PRODUCTS_KEY)
+    route = (payload.get("loaderData") or {}).get(SEARCH_ROUTE) or {}
+    listed = route.get(PRODUCTS_KEY)
     if not isinstance(listed, list):
         raise ValueError("no search results found; this is not a search page")
     addresses = _product_addresses(html, page_url)
+    category = _selected_category(route)
     return [
-        _row(product, source=source, url=addresses.get(str(product.get("id")), ""))
+        _row(
+            product,
+            source=source,
+            url=addresses.get(str(product.get("id")), ""),
+            category=category,
+            brand=_title_brand(product, route),
+        )
         for product in listed
         if isinstance(product, dict) and product.get("id") and not product.get("isClosed")
     ]
@@ -215,6 +243,71 @@ def _category(product: dict[str, Any]) -> str:
     """Prefer the narrower taxonomy, which is what interest rules match on."""
     narrow = str(product.get("taxonomyLevel2") or "").strip()
     return narrow or str(product.get("taxonomyLevel1") or "").strip()
+
+
+def _selected_category(route: dict[str, Any]) -> str:
+    """Use one applied top-level category only when its facet confirms it."""
+    selected = set()
+    for item in route.get("selectedFilters") or []:
+        if not isinstance(item, str):
+            continue
+        name, separator, value = _filter_parts(item)
+        if separator and name == CATEGORY_FILTER and value:
+            selected.add(value)
+    if len(selected) != 1:
+        return ""
+
+    category = next(iter(selected))
+    facets = route.get("facets") or {}
+    taxonomy = facets.get(TAXONOMY_FACET) if isinstance(facets, dict) else None
+    if not isinstance(taxonomy, dict):
+        return ""
+    confirmed = [
+        str(name).strip()
+        for name in taxonomy
+        if str(name).strip().casefold() == category.casefold()
+    ]
+    return confirmed[0] if len(confirmed) == 1 else ""
+
+
+def _filter_parts(value: str) -> tuple[str, str, str]:
+    """Decode the provider's ``Name:value`` selected-filter notation."""
+    name, separator, selected = unquote_plus(value).partition(":")
+    return name.strip(), separator, selected.strip()
+
+
+def _title_brand(product: dict[str, Any], route: dict[str, Any]) -> str:
+    """Take the longest provider brand facet that begins the product title.
+
+    Matching later in a title would mistake compatibility text for the product's
+    own brand. A partial word is not evidence either: ``GE`` must not match
+    ``large``. When equally specific facets disagree, saying nothing is safer
+    than choosing one arbitrarily.
+    """
+    title_words = _words(product.get("title"))
+    facets = route.get("facets") or {}
+    brands = facets.get(BRAND_FACET) if isinstance(facets, dict) else None
+    if not title_words or not isinstance(brands, dict):
+        return ""
+
+    matches: list[tuple[tuple[str, ...], str]] = []
+    for candidate in brands:
+        brand = str(candidate).strip()
+        brand_words = _words(brand)
+        if brand_words and title_words[: len(brand_words)] == brand_words:
+            matches.append((brand_words, brand))
+    if not matches:
+        return ""
+
+    longest = max(len(words) for words, _ in matches)
+    best = [brand for words, brand in matches if len(words) == longest]
+    return best[0] if len(best) == 1 else ""
+
+
+def _words(value: Any) -> tuple[str, ...]:
+    """Comparable words, treating ``&`` and ``and`` as the same brand text."""
+    text = str(value or "").casefold().replace("&", " and ")
+    return tuple(WORD_PATTERN.findall(text))
 
 
 def _amount(value: Any) -> str:

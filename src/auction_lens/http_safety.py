@@ -1,29 +1,22 @@
-"""Fail-closed HTTP rules shared by every configurable network adapter.
+"""Shared rules that keep configurable HTTP requests on public HTTPS origins.
 
-The risk worth defending against is a redirect. A configured URL is written by
-the operator, but where it redirects to is decided by the remote server, and
-every request carries a user agent with the operator's real contact address. So
-a redirect may not leave the origin that was authorized.
-
-Deliberately not defended against: an attacker who can edit the configuration
-file. Once someone has that access, no check on the URL they wrote can help, so
-a rule guarding against it costs a reader something and protects nobody.
-
-The checks on a configured URL therefore exist to catch a mistake and say so
-clearly, not to stop an adversary. "A public host name has letters in it" is
-the whole rule, and it rejects a shorthand address like 127.1 that the standard
-library declines to parse as an address at all. An earlier version matched
-legacy octal and hexadecimal spellings with a regular expression, which caught
-the same mistakes while asking the reader to recognise several notations to see
-that it did.
+Configured URLs are checked for operator mistakes. Redirects are pinned to the
+authorized origin because the remote server, not the operator, chooses them and
+requests can carry identifying or secret headers.
 """
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 from ipaddress import ip_address
 from urllib.parse import SplitResult, urlsplit
 from urllib.request import HTTPRedirectHandler, build_opener
+
+# ``ip_address`` deliberately accepts only modern notation, while DNS still
+# understands shorthand such as 127.1 and 0x7f.1. Refusing numeric-looking host
+# names keeps those alternate spellings from evading the public-address check.
+NUMERIC_HOST = re.compile(r"^(?:0x[0-9a-f]+|\d+)(?:\.(?:0x[0-9a-f]+|\d+)){0,3}$", re.I)
 
 
 def require_public_https(value: str) -> None:
@@ -41,7 +34,7 @@ def require_public_https(value: str) -> None:
             host == "localhost"
             or host.endswith(".localhost")
             or "." not in host
-            or not any(character.isalpha() for character in host)
+            or NUMERIC_HOST.fullmatch(host)
         ):
             raise ValueError(
                 "authorized source URL must use a public, fully qualified host"

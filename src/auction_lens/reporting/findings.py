@@ -80,6 +80,7 @@ class Finding:
     facts: tuple[Fact, ...]
     reasons: tuple[str, ...]
     url: str
+    actual_lot_photo_url: str
     handling: Handling
     valuation: Valuation
 
@@ -138,9 +139,15 @@ def _finding(candidate: Candidate) -> Finding:
         facts=_facts(candidate),
         reasons=candidate.reasons,
         url=candidate.listing.url,
+        actual_lot_photo_url=_https_photo(candidate.listing.condition_photo_url),
         handling=_handling(candidate),
         valuation=_valuation(candidate.valuation),
     )
+
+
+def _https_photo(url: str) -> str:
+    """Keep email images remote and encrypted; omit anything else."""
+    return url if url.lower().startswith("https://") else ""
 
 
 def _change(candidate: Candidate) -> str:

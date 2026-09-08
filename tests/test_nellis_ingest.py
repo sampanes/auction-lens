@@ -7,6 +7,7 @@ import unittest
 from decimal import Decimal
 
 from auction_lens.ingest import read_product_page
+from auction_lens.ingest.nellis import _row
 from auction_lens.ingest.turbo_stream import decode
 from auction_lens.models import Listing
 from support import ROOT
@@ -82,6 +83,16 @@ class ProductPageTests(unittest.TestCase):
 
     def test_the_narrower_taxonomy_wins_because_interests_match_on_it(self):
         self.assertEqual(read_product_page(_page(), source="nellis")["category"], "Speakers")
+
+    def test_a_product_pages_direct_brand_is_carried_without_guessing_a_model(self):
+        row = _row(
+            {"id": "1", "title": "Example T100 Speaker", "brand": "Example"},
+            source="nellis",
+            url="https://example.invalid/p/example/1",
+        )
+
+        self.assertEqual(row["brand"], "Example")
+        self.assertNotIn("model", row)
 
     def test_the_provider_axis_names_are_renamed_to_the_canonical_ones(self):
         grade = read_product_page(_page(), source="nellis")["grade"]

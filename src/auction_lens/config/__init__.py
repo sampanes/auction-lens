@@ -1,6 +1,7 @@
 """Reading and describing one provider's TOML configuration."""
 
 from .loader import load_config
+from .profile import render_profile
 from .schema import (
     AcquisitionConfig,
     AcquisitionMode,
@@ -45,4 +46,5 @@ __all__ = [
     "ValuationSourceConfig",
     "in_section",
     "load_config",
+    "render_profile",
 ]

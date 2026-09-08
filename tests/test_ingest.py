@@ -6,7 +6,7 @@ import json
 import unittest
 from decimal import Decimal
 
-from auction_lens.ingest import load_listings
+from auction_lens.ingest import load_listings, unique_lots
 from support import SYNTHETIC_LISTINGS, temporary_directory
 
 MINIMAL_LISTING = {
@@ -140,6 +140,44 @@ class UnsupportedInputTests(unittest.TestCase):
             path.write_text("", encoding="utf-8")
             with self.assertRaisesRegex(ValueError, ".json or .csv"):
                 load_listings(path)
+
+
+class DuplicateDiscoveryTests(unittest.TestCase):
+    def test_a_later_sighting_fills_only_missing_stable_identity(self):
+        first = {**MINIMAL_LISTING, "current_bid": "5", "brand": ""}
+        later = {
+            **MINIMAL_LISTING,
+            "current_bid": "9",
+            "url": "https://example.invalid/a-newer-observation",
+            "brand": "Example",
+            "model": "T100",
+            "category": "Electronics",
+        }
+
+        (merged,) = unique_lots([first, later])
+
+        self.assertEqual(merged["current_bid"], "5")
+        self.assertEqual(merged["url"], MINIMAL_LISTING["url"])
+        self.assertEqual(
+            {name: merged[name] for name in ("brand", "model", "category")},
+            {"brand": "Example", "model": "T100", "category": "Electronics"},
+        )
+
+    def test_a_later_sighting_does_not_overwrite_stable_identity_already_known(self):
+        first = {**MINIMAL_LISTING, "brand": "First", "category": "Electronics"}
+        later = {**MINIMAL_LISTING, "brand": "Second", "category": "Other"}
+
+        (merged,) = unique_lots([first, later])
+
+        self.assertEqual(merged["brand"], "First")
+        self.assertEqual(merged["category"], "Electronics")
+
+    def test_the_same_listing_id_at_two_providers_names_two_lots(self):
+        other = {**MINIMAL_LISTING, "source": "another-provider"}
+
+        lots = unique_lots([MINIMAL_LISTING, other])
+
+        self.assertEqual([lot["source"] for lot in lots], ["nellis", "another-provider"])
 
 
 if __name__ == "__main__":

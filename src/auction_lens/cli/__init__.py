@@ -12,6 +12,7 @@ from .parser import (
     DOCTOR,
     FETCH,
     LOGISTICS,
+    PROFILE,
     PROGRAM,
     PULL,
     RUN,
@@ -23,6 +24,7 @@ from .parser import (
 
 COMMANDS = {
     SETUP: commands.setup,
+    PROFILE: commands.profile,
     DOCTOR: commands.doctor,
     DAILY: commands.daily,
     RUN: commands.run,

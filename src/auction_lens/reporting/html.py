@@ -15,6 +15,9 @@ from .findings import Fact, Finding, Handling, Report, Valuation, build_report
 
 CARD_STYLE = "border:1px solid #ddd;border-radius:8px;padding:14px;margin:12px 0"
 HEADING_STYLE = "margin-top:0"
+PHOTO_STYLE = (
+    "display:block;width:100%;height:auto;border-radius:6px;margin:12px 0"
+)
 SEPARATOR = " &middot; "
 
 
@@ -41,11 +44,23 @@ def _card(finding: Finding) -> str:
             f"<p><strong>Score {finding.score}{SEPARATOR}{escape(finding.change)}</strong></p>",
             f"<p>{_facts(finding.facts)}</p>",
             f"<p>{escape('; '.join(finding.reasons))}</p>",
+            _photo(finding),
             _handling(finding.handling),
             _valuation(finding.valuation),
             f"<p><a href='{escape(finding.url, quote=True)}'>View listing</a></p>",
             "</article>",
         )
+    )
+
+
+def _photo(finding: Finding) -> str:
+    if not finding.actual_lot_photo_url:
+        return ""
+    listing_url = escape(finding.url, quote=True)
+    photo_url = escape(finding.actual_lot_photo_url, quote=True)
+    return (
+        f"<a href='{listing_url}'>"
+        f"<img src='{photo_url}' alt='Photo of this lot' style='{PHOTO_STYLE}'></a>"
     )
 
 

@@ -29,6 +29,14 @@ def _page() -> str:
 
 
 class SearchPageTests(unittest.TestCase):
+    def _read_route(self, route):
+        links = "".join(
+            f'<a href="/p/example/{product["id"]}">lot</a>' for product in route["products"]
+        )
+        payload = {"loaderData": {"routes/search": route}}
+        with patch("auction_lens.ingest.nellis._payload", return_value=payload):
+            return read_search_page(links, source="nellis", page_url=PAGE_URL)
+
     def test_one_page_describes_every_lot_it_lists(self):
         rows = read_search_page(_page(), source="nellis", page_url=PAGE_URL)
         self.assertEqual(len(rows), 2)
@@ -56,11 +64,73 @@ class SearchPageTests(unittest.TestCase):
             ("used", "untested", "minor damage", "missing parts unknown", "assembly required"),
         )
 
-    def test_a_search_result_has_no_taxonomy_so_it_states_no_category(self):
-        # Only a lot's own page carries the taxonomy; claiming one here would
-        # silently give every discovered lot the same wrong category.
+    def test_an_unfiltered_search_states_no_category(self):
+        # A search term is not taxonomy evidence.
         rows = read_search_page(_page(), source="nellis", page_url=PAGE_URL)
         self.assertNotIn("category", rows[0])
+
+    def test_a_confirmed_category_filter_describes_every_result_on_the_page(self):
+        route = {
+            "products": [{"id": "1", "title": "Example speaker"}],
+            "selectedFilters": ["Taxonomy%20Level%201:Books%20%26%20Media"],
+            "facets": {"taxonomy1": {"Books & Media": 1}},
+        }
+
+        (row,) = self._read_route(route)
+
+        self.assertEqual(row["category"], "Books & Media")
+
+    def test_a_filter_that_the_taxonomy_facet_does_not_confirm_is_not_a_category(self):
+        route = {
+            "products": [{"id": "1", "title": "Example speaker"}],
+            "selectedFilters": ["Taxonomy%20Level%201:Electronics"],
+            "facets": {"taxonomy1": {"Something Else": 1}},
+        }
+
+        (row,) = self._read_route(route)
+
+        self.assertNotIn("category", row)
+
+    def test_the_longest_brand_facet_that_begins_the_title_is_used(self):
+        route = {
+            "products": [{"id": "1", "title": "Example-Co SB21 Speaker"}],
+            "facets": {"brand": {"Example": 1, "Example Co": 1}},
+        }
+
+        (row,) = self._read_route(route)
+
+        self.assertEqual(row["brand"], "Example Co")
+        self.assertNotIn("model", row)
+
+    def test_a_brand_later_in_the_title_is_not_claimed_for_an_accessory(self):
+        route = {
+            "products": [{"id": "1", "title": "Case for Example Co Speaker"}],
+            "facets": {"brand": {"Example Co": 1}},
+        }
+
+        (row,) = self._read_route(route)
+
+        self.assertNotIn("brand", row)
+
+    def test_a_brand_must_match_whole_title_words(self):
+        route = {
+            "products": [{"id": "1", "title": "Large Speaker"}],
+            "facets": {"brand": {"GE": 1}},
+        }
+
+        (row,) = self._read_route(route)
+
+        self.assertNotIn("brand", row)
+
+    def test_equally_specific_brand_facets_are_left_ambiguous(self):
+        route = {
+            "products": [{"id": "1", "title": "Example Co Speaker"}],
+            "facets": {"brand": {"Example-Co": 1, "Example Co": 1}},
+        }
+
+        (row,) = self._read_route(route)
+
+        self.assertNotIn("brand", row)
 
     def test_a_page_that_is_not_a_search_says_so(self):
         product_page = (ROOT / "fixtures" / "nellis" / "product-page.html").read_text(
