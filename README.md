@@ -142,8 +142,9 @@ your configuration and go into the ignored `.env`, leaving its comments alone;
 then it says whether
 `[reports.email]` is on. It reports that rather than editing it, because
 `enabled = true` is one line you own and a helper that rewrites TOML is how a
-configuration quietly gets corrupted. The command exits non-zero while that
-switch is off, so automation cannot mistake saved credentials for readiness.
+configuration quietly gets corrupted. Saving the settings is a success either
+way; whether delivery is switched on is `doctor --email`'s question, and that is
+the one a scheduler should ask.
 
 Other SMTP hosts are supported when the configured port and security mode suit
 the service. Gmail additionally needs 2-Step Verification and an app password

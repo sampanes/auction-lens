@@ -298,6 +298,13 @@ class PublicRedirectTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "different origin.*reconfirm"):
             self._redirect("https://provider.example:444/listings")
 
+    def test_an_unusually_spelled_address_is_stopped_by_the_origin_rule(self):
+        # 0x7f.1 is a legacy spelling of a loopback address. Recognising the
+        # spelling is not what protects the operator here: the redirect is not
+        # the authorized origin, which is true of every address it could name.
+        with self.assertRaisesRegex(RuntimeError, "different origin.*reconfirm"):
+            self._redirect("https://0x7f.1/listings")
+
     def test_a_same_host_public_https_redirect_is_allowed(self):
         redirected = self._redirect("https://provider.example/current-listings")
         self.assertEqual(

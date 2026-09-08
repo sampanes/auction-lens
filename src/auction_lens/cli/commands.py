@@ -47,7 +47,6 @@ PAGE_SUFFIX = ".html"
 LISTINGS_KEY = "listings"
 
 SUCCESS = 0
-NOT_READY = 2
 
 
 ENV_TEMPLATE = """# Local settings for Auction Lens. Ignored by git; never commit it.
@@ -140,7 +139,9 @@ def _report_email_switch(config: Path, email: EmailConfig) -> int:
     print(f"[!] {config} still has [reports.email] enabled = false.")
     print("    Mail settings were saved, but delivery is not ready.")
     print("    Set it to true and confirm that port and security suit your SMTP host.")
-    return NOT_READY
+    print()
+    print(f"Then check it: {PROGRAM} doctor --email")
+    return SUCCESS
 
 
 def _answer(question: str, default: str) -> str:

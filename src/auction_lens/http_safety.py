@@ -1,17 +1,29 @@
-"""Fail-closed HTTP rules shared by every configurable network adapter."""
+"""Fail-closed HTTP rules shared by every configurable network adapter.
+
+The risk worth defending against is a redirect. A configured URL is written by
+the operator, but where it redirects to is decided by the remote server, and
+every request carries a user agent with the operator's real contact address. So
+a redirect may not leave the origin that was authorized.
+
+Deliberately not defended against: an attacker who can edit the configuration
+file. Once someone has that access, no check on the URL they wrote can help, so
+a rule guarding against it costs a reader something and protects nobody.
+
+The checks on a configured URL therefore exist to catch a mistake and say so
+clearly, not to stop an adversary. "A public host name has letters in it" is
+the whole rule, and it rejects a shorthand address like 127.1 that the standard
+library declines to parse as an address at all. An earlier version matched
+legacy octal and hexadecimal spellings with a regular expression, which caught
+the same mistakes while asking the reader to recognise several notations to see
+that it did.
+"""
 
 from __future__ import annotations
 
-import re
 from collections.abc import Callable
 from ipaddress import ip_address
 from urllib.parse import SplitResult, urlsplit
 from urllib.request import HTTPRedirectHandler, build_opener
-
-LEGACY_IPV4_ADDRESS = re.compile(
-    r"^(?:0[xX][0-9A-Fa-f]+|[0-9]+)"
-    r"(?:\.(?:0[xX][0-9A-Fa-f]+|[0-9]+)){0,3}$"
-)
 
 
 def require_public_https(value: str) -> None:
@@ -29,7 +41,7 @@ def require_public_https(value: str) -> None:
             host == "localhost"
             or host.endswith(".localhost")
             or "." not in host
-            or LEGACY_IPV4_ADDRESS.fullmatch(host)
+            or not any(character.isalpha() for character in host)
         ):
             raise ValueError(
                 "authorized source URL must use a public, fully qualified host"

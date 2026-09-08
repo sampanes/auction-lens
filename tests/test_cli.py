@@ -409,7 +409,15 @@ class MailSetupTests(unittest.TestCase):
             _, _, message, exit_code = self._setup_email(directory, email_enabled=False)
         self.assertIn("enabled = false", message)
         self.assertIn("delivery is not ready", message)
-        self.assertEqual(exit_code, 2)
+        self.assertIn("doctor --email", message)
+
+    def test_saving_the_settings_is_not_reported_as_a_failure(self):
+        # setup did what it was asked. Whether delivery is switched on is a
+        # separate question, and doctor is the command that answers it for
+        # automation; failing here would make a normal first run look broken.
+        with temporary_directory() as directory:
+            _, _, _, exit_code = self._setup_email(directory, email_enabled=False)
+        self.assertEqual(exit_code, 0)
 
     def test_noninteractive_setup_fails_before_writing_a_password(self):
         with temporary_directory() as directory:
