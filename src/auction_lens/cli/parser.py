@@ -64,6 +64,11 @@ def _add_setup(subparsers) -> None:
     )
     setup.add_argument("--config", default=DEFAULT_CONFIG, help="configuration to create")
     setup.add_argument("--env-file", default=DEFAULT_ENV_FILE, help="settings file to create")
+    setup.add_argument(
+        "--email",
+        action="store_true",
+        help="also ask for the mail settings, without echoing the password",
+    )
 
 
 def _add_daily(subparsers) -> None:

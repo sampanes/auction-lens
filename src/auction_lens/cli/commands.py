@@ -5,10 +5,12 @@ from __future__ import annotations
 import argparse
 import sys
 from dataclasses import replace
+from getpass import getpass
 from pathlib import Path
 
 from ..acquisition import METADATA_SUFFIX, discover_searches, fetch_authorized_page
 from ..config import AppConfig, load_config
+from ..env_file import write_settings
 from ..fields import parse_money
 from ..file_io import read_json, write_json_atomically
 from ..ingest import load_listings, read_saved_page, read_search_page, unique_lots
@@ -28,7 +30,10 @@ from ..storage import (
     WatchlistStore,
 )
 from ..valuation import ValuationEngine
-from .parser import CLEAR, DROP, EXAMPLE_CONFIG, PROGRAM
+from .parser import CLEAR, DEFAULT_INBOX, DROP, EXAMPLE_CONFIG, PROGRAM
+
+# The host most people setting this up are reaching for; anything is accepted.
+DEFAULT_SMTP_HOST = "smtp.gmail.com"
 
 PAGE_SUFFIX = ".html"
 LISTINGS_KEY = "listings"
@@ -65,13 +70,98 @@ def setup(args: argparse.Namespace) -> int:
     config, env_file = Path(args.config), Path(args.env_file)
     print(_created(config, Path(EXAMPLE_CONFIG).read_text(encoding="utf-8")))
     print(_created(env_file, ENV_TEMPLATE))
+    if args.email:
+        return _ask_for_mail_settings(config, env_file)
     print()
     print("Before the first run, edit:")
     print(f"  {env_file}: put a real contact address in AUCTION_LENS_HTTP_USER_AGENT")
     print(f"  {config}: [locations] allowed, and the [[interests]] you actually want")
     print()
     print(f"Then: {PROGRAM} daily")
+    print(f"To be emailed the report: {PROGRAM} setup --email")
     return SUCCESS
+
+
+def _ask_for_mail_settings(config: Path, env_file: Path) -> int:
+    """Fill in the five mail variables, without the password ever being shown.
+
+    Any SMTP host is accepted. The advice for one provider is printed as advice
+    rather than enforced as a rule, because a setup helper that refuses every
+    host but one stops being setup and becomes a preference.
+    """
+    print()
+    host = _answer("SMTP host", DEFAULT_SMTP_HOST)
+    _mail_host_advice(host)
+    sender = _address("Address the reports are sent from", "")
+    recipient = _address("Address they are sent to", sender)
+    password = _secret("Password or app password")
+
+    write_settings(
+        env_file,
+        {
+            "AUCTION_LENS_SMTP_HOST": host,
+            "AUCTION_LENS_SMTP_USERNAME": sender,
+            "AUCTION_LENS_SMTP_PASSWORD": password,
+            "AUCTION_LENS_EMAIL_FROM": sender,
+            "AUCTION_LENS_EMAIL_TO": recipient,
+        },
+    )
+    print()
+    print(f"[OK] {env_file} updated. The password was neither printed nor logged.")
+    return _report_email_switch(config)
+
+
+def _report_email_switch(config: Path) -> int:
+    """Read the switch with the real loader rather than guessing at the file.
+
+    Editing TOML by hand is how a setup script starts quietly corrupting the
+    configuration it was meant to help with, so this reports the one line to
+    change and leaves the file to its owner.
+    """
+    if load_config(config).email.enabled:
+        print(f"[OK] {config} already has [reports.email] enabled = true.")
+        print()
+        print(f"Send one now: {PROGRAM} run --input {DEFAULT_INBOX} --email")
+        return SUCCESS
+    print(f"[!] {config} still has [reports.email] enabled = false.")
+    print("    Set it to true; the default port 465 and ssl already suit most hosts.")
+    return SUCCESS
+
+
+def _answer(question: str, default: str) -> str:
+    """One line of input, where pressing Enter accepts the suggestion."""
+    shown = f"{question} [{default}]: " if default else f"{question}: "
+    return input(shown).strip() or default
+
+
+def _address(question: str, default: str) -> str:
+    """An email address, checked only for the shape every host agrees on."""
+    while True:
+        answer = _answer(question, default)
+        if answer.count("@") == 1 and all(part.strip() for part in answer.split("@")):
+            return answer
+        print("    That is not an email address. Try again.")
+
+
+def _secret(question: str) -> str:
+    """Read a password without echoing it, and without the spaces some hosts show.
+
+    Google prints an app password in four groups of four and people paste it
+    exactly as shown, which is the most common way this step fails.
+    """
+    while True:
+        typed = "".join(getpass(f"{question}: ").split())
+        if typed:
+            return typed
+        print("    Nothing entered. Try again.")
+
+
+def _mail_host_advice(host: str) -> None:
+    """Say the one thing that host is known to need, without requiring it."""
+    if "gmail" in host.lower():
+        print("    Gmail needs 2-Step Verification and an app password, not the")
+        print("    account password: https://myaccount.google.com/apppasswords")
+        print("    See docs/GMAIL.md if that page offers you nothing.")
 
 
 def _created(path: Path, contents: str) -> str:
@@ -271,7 +361,7 @@ def watchlist(args: argparse.Namespace) -> int:
         config = load_config(args.config)
         if not config.email.enabled:
             raise RuntimeError("email reporting is disabled in the selected configuration")
-        send_watchlist_email(items, config.email, path=args.watchlist)
+        send_watchlist_email(items, config.email)
         print(f"Emailed {len(items)} selected lot(s).")
     return SUCCESS
 

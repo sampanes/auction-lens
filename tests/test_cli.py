@@ -192,6 +192,72 @@ class SetupCommandTests(unittest.TestCase):
             self.assertIn("left alone", message)
 
 
+class MailSetupTests(unittest.TestCase):
+    """Filling in the five mail variables without ever showing the password."""
+
+    ANSWERS = ["smtp.gmail.com", "me@example.invalid", "", "  abcd efgh ijkl mnop  "]
+
+    def _setup_email(self, directory, answers=None):
+        typed = list(self.ANSWERS if answers is None else answers)
+        config, env_file = directory / "local.toml", directory / ".env"
+        run_cli(["setup", "--config", str(config), "--env-file", str(env_file)])
+        with patch("builtins.input", side_effect=lambda _: typed.pop(0)):
+            with patch("auction_lens.cli.commands.getpass", side_effect=lambda _: typed.pop(0)):
+                message = run_cli(
+                    ["setup", "--config", str(config), "--env-file", str(env_file), "--email"]
+                )
+        return config, env_file, message
+
+    def test_the_answers_reach_the_env_file(self):
+        with temporary_directory() as directory:
+            _, env_file, _ = self._setup_email(directory)
+            written = env_file.read_text(encoding="utf-8")
+        self.assertIn("AUCTION_LENS_SMTP_HOST=smtp.gmail.com", written)
+        self.assertIn("AUCTION_LENS_SMTP_USERNAME=me@example.invalid", written)
+
+    def test_an_empty_recipient_means_send_it_to_yourself(self):
+        with temporary_directory() as directory:
+            _, env_file, _ = self._setup_email(directory)
+            written = env_file.read_text(encoding="utf-8")
+        self.assertIn("AUCTION_LENS_EMAIL_TO=me@example.invalid", written)
+
+    def test_the_spaces_a_provider_displays_are_not_part_of_the_password(self):
+        # Google shows an app password in four groups of four and people paste
+        # it exactly as shown, which is the usual way this step fails.
+        with temporary_directory() as directory:
+            _, env_file, _ = self._setup_email(directory)
+            written = env_file.read_text(encoding="utf-8")
+        self.assertIn("AUCTION_LENS_SMTP_PASSWORD=abcdefghijklmnop", written)
+
+    def test_the_password_is_never_printed(self):
+        with temporary_directory() as directory:
+            _, _, message = self._setup_email(directory)
+        self.assertNotIn("abcd", message)
+        self.assertIn("neither printed nor logged", message)
+
+    def test_the_comments_in_the_env_file_survive(self):
+        with temporary_directory() as directory:
+            _, env_file, _ = self._setup_email(directory)
+            written = env_file.read_text(encoding="utf-8")
+        self.assertIn("never commit it", written)
+        self.assertIn("AUCTION_LENS_HTTP_USER_AGENT=AuctionLens/1.0", written)
+
+    def test_any_host_is_accepted_not_only_the_suggested_one(self):
+        answers = ["mail.fastmail.com", "me@example.invalid", "you@example.invalid", "secret"]
+        with temporary_directory() as directory:
+            _, env_file, _ = self._setup_email(directory, answers)
+            written = env_file.read_text(encoding="utf-8")
+        self.assertIn("AUCTION_LENS_SMTP_HOST=mail.fastmail.com", written)
+        self.assertIn("AUCTION_LENS_EMAIL_TO=you@example.invalid", written)
+
+    def test_it_says_which_line_still_has_to_be_changed_by_hand(self):
+        # The example config ships with email off, and this reads the switch
+        # with the real loader rather than guessing at the file.
+        with temporary_directory() as directory:
+            _, _, message = self._setup_email(directory)
+        self.assertIn("enabled = false", message)
+
+
 class DefaultsTests(unittest.TestCase):
     def test_the_configuration_flag_can_be_left_off(self):
         # One door: the file a person edits is where every command looks.
