@@ -104,6 +104,28 @@ class InterestScoringTests(unittest.TestCase):
         )
         self.assertTrue(evaluate(self.listings[SOUNDBAR], config))
 
+    def test_a_branch_already_being_visited_stops_costing_a_drive(self):
+        # The drive is only a cost when it would not otherwise happen.
+        listing = self.listings[SOUNDBAR]
+        far = LocationPolicy(far=("example warehouse",), far_minimum_score=100)
+        today = far.already_visiting(("example warehouse",))
+        self.assertEqual(evaluate(listing, replace(self.config, locations=far)), [])
+        self.assertTrue(evaluate(listing, replace(self.config, locations=today)))
+
+    def test_visiting_one_branch_says_nothing_about_the_others(self):
+        far = LocationPolicy(far=("example warehouse", "far depot"), far_minimum_score=100)
+        today = far.already_visiting(("far depot",))
+        self.assertEqual(today.far, ("example warehouse",))
+
+    def test_a_trip_named_more_fully_than_the_branch_still_counts(self):
+        # Branches are configured as bare names but spoken as whole places.
+        far = LocationPolicy(far=("phoenix",), far_minimum_score=100)
+        self.assertEqual(far.already_visiting(("Phoenix, AZ",)).far, ())
+
+    def test_naming_no_trips_leaves_the_map_exactly_as_it_was(self):
+        far = LocationPolicy(far=("example warehouse",), far_minimum_score=100)
+        self.assertIs(far.already_visiting(()), far)
+
     def test_ending_soon_adds_a_reason_and_raises_the_score(self):
         now = datetime(2026, 9, 5, 12, tzinfo=UTC)
         listing = replace(self.listings[SOUNDBAR], ends_at=now + timedelta(minutes=5))

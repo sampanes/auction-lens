@@ -86,9 +86,22 @@ def _add_daily(subparsers) -> None:
         "--search", action="append", default=[], metavar="TERM",
         help="search term; repeatable. Defaults to the configured or wanted terms",
     )
+    _add_visiting(daily)
     daily.add_argument("--email", action="store_true", help="send the report as well")
     daily.add_argument(
         "--webhook", action="store_true", help="post the report to chat as well"
+    )
+
+
+def _add_visiting(command) -> None:
+    """Both reporting commands take it, because it is one fact about the day."""
+    command.add_argument(
+        "--visiting",
+        action="append",
+        default=[],
+        metavar="BRANCH",
+        help="a branch you are already going to today; repeatable. Its lots are "
+        "held to the ordinary bar rather than the higher far-branch one",
     )
 
 
@@ -107,6 +120,7 @@ def _add_run(subparsers) -> None:
     run.add_argument(
         "--env-file", default=DEFAULT_ENV_FILE, help="optional local KEY=VALUE settings file"
     )
+    _add_visiting(run)
     run.add_argument(
         "--email", action="store_true", help="send the report using configured SMTP settings"
     )

@@ -94,9 +94,21 @@ def daily(args: argparse.Namespace) -> int:
     return run(argparse.Namespace(**{**vars(args), "input": args.output}))
 
 
+def _with_todays_trips(config: AppConfig, visiting: list[str]) -> AppConfig:
+    """Apply the errands already planned, which is a fact about today only.
+
+    Deliberately a flag rather than a setting: it is true for one run and wrong
+    by next week, and a saved answer to a question like this is one nobody
+    remembers to change back.
+    """
+    if not visiting:
+        return config
+    return replace(config, locations=config.locations.already_visiting(tuple(visiting)))
+
+
 def run(args: argparse.Namespace) -> int:
     """Score a listing file and print, and optionally email, the report."""
-    config = load_config(args.config)
+    config = _with_todays_trips(load_config(args.config), args.visiting)
     listings = load_listings(args.input)
     database = Database.at(args.database)
     database.initialize()
