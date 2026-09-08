@@ -300,6 +300,20 @@ class Candidate:
         return self.score * self.weight
 
 
+def ranked(candidates: list[Candidate], limit: int | None = None) -> list[Candidate]:
+    """Best first, and optionally only the best few.
+
+    One authority for reading order, because a cap means "the best" only if
+    whatever applies it agrees with whatever renders it about which those are.
+
+    The limit takes the top of the existing ranking rather than introducing a
+    bar of its own: the weights decide what is worth reading, and this only
+    decides how long a report a person will actually finish.
+    """
+    best = sorted(candidates, key=lambda item: item.priority, reverse=True)
+    return best if limit is None else best[:limit]
+
+
 @dataclass(frozen=True)
 class PriceReading:
     """One look at a lot: what it cost at that moment.

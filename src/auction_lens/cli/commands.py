@@ -123,6 +123,7 @@ def run(args: argparse.Namespace) -> int:
     )
     print(render_text(result.candidates), end="")
     _report_skipped(result.listings_from_other_providers, config.provider.provider_id)
+    _report_capped(result.matches_not_shown, len(result.candidates))
     _report_followed(result.lots_followed, args.watchlist)
 
     if args.email:
@@ -319,6 +320,20 @@ def _report_skipped(count: int, provider_id: str) -> None:
     """Say so when input was ignored, rather than silently dropping listings."""
     if count:
         print(f"Ignored {count} listing(s) from other providers than {provider_id}.")
+
+
+def _report_capped(hidden: int, shown: int) -> None:
+    """Never hide part of the ranking quietly.
+
+    A cap the reader has forgotten about looks exactly like a quiet day, and
+    the difference between "nothing was out there" and "you asked for less"
+    matters enough to spend a line on.
+    """
+    if hidden:
+        print(
+            f"Showing the best {shown}; {hidden} more matched. "
+            "Raise reports.max_items to see them."
+        )
 
 
 def _report_followed(count: int, path: str) -> None:

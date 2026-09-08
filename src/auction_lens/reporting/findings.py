@@ -14,7 +14,7 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass
 
-from ..models import Candidate, LogisticsStatus, ValuationBand, ValuationSummary
+from ..models import Candidate, LogisticsStatus, ValuationBand, ValuationSummary, ranked
 
 EMPTY_REPORT = "Auction Lens found no listings meeting the configured criteria."
 
@@ -125,7 +125,7 @@ def readable(identifier: str) -> str:
 def _by_category(candidates: list[Candidate]) -> dict[str, list[Candidate]]:
     """Group findings, ordering both the groups and their contents by score."""
     grouped: dict[str, list[Candidate]] = defaultdict(list)
-    for candidate in sorted(candidates, key=lambda item: item.priority, reverse=True):
+    for candidate in ranked(candidates):
         grouped[str(candidate.category)].append(candidate)
     return grouped
 

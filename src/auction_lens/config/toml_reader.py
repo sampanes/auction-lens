@@ -95,6 +95,20 @@ class Section:
         """Read a number the file is allowed to leave out entirely."""
         return self.decimal(key, 0) if self.contains(key) else None
 
+    def optional_positive_integer(self, key: str) -> int | None:
+        """Read a count the file may leave out, where leaving it out means "all".
+
+        Zero is refused rather than read as "none of them": a file that says
+        zero has almost certainly been mis-set, and silently reporting nothing
+        is the worst way to find that out.
+        """
+        if not self.contains(key):
+            return None
+        value = self.integer(key, 0)
+        if value < 1:
+            raise ValueError(f"{self.label(key)} must be at least 1, or absent for all")
+        return value
+
     def lowercase_texts(self, key: str) -> tuple[str, ...]:
         """Read a list of free-text terms, lowercased for case-insensitive use."""
         values = self.data.get(key, [])

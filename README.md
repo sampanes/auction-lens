@@ -78,6 +78,29 @@ again -- but neither has to be typed day to day.
 | `watch` / `watchlist` | record what you think of a lot; read what you are following |
 | `logistics` | record how a bulky lot would be collected |
 
+## How long the report is
+
+A sweep can match hundreds of lots and be right about all of them. The scoring
+bars decide what is worth reporting; this decides how much of it a person is
+going to read:
+
+```toml
+[reports]
+max_items = 30
+```
+
+The best 30 by priority, so the weights on your interests choose what survives
+the cut rather than the cap choosing for them. Leave the key out for all of
+them. Whatever is held back is counted out loud, because a short report and a
+quiet day should never look alike:
+
+```
+Showing the best 30; 766 more matched. Raise reports.max_items to see them.
+```
+
+The cap is applied once, before the report is printed, emailed, posted, or
+followed in the watchlist, so all four agree on what today's report was.
+
 ## Chat webhook
 
 Email is the scheduled digest; it arrives whether or not anybody asked. A
