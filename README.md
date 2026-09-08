@@ -177,6 +177,19 @@ Everything at a near branch is reported as usual. A lot at a far branch is
 reported only if it scores at least `far_minimum_score` -- good enough to
 justify the drive rather than merely good.
 
+That bar assumes the drive is a cost. Some days it is not, because you have to
+be over there anyway, and on those days a far branch is simply a branch:
+
+```cmd
+.venv\Scripts\auction-lens.exe daily --visiting phoenix
+```
+
+The named branches are held to the ordinary bar for that run only. It is a flag
+rather than a setting because it is true today and wrong next week, and a saved
+answer to that question is one nobody remembers to change back. Repeat it for
+more than one branch, and name the branch however you like -- `phoenix` and
+`Phoenix, AZ` both match a `far` entry of `phoenix`.
+
 Fetching and pulling are separate steps. `fetch` saves a provider page; `pull`
 reads saved pages into the canonical file `run` analyses. Keeping them apart
 means a parser can be corrected and re-run over pages already on disk without

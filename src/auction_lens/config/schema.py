@@ -13,7 +13,7 @@ rather than by a membership test repeated at each use.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from decimal import Decimal
 from enum import StrEnum
 from typing import Any, TypeVar
@@ -355,6 +355,23 @@ class LocationPolicy:
 
     def is_far(self, location: str) -> bool:
         return _mentions(location, self.far)
+
+    def already_visiting(self, branches: tuple[str, ...]) -> LocationPolicy:
+        """The same map, with today's errands no longer counted as a detour.
+
+        Whether a branch is far is a fact about the week rather than the road:
+        the drive is only a cost when it would not otherwise happen. A lot at a
+        branch someone is already going to is held to the ordinary bar, so this
+        answers "I have to be over there anyway" without lowering the bar for
+        the weeks when they do not.
+        """
+        visiting = tuple(branch.strip().lower() for branch in branches if branch.strip())
+        if not visiting:
+            return self
+        staying_far = tuple(
+            name for name in self.far if not any(name in branch for branch in visiting)
+        )
+        return replace(self, far=staying_far)
 
     def worth_collecting(self, location: str, score: int) -> bool:
         """Whether this lot, at this score, justifies going to this branch."""
