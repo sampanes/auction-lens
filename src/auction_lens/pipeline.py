@@ -11,7 +11,7 @@ from datetime import datetime
 from decimal import Decimal
 
 from .config import AppConfig
-from .models import Candidate, Listing, uid_of
+from .models import Candidate, Listing, ranked, uid_of
 from .scoring import evaluate
 from .storage import LogisticsDecisionStore, ObservationStore, WatchlistStore
 from .valuation import ValuationEngine
@@ -24,11 +24,17 @@ class RunResult:
     candidates: list[Candidate]
     listings_read: int
     listings_scored: int
+    matches_found: int = 0
     lots_followed: int = 0
 
     @property
     def listings_from_other_providers(self) -> int:
         return self.listings_read - self.listings_scored
+
+    @property
+    def matches_not_shown(self) -> int:
+        """How many the cap held back, so a report can admit to hiding them."""
+        return max(self.matches_found - len(self.candidates), 0)
 
 
 def analyze_listings(
@@ -60,11 +66,17 @@ def analyze_listings(
             now=now,
         )
         candidates.extend(_with_valuation(matches, listing, valuation_engine))
+
+    # Ranked and capped once, here, so the printed report, the email, the chat
+    # message, and the lots the watchlist starts following are all the same
+    # report. Capping in each renderer instead would let them disagree.
+    reportable = ranked(candidates, config.reports.max_items)
     return RunResult(
-        candidates=candidates,
+        candidates=reportable,
         listings_read=len(listings),
         listings_scored=scored,
-        lots_followed=_follow(candidates, watchlist),
+        matches_found=len(candidates),
+        lots_followed=_follow(reportable, watchlist),
     )
 
 

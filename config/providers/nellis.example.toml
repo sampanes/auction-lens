@@ -127,6 +127,14 @@ adapter = "reference"
 categories = ["guitar", "music gear"]
 url_template = "https://example.invalid/music-price-guide?q={query}"
 
+[reports]
+# How much of the ranking is worth putting in front of a person. The scoring
+# bars decide what is worth reporting at all, and on a good day that is plenty;
+# this cuts the tail so the report stays one a reader finishes. Leave it out
+# entirely for all of them. Whatever is held back is counted out loud, so a
+# short report is never mistaken for a quiet day.
+max_items = 30
+
 # A webhook is the errand email is not: somebody ran the command and wants the
 # answer on their phone now. The address is a secret, so only the name of the
 # variable holding it appears here.

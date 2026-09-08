@@ -28,6 +28,7 @@ from .schema import (
     LocationPolicy,
     LogisticsConfig,
     ProviderConfig,
+    ReportsConfig,
     RunMode,
     ScoringConfig,
     ValuationConfig,
@@ -60,6 +61,7 @@ def load_config(path: str | Path) -> AppConfig:
         email=_email(root.table("reports").table("email")),
         webhook=_webhook(root.table("reports").table("webhook")),
         locations=_locations(root.table("locations")),
+        reports=_reports(root.table("reports")),
     )
 
 
@@ -195,6 +197,11 @@ def _logistics(section: Section) -> LogisticsConfig:
             large_dimension_threshold_in=section.decimal("large_dimension_threshold_in", 60),
             oversized_terms=section.lowercase_texts("oversized_terms"),
         )
+
+
+def _reports(section: Section) -> ReportsConfig:
+    with in_section(section):
+        return ReportsConfig(max_items=section.optional_positive_integer("max_items"))
 
 
 def _webhook(section: Section) -> WebhookConfig:

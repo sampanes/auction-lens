@@ -328,6 +328,25 @@ class WebhookConfig:
 
 
 @dataclass(frozen=True)
+class ReportsConfig:
+    """How much of the ranking is actually worth putting in front of a person.
+
+    A run can match hundreds of lots and still be correct: the bars decide what
+    is worth reporting, and on a good day plenty is. But a report nobody reaches
+    the end of has failed at the only thing it does, so the tail is cut.
+
+    Absent means all of them, which is the honest default for a tool that has
+    not been told how long its reader's attention is.
+    """
+
+    max_items: int | None = None
+
+    def __post_init__(self) -> None:
+        if self.max_items is not None:
+            require_at_least(self.max_items, 1, field_name="max_items")
+
+
+@dataclass(frozen=True)
 class LocationPolicy:
     """Which pickup locations are worth collecting from, and which must earn it.
 
@@ -400,6 +419,7 @@ class AppConfig:
     email: EmailConfig
     webhook: WebhookConfig = field(default_factory=WebhookConfig)
     locations: LocationPolicy = field(default_factory=LocationPolicy)
+    reports: ReportsConfig = field(default_factory=ReportsConfig)
 
 
 def _settle(record: Any, field_name: str, options: type[Choice]) -> None:
