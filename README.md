@@ -200,6 +200,19 @@ Everything at a near branch is reported as usual. A lot at a far branch is
 reported only if it scores at least `far_minimum_score` -- good enough to
 justify the drive rather than merely good.
 
+Setting that number needs one piece of arithmetic, because the two scoring
+paths do not reach the same heights. An interest match starts at 80 and can add
+at most 3 for a listing seen for the first time and 7 for one closing within
+`ending_soon_minutes`, so **an interest match tops out at exactly 90**, and only
+for a lot carrying no condition penalty at all. A retail-ratio match starts from
+the discount itself -- a lot at 13% of stated retail starts at 87 -- so it clears
+a high bar easily.
+
+A `far_minimum_score` near 90 therefore means "at far branches, show me deep
+discounts but never the things I actually asked for", which is usually the
+opposite of what the interest weights are for. Somewhere in the low 80s lets a
+wanted thing through while still asking a discount to be remarkable.
+
 That bar assumes the drive is a cost. Some days it is not, because you have to
 be over there anyway, and on those days a far branch is simply a branch:
 
