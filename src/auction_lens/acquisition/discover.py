@@ -23,10 +23,11 @@ from http.cookiejar import CookieJar
 from pathlib import Path
 from urllib.error import HTTPError
 from urllib.parse import quote_plus, urlencode
-from urllib.request import HTTPCookieProcessor, Request, build_opener
+from urllib.request import HTTPCookieProcessor, Request
 
 from ..config import AcquisitionConfig, ProviderConfig
 from ..config.schema import CATEGORY_PLACEHOLDER, QUERY_PLACEHOLDER
+from ..http_safety import public_https_opener
 from ..throttle import RequestThrottle
 from .cache import ResponseCache
 from .fetch import (
@@ -65,16 +66,8 @@ def discover_searches(
 ) -> list[SearchCapture]:
     """Fetch one search page per term, or explain why this run must not."""
     instant = _timezone_aware(now or datetime.now(UTC))
+    addresses, user_agent = _prepare_discovery(provider, config, terms)
     opener = session_opener() if opener is None else opener
-
-    addresses = _addresses(config, terms)
-    # Check every address before making any request, so a run that is going to
-    # be refused is refused before it has touched the provider at all.
-    for _, url in addresses:
-        require_fetch_allowed(provider, config, url)
-    if config.session_url:
-        require_fetch_allowed(provider, config, config.session_url)
-    user_agent = authorized_user_agent(config)
 
     ledger = PollLedger.at(config.ledger_file)
     enforce_request_limits(ledger.attempts(), config, instant)
@@ -96,6 +89,31 @@ def discover_searches(
     ]
 
 
+def check_discovery_ready(
+    provider: ProviderConfig,
+    config: AcquisitionConfig,
+    terms: Iterable[str],
+) -> None:
+    """Check static discovery configuration without touching disk or network."""
+    _prepare_discovery(provider, config, terms)
+
+
+def _prepare_discovery(
+    provider: ProviderConfig,
+    config: AcquisitionConfig,
+    terms: Iterable[str],
+) -> tuple[list[tuple[str, str]], str]:
+    addresses = _addresses(config, terms)
+    # Check every address before making any request, so a run that is going to
+    # be refused is refused before it has touched the provider at all.
+    for _, url in addresses:
+        require_fetch_allowed(provider, config, url)
+    if config.session_url:
+        require_fetch_allowed(provider, config, config.session_url)
+        require_session_change_allowed(config)
+    return addresses, authorized_user_agent(config)
+
+
 def session_opener() -> Callable:
     """An opener that keeps the provider's session cookies for one run.
 
@@ -104,7 +122,7 @@ def session_opener() -> Callable:
     The jar lives and dies with the run: a fresh session every time is one more
     request, and removes any chance of yesterday's branch quietly persisting.
     """
-    return build_opener(HTTPCookieProcessor(CookieJar())).open
+    return public_https_opener(HTTPCookieProcessor(CookieJar()))
 
 
 def choose_branch(
@@ -120,6 +138,7 @@ def choose_branch(
     default city. Saying so explicitly is the difference between searching where
     the operator actually collects from and searching somewhere else entirely.
     """
+    require_session_change_allowed(config)
     throttle.take_turn()
     request = Request(
         config.session_url,
@@ -129,6 +148,15 @@ def choose_branch(
     )
     with opener(request, timeout=config.timeout_seconds) as response:
         response.read()
+
+
+def require_session_change_allowed(config: AcquisitionConfig) -> None:
+    """Require permission specific to the optional branch-scoping session POST."""
+    if config.session_change_authorized is not True:
+        raise RuntimeError(
+            "[provider.acquisition] session_change_authorized = true is required "
+            "before the branch-scoping session POST"
+        )
 
 
 def _addresses(config: AcquisitionConfig, terms: Iterable[str]) -> list[tuple[str, str]]:

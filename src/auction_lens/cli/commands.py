@@ -4,12 +4,18 @@ from __future__ import annotations
 
 import argparse
 import sys
+import warnings
 from dataclasses import replace
-from getpass import getpass
+from getpass import GetPassWarning, getpass
 from pathlib import Path
 
-from ..acquisition import METADATA_SUFFIX, discover_searches, fetch_authorized_page
-from ..config import AppConfig, load_config
+from ..acquisition import (
+    METADATA_SUFFIX,
+    check_discovery_ready,
+    discover_searches,
+    fetch_authorized_page,
+)
+from ..config import AppConfig, EmailConfig, RunMode, load_config
 from ..env_file import write_settings
 from ..fields import parse_money
 from ..file_io import read_json, write_json_atomically
@@ -17,12 +23,14 @@ from ..ingest import load_listings, read_saved_page, read_search_page, unique_lo
 from ..models import LogisticsDecision, LogisticsStatus, WatchedItem
 from ..pipeline import analyze_listings
 from ..reporting import (
+    check_email_ready,
     render_text,
     render_watchlist,
     send_email,
     send_watchlist_email,
     send_webhook,
 )
+from ..reporting.webhook import webhook_address
 from ..storage import (
     Database,
     LogisticsDecisionStore,
@@ -32,20 +40,21 @@ from ..storage import (
 from ..valuation import ValuationEngine
 from .parser import CLEAR, DEFAULT_INBOX, DROP, EXAMPLE_CONFIG, PROGRAM
 
-# The host most people setting this up are reaching for; anything is accepted.
+# The host most people setting this up are reaching for; compatible hosts are accepted.
 DEFAULT_SMTP_HOST = "smtp.gmail.com"
 
 PAGE_SUFFIX = ".html"
 LISTINGS_KEY = "listings"
 
 SUCCESS = 0
+NOT_READY = 2
 
 
 ENV_TEMPLATE = """# Local settings for Auction Lens. Ignored by git; never commit it.
 
 # Required before any request. The provider has to be able to tell who is
-# asking, so this must contain a real contact address you read.
-AUCTION_LENS_HTTP_USER_AGENT=AuctionLens/1.0 (contact: you@example.com)
+# asking, so this must contain a real contact address you control.
+AUCTION_LENS_HTTP_USER_AGENT=
 
 # Only needed if [reports.email] enabled = true in your configuration.
 AUCTION_LENS_SMTP_HOST=
@@ -70,12 +79,9 @@ def setup(args: argparse.Namespace) -> int:
     config, env_file = Path(args.config), Path(args.env_file)
     print(_created(config, Path(EXAMPLE_CONFIG).read_text(encoding="utf-8")))
     print(_created(env_file, ENV_TEMPLATE))
+    _report_required_edits(config, env_file)
     if args.email:
         return _ask_for_mail_settings(config, env_file)
-    print()
-    print("Before the first run, edit:")
-    print(f"  {env_file}: put a real contact address in AUCTION_LENS_HTTP_USER_AGENT")
-    print(f"  {config}: [locations] allowed, and the [[interests]] you actually want")
     print()
     print(f"Then: {PROGRAM} daily")
     print(f"To be emailed the report: {PROGRAM} setup --email")
@@ -85,47 +91,56 @@ def setup(args: argparse.Namespace) -> int:
 def _ask_for_mail_settings(config: Path, env_file: Path) -> int:
     """Fill in the five mail variables, without the password ever being shown.
 
-    Any SMTP host is accepted. The advice for one provider is printed as advice
-    rather than enforced as a rule, because a setup helper that refuses every
-    host but one stops being setup and becomes a preference.
+    The host is not allowlisted; its configured port and security mode still
+    govern delivery. Provider-specific advice stays advice rather than turning
+    this general setup command into a preference.
     """
+    email = load_config(config).email
+    _require_interactive_mail_setup()
     print()
     host = _answer("SMTP host", DEFAULT_SMTP_HOST)
     _mail_host_advice(host)
-    sender = _address("Address the reports are sent from", "")
+    username = _required_answer("SMTP username", "")
+    sender_default = username if _looks_like_address(username) else ""
+    sender = _address("From address", sender_default)
     recipient = _address("Address they are sent to", sender)
-    password = _secret("Password or app password")
+    password = _secret(
+        "Password or app password", remove_display_spaces=_is_gmail_host(host)
+    )
 
     write_settings(
         env_file,
         {
-            "AUCTION_LENS_SMTP_HOST": host,
-            "AUCTION_LENS_SMTP_USERNAME": sender,
-            "AUCTION_LENS_SMTP_PASSWORD": password,
-            "AUCTION_LENS_EMAIL_FROM": sender,
-            "AUCTION_LENS_EMAIL_TO": recipient,
+            email.host_env: host,
+            email.username_env: username,
+            email.password_env: password,
+            email.sender_env: sender,
+            email.recipient_env: recipient,
         },
     )
     print()
     print(f"[OK] {env_file} updated. The password was neither printed nor logged.")
-    return _report_email_switch(config)
+    return _report_email_switch(config, email)
 
 
-def _report_email_switch(config: Path) -> int:
+def _report_email_switch(config: Path, email: EmailConfig) -> int:
     """Read the switch with the real loader rather than guessing at the file.
 
-    Editing TOML by hand is how a setup script starts quietly corrupting the
-    configuration it was meant to help with, so this reports the one line to
-    change and leaves the file to its owner.
+    Programmatically rewriting arbitrary TOML risks corrupting the configuration
+    it was meant to help with, so this reports the one line to change and leaves
+    the file to its owner.
     """
-    if load_config(config).email.enabled:
+    if email.enabled:
         print(f"[OK] {config} already has [reports.email] enabled = true.")
+        print(f"     Transport is {email.security.value} on port {email.port}.")
         print()
+        print(f"Check local readiness: {PROGRAM} doctor --email")
         print(f"Send one now: {PROGRAM} run --input {DEFAULT_INBOX} --email")
         return SUCCESS
     print(f"[!] {config} still has [reports.email] enabled = false.")
-    print("    Set it to true; the default port 465 and ssl already suit most hosts.")
-    return SUCCESS
+    print("    Mail settings were saved, but delivery is not ready.")
+    print("    Set it to true and confirm that port and security suit your SMTP host.")
+    return NOT_READY
 
 
 def _answer(question: str, default: str) -> str:
@@ -134,34 +149,75 @@ def _answer(question: str, default: str) -> str:
     return input(shown).strip() or default
 
 
+def _required_answer(question: str, default: str) -> str:
+    """A non-empty one-line answer, with an optional suggested value."""
+    while True:
+        answer = _answer(question, default)
+        if answer:
+            return answer
+        print("    Nothing entered. Try again.")
+
+
 def _address(question: str, default: str) -> str:
     """An email address, checked only for the shape every host agrees on."""
     while True:
         answer = _answer(question, default)
-        if answer.count("@") == 1 and all(part.strip() for part in answer.split("@")):
+        if _looks_like_address(answer):
             return answer
         print("    That is not an email address. Try again.")
 
 
-def _secret(question: str) -> str:
-    """Read a password without echoing it, and without the spaces some hosts show.
+def _looks_like_address(value: str) -> bool:
+    """Whether a value has the small amount of structure SMTP always needs."""
+    return value.count("@") == 1 and all(part.strip() for part in value.split("@"))
+
+
+def _secret(question: str, *, remove_display_spaces: bool) -> str:
+    """Read a password without echoing it or silently changing provider data.
 
     Google prints an app password in four groups of four and people paste it
-    exactly as shown, which is the most common way this step fails.
+    exactly as shown. Only the Gmail host opts into removing that display
+    formatting; another provider may legitimately use spaces in a password.
     """
     while True:
-        typed = "".join(getpass(f"{question}: ").split())
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", GetPassWarning)
+            try:
+                typed = getpass(f"{question}: ")
+            except GetPassWarning as error:
+                raise RuntimeError(
+                    "secure password input is unavailable in this terminal"
+                ) from error
+            except (EOFError, KeyboardInterrupt) as error:
+                raise RuntimeError(
+                    "mail setup stopped before a password was entered"
+                ) from error
+        if remove_display_spaces:
+            typed = "".join(typed.split())
         if typed:
             return typed
         print("    Nothing entered. Try again.")
 
 
+def _require_interactive_mail_setup() -> None:
+    """Never fall back to a password prompt that may echo its input."""
+    if not sys.stdin.isatty():
+        raise RuntimeError(
+            "mail setup needs an interactive terminal so the password stays hidden"
+        )
+
+
 def _mail_host_advice(host: str) -> None:
     """Say the one thing that host is known to need, without requiring it."""
-    if "gmail" in host.lower():
+    if _is_gmail_host(host):
         print("    Gmail needs 2-Step Verification and an app password, not the")
         print("    account password: https://myaccount.google.com/apppasswords")
         print("    See docs/GMAIL.md if that page offers you nothing.")
+
+
+def _is_gmail_host(host: str) -> bool:
+    """Identify the Gmail submission host narrowly enough to change a secret."""
+    return host.strip().lower().rstrip(".") == DEFAULT_SMTP_HOST
 
 
 def _created(path: Path, contents: str) -> str:
@@ -180,6 +236,8 @@ def daily(args: argparse.Namespace) -> int:
     -- a parser can be corrected and re-run without asking the provider again --
     but nobody wants to type both every morning.
     """
+    config = _with_todays_trips(load_config(args.config), args.visiting)
+    _preflight_reports(config, args)
     discover(args)
     return run(argparse.Namespace(**{**vars(args), "input": args.output}))
 
@@ -199,6 +257,7 @@ def _with_todays_trips(config: AppConfig, visiting: list[str]) -> AppConfig:
 def run(args: argparse.Namespace) -> int:
     """Score a listing file and print, and optionally email, the report."""
     config = _with_todays_trips(load_config(args.config), args.visiting)
+    _preflight_reports(config, args)
     listings = load_listings(args.input)
     database = Database.at(args.database)
     database.initialize()
@@ -217,15 +276,61 @@ def run(args: argparse.Namespace) -> int:
     _report_followed(result.lots_followed, args.watchlist)
 
     if args.email:
-        if not config.email.enabled:
-            raise RuntimeError("email reporting is disabled in the selected configuration")
         send_email(result.candidates, config.email)
     if args.webhook:
-        if not config.webhook.enabled:
-            raise RuntimeError("webhook reporting is disabled in the selected configuration")
         send_webhook(result.candidates, config.webhook)
         print(f"Posted {len(result.candidates)} match(es) to the webhook.")
     return SUCCESS
+
+
+def _report_required_edits(config: Path, env_file: Path) -> None:
+    """Name the local decisions no public repository can safely make."""
+    print()
+    print("Before the first run, edit:")
+    print(
+        f"  {env_file}: identify your requests with a contact address you control in "
+        "AUCTION_LENS_HTTP_USER_AGENT"
+    )
+    print(f"  {config}: confirm your authorization, locations, and interests")
+
+
+def doctor(args: argparse.Namespace) -> int:
+    """Check a daily run's local prerequisites without changing state or using network."""
+    config = load_config(args.config)
+    if config.acquisition.run_mode != RunMode.PRODUCTION:
+        raise RuntimeError(
+            "scheduled runs require [provider.acquisition] run_mode = \"production\""
+        )
+    check_discovery_ready(config.provider, config.acquisition, _search_terms(config, []))
+    print(f"[OK] {args.config}: discovery is configured and authorized.")
+
+    requested = _doctor_destinations(config, args)
+    _preflight_reports(config, argparse.Namespace(**requested))
+    if requested["email"]:
+        print("[OK] email is enabled and all configured environment values are present.")
+    if requested["webhook"]:
+        print("[OK] webhook is enabled and its configured HTTPS address is present.")
+    if not any(requested.values()):
+        print("[OK] no report destinations are enabled; local output only.")
+    print("[OK] no network requests were made.")
+    return SUCCESS
+
+
+def _doctor_destinations(config: AppConfig, args: argparse.Namespace) -> dict[str, bool]:
+    """Check explicitly requested channels, or every channel switched on in TOML."""
+    if args.email or args.webhook:
+        return {"email": args.email, "webhook": args.webhook}
+    return {"email": config.email.enabled, "webhook": config.webhook.enabled}
+
+
+def _preflight_reports(config: AppConfig, args: argparse.Namespace) -> None:
+    """Resolve requested destinations before analysis can change local history."""
+    if args.email:
+        check_email_ready(config.email)
+    if args.webhook:
+        if not config.webhook.enabled:
+            raise RuntimeError("webhook reporting is disabled in the selected configuration")
+        webhook_address(config.webhook)
 
 
 def fetch(args: argparse.Namespace) -> int:
@@ -358,9 +463,11 @@ def watchlist(args: argparse.Namespace) -> int:
         end="",
     )
     if args.email:
+        if not items:
+            print("No selected lots; no email sent.")
+            return SUCCESS
         config = load_config(args.config)
-        if not config.email.enabled:
-            raise RuntimeError("email reporting is disabled in the selected configuration")
+        check_email_ready(config.email)
         send_watchlist_email(items, config.email)
         print(f"Emailed {len(items)} selected lot(s).")
     return SUCCESS

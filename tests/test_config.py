@@ -19,6 +19,10 @@ class ExampleConfigTests(unittest.TestCase):
         self.assertEqual(self.config.economics.default_buyer_premium, Decimal("0.15"))
         self.assertTrue(self.config.economics.premium_is_taxable)
 
+    def test_public_example_does_not_claim_transferable_fetch_permission(self):
+        self.assertFalse(self.config.acquisition.authorization_confirmed)
+        self.assertFalse(self.config.acquisition.session_change_authorized)
+
     def test_reusable_condition_profile_is_loaded(self):
         soundbar = next(rule for rule in self.config.interests if rule.name == "soundbar")
         self.assertEqual(soundbar.condition_profile, "ready_to_use")

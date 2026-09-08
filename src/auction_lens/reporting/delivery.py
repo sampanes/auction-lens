@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import os
 import smtplib
+import ssl
 from dataclasses import dataclass
 from email.message import EmailMessage
 
@@ -33,9 +34,22 @@ class MailAccount:
     recipient: str
 
 
+def check_email_ready(config: EmailConfig) -> None:
+    """Validate local email settings without connecting or sending anything."""
+    _ready_account(config)
+
+
+def _ready_account(config: EmailConfig) -> MailAccount:
+    """Resolve a usable account once every public sending boundary is safe."""
+    if not config.enabled:
+        raise RuntimeError("email reporting is disabled in the selected configuration")
+    _require_secure_transport(config)
+    return _account_from_environment(config)
+
+
 def send_email(candidates: list[Candidate], config: EmailConfig) -> None:
     """Send one report as a text message with an HTML alternative."""
-    account = _account_from_environment(config)
+    account = _ready_account(config)
     message = _build_message(candidates, config, account)
 
     _deliver(message, config, account)
@@ -43,7 +57,7 @@ def send_email(candidates: list[Candidate], config: EmailConfig) -> None:
 
 def send_watchlist_email(items: tuple[WatchedItem, ...], config: EmailConfig) -> None:
     """Send selected lots without exposing the local watchlist path."""
-    account = _account_from_environment(config)
+    account = _ready_account(config)
     message = EmailMessage()
     message["Subject"] = WATCHLIST_SUBJECT.format(selection=_selection(len(items)))
     message["From"] = account.sender
@@ -60,13 +74,33 @@ def _selection(count: int) -> str:
 
 def _deliver(message: EmailMessage, config: EmailConfig, account: MailAccount) -> None:
     """Submit one already-built message through the configured secure transport."""
+    _require_secure_transport(config)
+    tls_context = ssl.create_default_context()
     is_implicit_tls = config.security == EmailSecurity.SSL
-    transport = smtplib.SMTP_SSL if is_implicit_tls else smtplib.SMTP
-    with transport(account.host, config.port, timeout=SMTP_TIMEOUT_SECONDS) as smtp:
-        if config.security == EmailSecurity.STARTTLS:
-            smtp.starttls()
+    if is_implicit_tls:
+        connection = smtplib.SMTP_SSL(
+            account.host,
+            config.port,
+            timeout=SMTP_TIMEOUT_SECONDS,
+            context=tls_context,
+        )
+    else:
+        connection = smtplib.SMTP(
+            account.host,
+            config.port,
+            timeout=SMTP_TIMEOUT_SECONDS,
+        )
+    with connection as smtp:
+        if not is_implicit_tls:
+            smtp.starttls(context=tls_context)
         smtp.login(account.username, account.password)
         smtp.send_message(message)
+
+
+def _require_secure_transport(config: EmailConfig) -> None:
+    """Fail closed if a caller bypassed the typed configuration boundary."""
+    if config.security not in (EmailSecurity.SSL, EmailSecurity.STARTTLS):
+        raise ValueError("security must be one of: ssl, starttls")
 
 
 def _account_from_environment(config: EmailConfig) -> MailAccount:

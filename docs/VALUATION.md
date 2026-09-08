@@ -71,8 +71,9 @@ with an explanation.
 ## Declarative JSON APIs
 
 The `http_json` adapter supports read-only JSON APIs without source-specific
-Python. It uses GET only, requires HTTPS, rejects URL credentials, and caches
-responses locally.
+Python. It uses GET only, requires a public HTTPS endpoint, rejects URL
+credentials, and refuses redirects to a different origin so configured API
+headers cannot leak to another server. Responses are cached locally.
 
 It is the only adapter that contacts a third party, so it refuses to run until
 the configuration states `authorization_confirmed = true`. That line is the

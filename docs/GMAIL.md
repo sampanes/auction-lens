@@ -29,20 +29,25 @@ It:
 1. Creates the ignored config and `.env` if they are not there yet.
 2. Asks for the SMTP host, offering `smtp.gmail.com`, and prints Google's
    App Password link when the host is a Gmail one.
-3. Asks for the sending address and the recipient, which defaults to the sender.
-4. Reads the password without echoing it, and drops the spaces Google displays
-   it in -- pasting it exactly as shown is the usual way this step fails.
-5. Writes the five settings into `.env`, leaving its comments and every other
-   line alone.
+3. Asks separately for the SMTP username and From address, then for the
+   recipient, which defaults to the sender.
+4. Reads the password without echoing it, and for `smtp.gmail.com` drops the
+   spaces Google displays it in -- pasting it exactly as shown is the usual way
+   this step fails.
+5. Writes the five settings under the environment-variable names declared in
+   your TOML, leaving `.env` comments and every other line alone.
 6. Reads the configuration back and says whether `[reports.email]` is on.
 
 It never sends a message and never prints the password. The last step reports
 rather than edits: `enabled = true` is one line you own, and a setup helper that
 rewrites TOML is how a configuration quietly gets corrupted. Port 465 and SSL
-are already the defaults, so for Gmail there is nothing else to change.
+are already the defaults, so for Gmail there is nothing else to change. The
+command exits non-zero until email is enabled, so a scheduler cannot mistake
+"credentials saved" for "ready to deliver."
 
-Nothing here is Gmail-only. Any SMTP host is accepted; Gmail just gets a note
-about the thing it alone requires.
+Other SMTP hosts are accepted, but their port and security mode must be set in
+`[reports.email]`. Their passwords are stored exactly as entered; only the Gmail
+submission host opts into removing Google's display spaces.
 
 The `.env` file is ignored but is still plain text on the local computer. Treat
 it like any other credentials file: do not paste it into an issue, chat, log, or
@@ -93,18 +98,18 @@ Then email only the selected lots:
 
 Confirm that the message arrives, the card is readable, and its photo and
 listing link work. After that proof, `scripts\run-daily.cmd` is the
-ready-to-schedule Windows entry point. If no chat webhook is configured, remove
-`--webhook` from that script as its own comment instructs.
+ready-to-schedule Windows entry point. It runs `doctor --email` first, never
+requires a webhook, and skips the second email when no `hunting` lots exist.
 
 ## Troubleshooting
 
 - **App Passwords is unavailable:** confirm 2-Step Verification is enabled.
   Google may also disable App Passwords for some managed or security-restricted
   accounts.
-- **Authentication fails:** generate a new App Password and run the setup script
+- **Authentication fails:** generate a new App Password and run `setup --email`
   again. Do not substitute the normal Google account password.
-- **Password has spaces:** the setup script removes them. For manual setup,
-  remove all display spaces before saving `.env`.
+- **Password has spaces:** `setup --email` removes Gmail's display spaces. For
+  manual setup, remove all display spaces before saving `.env`.
 - **Email reporting is disabled:** check that `[reports.email]` contains
   `enabled = true` in `config\local.toml`.
 - **No useful cards appear:** add or update a watchlist entry to the `hunting`

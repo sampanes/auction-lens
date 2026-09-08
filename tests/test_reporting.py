@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import ssl
 import unittest
 from dataclasses import replace
 from decimal import Decimal
@@ -13,6 +14,7 @@ from auction_lens.env_file import load_env_file
 from auction_lens.models import WatchedItem
 from auction_lens.reporting import (
     build_report,
+    check_email_ready,
     render_html,
     render_text,
     send_email,
@@ -90,27 +92,76 @@ class HtmlReportTests(unittest.TestCase):
 class EmailDeliveryTests(unittest.TestCase):
     def setUp(self):
         self.config = example_config()
+        self.email = replace(self.config.email, enabled=True)
         self.candidates = evaluate(example_listings()[LASER_LEVEL], self.config)
 
     @patch("auction_lens.reporting.delivery.smtplib.SMTP_SSL")
-    def test_credentials_come_from_the_environment(self, smtp_ssl):
+    def test_implicit_tls_verifies_the_server_certificate(self, smtp_ssl):
         with patch.dict("os.environ", SMTP_ENVIRONMENT, clear=False):
-            send_email(self.candidates, self.config.email)
-        smtp_ssl.assert_called_once_with("smtp.example.invalid", 465, timeout=30)
+            send_email(self.candidates, self.email)
+
+        context = smtp_ssl.call_args.kwargs["context"]
+        self.assertTrue(context.check_hostname)
+        self.assertEqual(context.verify_mode, ssl.CERT_REQUIRED)
+        smtp_ssl.assert_called_once_with(
+            "smtp.example.invalid", 465, timeout=30, context=context
+        )
         smtp_ssl.return_value.__enter__.return_value.send_message.assert_called_once()
+
+    @patch("auction_lens.reporting.delivery.smtplib.SMTP")
+    def test_starttls_verifies_the_server_certificate(self, smtp):
+        email = replace(self.email, port=587, security="starttls")
+        with patch.dict("os.environ", SMTP_ENVIRONMENT, clear=False):
+            send_email(self.candidates, email)
+
+        smtp.assert_called_once_with("smtp.example.invalid", 587, timeout=30)
+        connection = smtp.return_value.__enter__.return_value
+        context = connection.starttls.call_args.kwargs["context"]
+        self.assertTrue(context.check_hostname)
+        self.assertEqual(context.verify_mode, ssl.CERT_REQUIRED)
+        connection.starttls.assert_called_once_with(context=context)
+        connection.login.assert_called_once_with("user", "secret")
+
+    @patch("auction_lens.reporting.delivery.smtplib.SMTP")
+    @patch("auction_lens.reporting.delivery.smtplib.SMTP_SSL")
+    def test_readiness_checks_settings_without_connecting(self, smtp_ssl, smtp):
+        with patch.dict("os.environ", SMTP_ENVIRONMENT, clear=False):
+            self.assertIsNone(check_email_ready(self.email))
+        smtp.assert_not_called()
+        smtp_ssl.assert_not_called()
+
+    def test_disabled_email_is_not_ready(self):
+        with self.assertRaisesRegex(RuntimeError, "email reporting is disabled"):
+            check_email_ready(replace(self.email, enabled=False))
+
+    @patch("auction_lens.reporting.delivery.smtplib.SMTP")
+    @patch("auction_lens.reporting.delivery.smtplib.SMTP_SSL")
+    def test_public_senders_refuse_disabled_email(self, smtp_ssl, smtp):
+        disabled = replace(self.email, enabled=False)
+        watchlist = (WatchedItem(source="nellis", listing_id="1", title="Lot"),)
+        with patch.dict("os.environ", SMTP_ENVIRONMENT, clear=False):
+            for sender, payload in (
+                (send_email, self.candidates),
+                (send_watchlist_email, watchlist),
+            ):
+                with self.subTest(sender=sender.__name__):
+                    with self.assertRaisesRegex(RuntimeError, "email reporting is disabled"):
+                        sender(payload, disabled)
+        smtp.assert_not_called()
+        smtp_ssl.assert_not_called()
 
     @patch("auction_lens.reporting.delivery.smtplib.SMTP_SSL")
     def test_missing_settings_are_named_before_connecting(self, smtp_ssl):
         with patch.dict("os.environ", {}, clear=True):
             with self.assertRaisesRegex(RuntimeError, "missing email environment settings"):
-                send_email(self.candidates, self.config.email)
+                send_email(self.candidates, self.email)
         smtp_ssl.assert_not_called()
 
     @patch("auction_lens.reporting.delivery.smtplib.SMTP")
     @patch("auction_lens.reporting.delivery.smtplib.SMTP_SSL")
     def test_unknown_security_is_refused_without_connecting(self, smtp_ssl, smtp):
         with self.assertRaisesRegex(ValueError, "security must be one of: ssl, starttls"):
-            send_email([], replace(self.config.email, security="starttlz"))
+            send_email([], replace(self.email, security="starttlz"))
         smtp.assert_not_called()
         smtp_ssl.assert_not_called()
 
@@ -118,7 +169,7 @@ class EmailDeliveryTests(unittest.TestCase):
     def test_a_watchlist_email_has_a_clear_subject_and_both_renderings(self, smtp_ssl):
         items = (WatchedItem(source="nellis", listing_id="1", title="Flagged monitor"),)
         with patch.dict("os.environ", SMTP_ENVIRONMENT, clear=False):
-            send_watchlist_email(items, self.config.email)
+            send_watchlist_email(items, self.email)
 
         message = smtp_ssl.return_value.__enter__.return_value.send_message.call_args.args[0]
         self.assertEqual(message["Subject"], "Auction Lens watchlist: 1 selected lot")
@@ -131,7 +182,7 @@ class EmailDeliveryTests(unittest.TestCase):
     def test_a_watchlist_email_does_not_expose_its_local_file_path(self, smtp_ssl):
         items = (WatchedItem(source="nellis", listing_id="1", title="Flagged monitor"),)
         with patch.dict("os.environ", SMTP_ENVIRONMENT, clear=False):
-            send_watchlist_email(items, self.config.email)
+            send_watchlist_email(items, self.email)
 
         message = smtp_ssl.return_value.__enter__.return_value.send_message.call_args.args[0]
         self.assertNotIn("C:\\Users", message.as_string())

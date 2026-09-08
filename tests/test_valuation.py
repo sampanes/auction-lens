@@ -2,12 +2,19 @@
 
 from __future__ import annotations
 
+import json
 import unittest
 from dataclasses import replace
 from decimal import Decimal
+from unittest.mock import patch
+from urllib.request import Request
 
 from auction_lens.config import ValuationSourceConfig
+from auction_lens.http_safety import PublicHttpsRedirectHandler
 from auction_lens.models import ValuationObservation
+from auction_lens.reporting import render_html, render_text
+from auction_lens.reporting.webhook import build_message
+from auction_lens.scoring import evaluate
 from auction_lens.valuation import ValuationEngine, create_adapter
 from auction_lens.valuation.aggregation import combine_into_bands
 from auction_lens.valuation.http_json import HttpJsonAdapter
@@ -51,14 +58,47 @@ class EngineTests(unittest.TestCase):
         broken = ValuationSourceConfig(source_id="broken", adapter="reference", settings={})
         sources = (*self.config.valuation.sources, broken)
         valuation = replace(self.config.valuation, sources=sources)
-        summary = ValuationEngine(valuation).value(self.listing)
+        with self.assertLogs("auction_lens.valuation.engine", level="WARNING"):
+            summary = ValuationEngine(valuation).value(self.listing)
         self.assertTrue(summary.bands)
-        self.assertIn("broken: ValueError", summary.errors[0])
+        self.assertEqual(summary.errors[0], "broken: unavailable (ValueError)")
+
+    def test_adapter_details_stay_local_instead_of_reaching_reports(self):
+        private_detail = r"C:\private-data\valuation.json"
+        source = ValuationSourceConfig(source_id="broken", adapter="reference")
+
+        class BrokenAdapter:
+            def collect(self, listing):
+                raise RuntimeError(f"could not read {private_detail}")
+
+        with patch(
+            "auction_lens.valuation.engine.create_adapter", return_value=BrokenAdapter()
+        ):
+            engine = ValuationEngine(replace(self.config.valuation, sources=(source,)))
+        with self.assertLogs("auction_lens.valuation.engine", level="WARNING") as logs:
+            summary = engine.value(self.listing)
+
+        self.assertEqual(summary.errors, ("broken: unavailable (RuntimeError)",))
+        self.assertNotIn(private_detail, "\n".join(logs.output))
+
+        candidate = replace(
+            self.configured_candidate(),
+            valuation=summary,
+        )
+        for report in (render_text([candidate]), render_html([candidate])):
+            self.assertNotIn(private_detail, report)
+            self.assertIn("broken: unavailable (RuntimeError)", report)
+        webhook = json.dumps(build_message([candidate], self.config.webhook))
+        self.assertNotIn(private_detail, webhook)
 
     def test_an_unknown_adapter_names_the_built_in_choices(self):
         source = ValuationSourceConfig(source_id="mystery", adapter="mystery")
         with self.assertRaisesRegex(ValueError, "built-ins: http_json, reference, xml_catalog"):
             create_adapter(source)
+
+    def configured_candidate(self):
+        """One ordinary candidate to carry an engine result into both reports."""
+        return evaluate(self.listing, self.config)[0]
 
 
 class AggregationTests(unittest.TestCase):
@@ -116,6 +156,30 @@ class HttpJsonAdapterTests(unittest.TestCase):
         self.assertEqual(first.observations[0].sample_size, 7)
         self.assertEqual(first.observations[0].basis, "used_sold")
         self.assertEqual(opener.request_count, 1)
+
+    @patch("auction_lens.valuation.http_json.public_https_opener")
+    def test_the_default_path_uses_the_redirect_safe_opener(self, opener_factory):
+        opener = RecordingOpener(FakeResponse(API_BODY))
+        opener_factory.return_value = opener
+        with temporary_directory() as directory:
+            HttpJsonAdapter(self._source(directory)).collect(self.listing)
+        opener_factory.assert_called_once_with()
+        self.assertEqual(opener.request_count, 1)
+
+    def test_an_api_header_cannot_follow_a_cross_origin_redirect(self):
+        request = Request(
+            "https://api.example.invalid/value",
+            headers={"Authorization": "synthetic-test-value"},
+        )
+        with self.assertRaisesRegex(RuntimeError, "different origin"):
+            PublicHttpsRedirectHandler().redirect_request(
+                request,
+                None,
+                302,
+                "Found",
+                {},
+                "https://elsewhere.example.invalid/value",
+            )
 
     def test_a_non_https_endpoint_is_refused_before_any_request(self):
         opener = RecordingOpener(FakeResponse(API_BODY))

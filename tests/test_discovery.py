@@ -9,9 +9,11 @@ from decimal import Decimal
 from unittest.mock import patch
 from urllib.error import HTTPError
 
-from auction_lens.acquisition import discover_searches
+from auction_lens.acquisition import check_discovery_ready, discover_searches
+from auction_lens.acquisition.discover import session_opener
 from auction_lens.acquisition.polling import PollLedger
 from auction_lens.config import AcquisitionConfig, AcquisitionMode, ProviderConfig
+from auction_lens.http_safety import PublicHttpsRedirectHandler
 from auction_lens.ingest import read_search_page
 from auction_lens.models import Listing
 from support import ROOT, FakeResponse, temporary_directory
@@ -19,7 +21,7 @@ from support import ROOT, FakeResponse, temporary_directory
 SEARCH_PAGE = ROOT / "fixtures" / "nellis" / "search-page.html"
 PAGE_URL = "https://example.invalid/search?query=soundbar"
 NOW = datetime(2026, 9, 6, 12, 0, tzinfo=UTC)
-CONTACT_USER_AGENT = "AuctionLens test contact=test@example.invalid"
+CONTACT_USER_AGENT = "AuctionLens test contact=operator@auction-lens.dev"
 
 
 def _page() -> str:
@@ -106,6 +108,7 @@ class DiscoveryTests(unittest.TestCase):
     def _config(self, directory, **overrides) -> AcquisitionConfig:
         settings = {
             "mode": AcquisitionMode.AUTHORIZED_HTTP,
+            "authorization_confirmed": True,
             "url": "https://example.invalid/browse",
             "search_url_template": "https://example.invalid/search?query={query}",
             "search_cache_dir": str(directory / "searches"),
@@ -141,6 +144,24 @@ class DiscoveryTests(unittest.TestCase):
         self.assertEqual([capture.term for capture in captures], ["soundbar", "monitor"])
         self.assertEqual(len(self.opener.urls), 2)
         self.assertIn("query=soundbar", self.opener.urls[0])
+
+    def test_readiness_check_has_no_network_or_disk_side_effects(self):
+        with temporary_directory() as directory:
+            config = self._config(directory)
+            with self._environment(config):
+                check_discovery_ready(self.provider, config, ["soundbar"])
+            self.assertFalse((directory / "ledger.json").exists())
+            self.assertFalse((directory / "searches").exists())
+        self.assertEqual(self.opener.urls, [])
+
+    def test_the_real_session_opener_installs_the_redirect_guard(self):
+        opener = session_opener()
+        self.assertTrue(
+            any(
+                isinstance(handler, PublicHttpsRedirectHandler)
+                for handler in opener.__self__.handlers
+            )
+        )
 
     def test_a_term_written_twice_is_asked_for_once(self):
         with temporary_directory() as directory:
@@ -204,6 +225,7 @@ class DiscoveryTests(unittest.TestCase):
                 ["soundbar"],
                 session_url="https://example.invalid/change-shopping-location",
                 session_fields={"shoppingLocationId": "2"},
+                session_change_authorized=True,
             )
         self.assertEqual(self.opener.urls[0], "https://example.invalid/change-shopping-location")
         self.assertEqual(self.opener.posted[0], b"shoppingLocationId=2")
@@ -216,6 +238,7 @@ class DiscoveryTests(unittest.TestCase):
                 ["soundbar", "monitor"],
                 session_url="https://example.invalid/change-shopping-location",
                 session_fields={"shoppingLocationId": "2"},
+                session_change_authorized=True,
             )
         # Three requests, so two waits: nothing is fired back to back.
         self.assertEqual(len(self.opener.urls), 3)
@@ -226,6 +249,33 @@ class DiscoveryTests(unittest.TestCase):
             self._discover(directory, ["soundbar"])
         self.assertEqual(len(self.opener.urls), 1)
         self.assertIsNone(self.opener.posted[0])
+
+    def test_a_session_change_needs_its_own_explicit_authorization(self):
+        with temporary_directory() as directory:
+            with self.assertRaisesRegex(
+                RuntimeError, "session_change_authorized = true"
+            ):
+                self._discover(
+                    directory,
+                    ["soundbar"],
+                    session_url="https://example.invalid/change-shopping-location",
+                    session_fields={"shoppingLocationId": "2"},
+                )
+        self.assertEqual(self.opener.urls, [])
+
+    def test_text_that_says_true_does_not_authorize_a_session_change(self):
+        with temporary_directory() as directory:
+            with self.assertRaisesRegex(
+                RuntimeError, "session_change_authorized = true"
+            ):
+                self._discover(
+                    directory,
+                    ["soundbar"],
+                    session_url="https://example.invalid/change-shopping-location",
+                    session_fields={"shoppingLocationId": "2"},
+                    session_change_authorized="true",
+                )
+        self.assertEqual(self.opener.urls, [])
 
     def test_a_branch_address_that_is_not_public_https_is_refused(self):
         with temporary_directory() as directory:

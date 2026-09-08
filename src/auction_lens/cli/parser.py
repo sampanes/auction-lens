@@ -17,6 +17,7 @@ DEFAULT_INBOX = "data/inbox/listings.json"
 EXAMPLE_CONFIG = "config/providers/nellis.example.toml"
 
 SETUP = "setup"
+DOCTOR = "doctor"
 DAILY = "daily"
 RUN = "run"
 FETCH = "fetch"
@@ -44,8 +45,9 @@ def build_parser() -> argparse.ArgumentParser:
         description="Normalize, score, remember, and report auction listings.",
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
-    # The two doors most people need, before the tools for one job each.
+    # The operator-facing doors come first, before the tools for one job each.
     _add_setup(subparsers)
+    _add_doctor(subparsers)
     _add_daily(subparsers)
     _add_run(subparsers)
     _add_fetch(subparsers)
@@ -68,6 +70,25 @@ def _add_setup(subparsers) -> None:
         "--email",
         action="store_true",
         help="also ask for the mail settings, without echoing the password",
+    )
+
+
+def _add_doctor(subparsers) -> None:
+    """A dry local preflight for an unattended daily run."""
+    doctor = subparsers.add_parser(
+        DOCTOR, help="check configuration and credentials without contacting anything"
+    )
+    doctor.add_argument("--config", default=DEFAULT_CONFIG)
+    doctor.add_argument("--env-file", default=DEFAULT_ENV_FILE)
+    doctor.add_argument(
+        "--email",
+        action="store_true",
+        help="check email readiness and fail if it is disabled",
+    )
+    doctor.add_argument(
+        "--webhook",
+        action="store_true",
+        help="check webhook readiness and fail if it is disabled",
     )
 
 

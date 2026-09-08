@@ -3,7 +3,7 @@ REM The scheduled daily run. Point Windows Task Scheduler at this file.
 REM
 REM Every path this needs -- the config, the inbox, the database, the watchlist,
 REM the .env -- is already a CLI default, so nothing is repeated here. What is
-REM spelled out is only what this run decides: report it, and chase hunting lots.
+REM spelled out is only what this run decides: email it, and chase hunting lots.
 setlocal
 
 set "ROOT=%~dp0.."
@@ -17,8 +17,14 @@ if not exist "%AUCTION_LENS%" (
 
 pushd "%ROOT%" || exit /b 1
 
-REM Find today's lots, score them, and send what matters.
-"%AUCTION_LENS%" daily --email --webhook
+REM Refuse before discovery if authorization or mail settings are incomplete.
+"%AUCTION_LENS%" doctor --email
+if errorlevel 1 goto :failed
+
+REM Find today's lots, score them, and email what matters. Webhook delivery is
+REM intentionally separate: enable and invoke it only when this installation
+REM actually uses one.
+"%AUCTION_LENS%" daily --email
 if errorlevel 1 goto :failed
 
 REM A separate errand: today's prices on the lots already being chased.

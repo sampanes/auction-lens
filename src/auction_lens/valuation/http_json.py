@@ -17,11 +17,11 @@ from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlsplit
-from urllib.request import Request, urlopen
+from urllib.request import Request
 
 from ..config import Section, ValuationSourceConfig
 from ..fields import parse_decimal, parse_money, parse_utc_datetime, parse_whole_number
+from ..http_safety import public_https_opener, require_public_https
 from ..models import Listing, ValuationObservation
 from ..throttle import RequestThrottle
 from .base import SourceResult
@@ -48,14 +48,14 @@ class HttpJsonAdapter:
         self,
         config: ValuationSourceConfig,
         *,
-        opener: Callable[..., Any] = urlopen,
+        opener: Callable[..., Any] | None = None,
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
         throttle: RequestThrottle | None = None,
     ):
         self.config = config
         self.settings = settings_of(config)
         self.limits = read_request_limits(self.settings)
-        self.opener = opener
+        self.opener = public_https_opener() if opener is None else opener
         self.cache = JsonResponseCache(
             directory=Path(self.limits.cache_dir),
             source_id=config.source_id,
@@ -85,12 +85,7 @@ class HttpJsonAdapter:
 
     def _endpoint(self, listing: Listing) -> str:
         endpoint = fill_template(self.settings.text("endpoint"), listing)
-        parsed = urlsplit(endpoint)
-        is_public = parsed.scheme == "https" and parsed.hostname
-        if not is_public or parsed.username or parsed.password:
-            raise ValueError(
-                "HTTP JSON endpoints must be public HTTPS URLs without URL credentials"
-            )
+        require_public_https(endpoint)
         return endpoint
 
     def _payload(self, endpoint: str) -> Any:

@@ -7,6 +7,14 @@ enabled = true
 # See docs/DATA_ACQUISITION.md for everything a fetch requires. A live
 # deployment also sets url, timezone, and the request limits here.
 mode = "authorized_http"
+# Permission to poll is personal and non-transferable. This public example
+# cannot grant it: copy the file locally and set this true only after receiving
+# authorization for your own use.
+authorization_confirmed = false
+# Changing a shopping location uses a POST and is not covered merely by
+# permission to read public pages. Leave this false unless the provider has
+# specifically authorized that branch-scoping request.
+session_change_authorized = false
 #
 # Discovery asks the provider's own search once per term, and one search
 # page carries every lot it lists. A live deployment sets:
