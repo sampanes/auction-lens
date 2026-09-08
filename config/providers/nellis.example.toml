@@ -49,6 +49,12 @@ allowed = []
 large_item_policy = "ask"
 manual_handling_limit_lb = 75
 large_dimension_threshold_in = 60
+# Thresholds only judge lots that publish a weight or a dimension. Many publish
+# neither and say it in the title instead, so these phrases count as a stated
+# measurement. Matched case-insensitively against the title, branch, and
+# conditions. The day a trailer is available, set large_item_policy = "allow"
+# and every one of these becomes an ordinary lot again.
+oversized_terms = ["truck/trailer pickup only"]
 
 [conditions]
 # Reserve global rejection for conditions that are unacceptable for every use.

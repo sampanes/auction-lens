@@ -68,5 +68,53 @@ class LogisticsAssessmentTests(unittest.TestCase):
             assess_logistics(self.listing, self.config, LogisticsDecision(status="maybe"))
 
 
+class DeclaredOversizeTests(unittest.TestCase):
+    """A provider that publishes no measurements can still state the fact.
+
+    Real lots say "TRUCK/TRAILER PICKUP ONLY" in the title and give neither a
+    weight nor a dimension, so the thresholds see an ordinary parcel.
+    """
+
+    def setUp(self):
+        self.listing = example_listings()[SOUNDBAR]
+        self.config = replace(
+            example_config().logistics,
+            oversized_terms=("truck/trailer pickup only",),
+        )
+        self.declared = replace(
+            self.listing,
+            title="***TRUCK/TRAILER PICKUP ONLY*** SanHima Rooftop Tent Hard Shell",
+        )
+
+    def test_without_the_term_configured_nothing_changes(self):
+        config = replace(self.config, oversized_terms=())
+        self.assertEqual(assess_logistics(self.declared, config).status, "ordinary")
+
+    def test_a_stated_oversize_is_believed_without_any_measurement(self):
+        assessment = assess_logistics(self.declared, self.config)
+        self.assertEqual(assessment.status, "needs_plan")
+        self.assertEqual(self.declared.package_dimensions_in, ())
+
+    def test_it_is_asked_about_rather_than_dropped(self):
+        # The lot stays in the report: what can be collected is a fact about the
+        # operator, and it changes the day a trailer arrives.
+        self.assertNotEqual(assess_logistics(self.declared, self.config).status, "infeasible")
+
+    def test_the_question_does_not_quote_a_measurement_it_never_had(self):
+        questions = " ".join(assess_logistics(self.declared, self.config).questions)
+        self.assertIn("states this is oversized", questions)
+        self.assertNotIn(" in item", questions)
+
+    def test_owning_a_trailer_is_one_setting(self):
+        config = replace(self.config, large_item_policy="allow")
+        assessment = assess_logistics(self.declared, config)
+        self.assertEqual(assessment.status, "assumed_feasible")
+        self.assertEqual(assessment.questions, ())
+
+    def test_the_match_ignores_the_case_the_provider_shouted_it_in(self):
+        quiet = replace(self.declared, title="truck/trailer pickup only rooftop tent")
+        self.assertEqual(assess_logistics(quiet, self.config).status, "needs_plan")
+
+
 if __name__ == "__main__":
     unittest.main()

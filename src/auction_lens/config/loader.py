@@ -193,6 +193,7 @@ def _logistics(section: Section) -> LogisticsConfig:
             large_item_policy=section.text("large_item_policy", LargeItemPolicy.ASK),
             manual_handling_limit_lb=section.decimal("manual_handling_limit_lb", 75),
             large_dimension_threshold_in=section.decimal("large_dimension_threshold_in", 60),
+            oversized_terms=section.lowercase_texts("oversized_terms"),
         )
 
 

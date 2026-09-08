@@ -121,6 +121,16 @@ class Listing:
         return self.inventory_id or self.listing_id
 
     @property
+    def searchable_text(self) -> str:
+        """Everything a person reads in the headline, lowercased for matching.
+
+        One authority, because interests and logistics both ask questions of the
+        same words: if a provider states a fact anywhere here, both should see
+        it, and neither should carry its own idea of where to look.
+        """
+        return " ".join((self.title, self.location, *self.conditions)).lower()
+
+    @property
     def stock_photo_url(self) -> str:
         """The manufacturer's photo, which shows the model rather than the lot."""
         return self.photo_urls[0] if self.photo_urls else ""
