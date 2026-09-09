@@ -78,17 +78,31 @@ class HtmlReportTests(unittest.TestCase):
         self.assertIn("https://example.invalid/auction/synthetic-001", report)
         self.assertIn("Estimated total: $20.70", report)
 
-    def test_card_links_the_actual_lot_photo_to_the_listing(self):
+    def test_card_links_product_and_actual_lot_photos_to_the_listing(self):
         candidate = evaluate(self.listings[SOUNDBAR], self.config)[0]
 
         report = render_html([candidate])
 
-        self.assertIn(
-            "<a href='https://example.invalid/auction/synthetic-001'>"
-            "<img src='https://example.invalid/photo/synthetic-001-shelf.jpg'",
-            report,
+        listing_link = "<a href='https://example.invalid/auction/synthetic-001'>"
+        self.assertEqual(report.count(listing_link), 3)  # Two photos and View listing.
+        self.assertIn("<strong>Product photo</strong>", report)
+        self.assertIn("synthetic-001-stock.jpg", report)
+        self.assertIn("<strong>Actual lot</strong>", report)
+        self.assertIn("synthetic-001-shelf.jpg", report)
+
+    def test_one_gallery_image_is_shown_once_with_an_honest_label(self):
+        candidate = evaluate(self.listings[SOUNDBAR], self.config)[0]
+        listing = replace(
+            candidate.listing,
+            photo_urls=("https://example.invalid/photo/only.jpg",),
         )
-        self.assertNotIn("synthetic-001-stock.jpg", report)
+
+        report = render_html([replace(candidate, listing=listing)])
+
+        self.assertEqual(report.count("src='https://example.invalid/photo/only.jpg'"), 1)
+        self.assertIn("<strong>Listing photo</strong>", report)
+        self.assertNotIn("<strong>Product photo</strong>", report)
+        self.assertNotIn("<strong>Actual lot</strong>", report)
 
     def test_photo_and_listing_addresses_are_escaped(self):
         candidate = evaluate(self.listings[SOUNDBAR], self.config)[0]
@@ -113,6 +127,22 @@ class HtmlReportTests(unittest.TestCase):
         report = render_html([replace(candidate, listing=listing)])
 
         self.assertNotIn("<img", report)
+
+    def test_one_secure_end_of_a_gallery_is_still_shown(self):
+        candidate = evaluate(self.listings[SOUNDBAR], self.config)[0]
+        listing = replace(
+            candidate.listing,
+            photo_urls=(
+                "http://example.invalid/photo/stock.jpg",
+                "https://example.invalid/photo/lot.jpg",
+            ),
+        )
+
+        report = render_html([replace(candidate, listing=listing)])
+
+        self.assertNotIn("stock.jpg", report)
+        self.assertIn("<strong>Actual lot</strong>", report)
+        self.assertIn("https://example.invalid/photo/lot.jpg", report)
 
     def test_listing_title_is_escaped(self):
         candidate = evaluate(self.listings[SOUNDBAR], self.config)[0]
@@ -215,14 +245,14 @@ class EmailDeliveryTests(unittest.TestCase):
         self.assertIn("Flagged monitor", markup)
 
     @patch("auction_lens.reporting.delivery.smtplib.SMTP_SSL")
-    def test_a_daily_email_includes_the_actual_lot_photo(self, smtp_ssl):
+    def test_a_daily_email_includes_product_and_actual_lot_photos(self, smtp_ssl):
         with patch.dict("os.environ", SMTP_ENVIRONMENT, clear=False):
             send_email(self.candidates, self.email)
 
         message = smtp_ssl.return_value.__enter__.return_value.send_message.call_args.args[0]
         markup = message.get_body(preferencelist=("html",)).get_content()
         self.assertIn("synthetic-002-shelf.jpg", markup)
-        self.assertNotIn("synthetic-002-stock.jpg", markup)
+        self.assertIn("synthetic-002-stock.jpg", markup)
 
     @patch("auction_lens.reporting.delivery.smtplib.SMTP_SSL")
     def test_a_watchlist_email_does_not_expose_its_local_file_path(self, smtp_ssl):

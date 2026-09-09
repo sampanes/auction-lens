@@ -43,6 +43,14 @@ class Link:
 
 
 @dataclass(frozen=True)
+class Photo:
+    """One remotely hosted listing image, already named for a reader."""
+
+    label: str
+    url: str
+
+
+@dataclass(frozen=True)
 class Handling:
     """What still has to be said about getting this item home."""
 
@@ -80,7 +88,7 @@ class Finding:
     facts: tuple[Fact, ...]
     reasons: tuple[str, ...]
     url: str
-    actual_lot_photo_url: str
+    photos: tuple[Photo, ...]
     handling: Handling
     valuation: Valuation
 
@@ -139,9 +147,25 @@ def _finding(candidate: Candidate) -> Finding:
         facts=_facts(candidate),
         reasons=candidate.reasons,
         url=candidate.listing.url,
-        actual_lot_photo_url=_https_photo(candidate.listing.condition_photo_url),
+        photos=_photos(candidate),
         handling=_handling(candidate),
         valuation=_valuation(candidate.valuation),
+    )
+
+
+def _photos(candidate: Candidate) -> tuple[Photo, ...]:
+    """Name the two useful ends of a gallery without showing one image twice."""
+    stock = _https_photo(candidate.listing.stock_photo_url)
+    actual = _https_photo(candidate.listing.condition_photo_url)
+    if stock and stock == actual:
+        return (Photo("Listing photo", stock),)
+    return tuple(
+        photo
+        for photo in (
+            Photo("Product photo", stock) if stock else None,
+            Photo("Actual lot", actual) if actual else None,
+        )
+        if photo is not None
     )
 
 
