@@ -13,10 +13,16 @@ from __future__ import annotations
 
 from collections import defaultdict
 from dataclasses import dataclass
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from ..models import Candidate, LogisticsStatus, ValuationBand, ValuationSummary, ranked
 
 EMPTY_REPORT = "Auction Lens found no listings meeting the configured criteria."
+
+# Day, hour, and the zone's own name: enough to act on, short enough to sit on
+# one line. The zone is named because a report is read wherever the reader is.
+CLOSING_TIME_FORMAT = "%a %H:%M %Z"
 
 NEW_LABEL = "New"
 PRICE_CHANGED_LABEL = "Price changed"
@@ -113,17 +119,37 @@ class Report:
         return not self.groups
 
 
-def build_report(candidates: list[Candidate]) -> Report:
-    """Turn scored candidates into everything a report has to say about them."""
+def build_report(candidates: list[Candidate], zone: ZoneInfo) -> Report:
+    """Turn scored candidates into everything a report has to say about them.
+
+    The zone is the provider's, because a closing time is a fact about the
+    auction rather than about whoever opens the mail.
+    """
     if not candidates:
         return Report(headline=EMPTY_REPORT)
     return Report(
         headline=f"Auction Lens found {len(candidates)} match(es).",
         groups=tuple(
-            Group(title=category, findings=tuple(_finding(item) for item in items))
+            Group(
+                title=category,
+                findings=tuple(_finding(item, zone) for item in items),
+            )
             for category, items in _by_category(candidates).items()
         ),
     )
+
+
+def closing_time(ends_at: datetime | None, zone: ZoneInfo) -> str:
+    """When bidding ends, in the provider's local time, or "" if unstated.
+
+    Shared with the webhook so that both reports say a closing time the same
+    way. Every lot seen so far states one, so an empty answer means the page
+    changed shape rather than that this lot runs forever -- which is why
+    nothing here invents a substitute for a time it was not given.
+    """
+    if ends_at is None:
+        return ""
+    return ends_at.astimezone(zone).strftime(CLOSING_TIME_FORMAT)
 
 
 def readable(identifier: str) -> str:
@@ -139,12 +165,12 @@ def _by_category(candidates: list[Candidate]) -> dict[str, list[Candidate]]:
     return grouped
 
 
-def _finding(candidate: Candidate) -> Finding:
+def _finding(candidate: Candidate, zone: ZoneInfo) -> Finding:
     return Finding(
         title=candidate.listing.title,
         change=_change(candidate),
         score=candidate.score,
-        facts=_facts(candidate),
+        facts=_facts(candidate, zone),
         reasons=candidate.reasons,
         url=candidate.listing.url,
         photos=_photos(candidate),
@@ -183,7 +209,8 @@ def _change(candidate: Candidate) -> str:
     return SEEN_LABEL
 
 
-def _facts(candidate: Candidate) -> tuple[Fact, ...]:
+def _facts(candidate: Candidate, zone: ZoneInfo) -> tuple[Fact, ...]:
+    """The money first, then where and when the lot has to be dealt with."""
     listing = candidate.listing
     facts = [
         Fact("Bid", f"${listing.current_bid}"),
@@ -191,6 +218,9 @@ def _facts(candidate: Candidate) -> tuple[Fact, ...]:
     ]
     if listing.estimated_retail:
         facts.append(Fact("Retail", f"${listing.estimated_retail}"))
+    closes = closing_time(listing.ends_at, zone)
+    if closes:
+        facts.append(Fact("Closes", closes))
     facts.append(Fact("Location", listing.location or NO_LOCATION))
     facts.append(Fact("Conditions", ", ".join(listing.conditions) or NO_CONDITIONS))
     return tuple(facts)

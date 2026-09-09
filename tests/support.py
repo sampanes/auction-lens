@@ -10,6 +10,7 @@ import tempfile
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from auction_lens.config import AppConfig, load_config
 from auction_lens.ingest import load_listings
@@ -20,6 +21,12 @@ ROOT = Path(__file__).resolve().parents[1]
 EXAMPLE_CONFIG = ROOT / "config" / "providers" / "nellis.example.toml"
 SYNTHETIC_LISTINGS = ROOT / "fixtures" / "synthetic" / "listings.json"
 NELLIS_BROWSE_FIXTURE = ROOT / "fixtures" / "nellis" / "browse-shell.html"
+
+# The clock a rendered report is read against. A fixed zone rather than the
+# machine's, so that a test asserting on a closing time says the same thing
+# wherever it runs. Deliberately not UTC, so a report that forgot to convert
+# would be caught rather than passing by coincidence.
+REPORT_ZONE = ZoneInfo("America/Phoenix")
 
 SOUNDBAR = 0  # A wanted listing that is also a retail-ratio anomaly.
 LASER_LEVEL = 1  # An anomaly with no matching interest rule.

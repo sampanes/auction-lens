@@ -66,7 +66,7 @@ def _enforce_daily_limit(
     config: AcquisitionConfig,
     instant: datetime,
 ) -> None:
-    zone = ZoneInfo(config.timezone)
+    zone = config.zone
     today = _local_date(instant, zone)
     used = [value for value in attempts if _local_date(value, zone) == today]
     if len(used) >= config.max_requests_per_day:

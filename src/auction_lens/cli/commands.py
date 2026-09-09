@@ -277,15 +277,16 @@ def run(args: argparse.Namespace) -> int:
         watchlist=WatchlistStore(Path(args.watchlist)),
         valuation_engine=_valuation_engine(config),
     )
-    print(render_text(result.candidates), end="")
+    zone = config.acquisition.zone
+    print(render_text(result.candidates, zone), end="")
     _report_skipped(result.listings_from_other_providers, config.provider.provider_id)
     _report_capped(result.matches_not_shown, len(result.candidates))
     _report_followed(result.lots_followed, args.watchlist)
 
     if args.email:
-        send_email(result.candidates, config.email)
+        send_email(result.candidates, config.email, zone)
     if args.webhook:
-        send_webhook(result.candidates, config.webhook)
+        send_webhook(result.candidates, config.webhook, zone)
         print(f"Posted {len(result.candidates)} match(es) to the webhook.")
     return SUCCESS
 

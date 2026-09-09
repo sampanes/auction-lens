@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from html import escape
+from zoneinfo import ZoneInfo
 
 from ..models import Candidate
 from .findings import Fact, Finding, Handling, Photo, Report, Valuation, build_report
@@ -25,9 +26,9 @@ PHOTO_STYLE = (
 SEPARATOR = " &middot; "
 
 
-def render_html(candidates: list[Candidate]) -> str:
+def render_html(candidates: list[Candidate], zone: ZoneInfo) -> str:
     """Render every candidate as a card, strongest first."""
-    return _as_html(build_report(candidates))
+    return _as_html(build_report(candidates, zone))
 
 
 def _as_html(report: Report) -> str:

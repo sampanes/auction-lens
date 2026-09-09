@@ -122,6 +122,32 @@ Showing the best 30; 766 more matched. Raise reports.max_items to see them.
 The cap is applied once, before the report is printed, emailed, posted, or
 followed in the watchlist, so all four agree on what today's report was.
 
+## When a lot closes
+
+Every report line says when bidding on that lot ends:
+
+```
+Bid: $8.00 | Estimated total: $9.20 | Retail: $301.15
+Closes: Wed 21:57 MST | Location: Mesa | Conditions: none listed
+```
+
+The time is the provider's, not yours. A lot closes at the auction house, so
+the clock that matters is the one hanging there, and it is named on every line
+because a report gets read on a phone in some other state. Which zone that is
+comes from the one place that already had to know:
+
+```toml
+[provider.acquisition]
+timezone = "America/Phoenix"
+```
+
+That key already decided which local day a request quota falls in. Reusing it
+means there is no second timezone setting to disagree with the first.
+
+A lot that publishes no closing time simply says nothing about one, rather than
+being given an invented deadline. Every lot seen so far publishes one, so if
+that line goes missing across the board, the page shape changed.
+
 ## Chat webhook
 
 Email is the scheduled digest; it arrives whether or not anybody asked. A
