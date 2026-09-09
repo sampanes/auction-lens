@@ -158,15 +158,15 @@ def _photos(candidate: Candidate) -> tuple[Photo, ...]:
     stock = _https_photo(candidate.listing.stock_photo_url)
     actual = _https_photo(candidate.listing.condition_photo_url)
     if stock and stock == actual:
+        # One photo in the gallery, so neither label would be a claim we can
+        # make about it. Say only what is certain: it came from the listing.
         return (Photo("Listing photo", stock),)
-    return tuple(
-        photo
-        for photo in (
-            Photo("Product photo", stock) if stock else None,
-            Photo("Actual lot", actual) if actual else None,
-        )
-        if photo is not None
-    )
+    photos = []
+    if stock:
+        photos.append(Photo("Product photo", stock))
+    if actual:
+        photos.append(Photo("Actual lot", actual))
+    return tuple(photos)
 
 
 def _https_photo(url: str) -> str:
