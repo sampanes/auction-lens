@@ -100,6 +100,7 @@ def _row(
         "bid_count": product.get("bidCount", 0),
         "ends_at": product.get("closeTime"),
         "location": _location(product),
+        "notes": _notes(product),
         "photo_urls": _photos(product),
         "grade": canonical_grade(grade),
         "quality_rating": grade.get(RATING_KEY),
@@ -232,6 +233,16 @@ def _photos(product: dict[str, Any]) -> list[str]:
         if url.startswith(WEB_ADDRESS_PREFIXES):
             urls.append(url)
     return urls
+
+
+def _notes(product: dict[str, Any]) -> str:
+    """What the warehouse wrote about this particular item, on one line.
+
+    Notes arrive with newlines in them because a person typed them into a box
+    over several visits. Flattened here so that matching, which reads one
+    string, cannot be defeated by where somebody pressed Enter.
+    """
+    return " ".join(str(product.get("notes") or "").split())
 
 
 def _location(product: dict[str, Any]) -> str:

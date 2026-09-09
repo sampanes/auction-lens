@@ -406,6 +406,30 @@ authorized read-only JSON APIs. Custom adapters use a normal Python import path,
 so unusual integrations remain isolated. See [the valuation guide](docs/VALUATION.md)
 for the configuration and XML formats.
 
+### What the warehouse wrote on it
+
+A title is the manufacturer's words, identical on every copy of a product. The
+note is what somebody wrote after looking at this particular lot:
+
+```
+SnuggleBounce 13FT White Inflatable Bounce House
+  notes: 9/8 blower not included
+         leaks air/ needs a patch
+```
+
+Nothing else on the page says that, so `exclude_terms` are matched against the
+note as well as the title. It is the only place a missing blower, a missing
+power source, or a leaking seam is ever stated.
+
+The note can only ever rule a lot **out**. Wanted words are still read from the
+title alone, because a pallet lot's note lists everything on the pallet, and
+reading wants from there would make one pallet match every interest at once. A
+note is evidence against, never for.
+
+Notes are typed into a box over several visits, so they arrive with line breaks
+in them. Whitespace is flattened before matching: where somebody pressed Enter
+does not decide whether a lot is reported.
+
 ## Contextual logistics
 
 Listings may provide a handling weight, package dimensions, and seller loading
