@@ -11,6 +11,7 @@ import smtplib
 import ssl
 from dataclasses import dataclass
 from email.message import EmailMessage
+from zoneinfo import ZoneInfo
 
 from ..config import EmailConfig, EmailSecurity
 from ..models import Candidate, WatchedItem
@@ -47,10 +48,12 @@ def _ready_account(config: EmailConfig) -> MailAccount:
     return _account_from_environment(config)
 
 
-def send_email(candidates: list[Candidate], config: EmailConfig) -> None:
+def send_email(
+    candidates: list[Candidate], config: EmailConfig, zone: ZoneInfo
+) -> None:
     """Send one report as a text message with an HTML alternative."""
     account = _ready_account(config)
-    message = _build_message(candidates, config, account)
+    message = _build_message(candidates, config, account, zone)
 
     _deliver(message, config, account)
 
@@ -122,11 +125,12 @@ def _build_message(
     candidates: list[Candidate],
     config: EmailConfig,
     account: MailAccount,
+    zone: ZoneInfo,
 ) -> EmailMessage:
     message = EmailMessage()
     message["Subject"] = config.subject.replace(MATCH_COUNT_PLACEHOLDER, str(len(candidates)))
     message["From"] = account.sender
     message["To"] = account.recipient
-    message.set_content(render_text(candidates))
-    message.add_alternative(render_html(candidates), subtype="html")
+    message.set_content(render_text(candidates, zone))
+    message.add_alternative(render_html(candidates, zone), subtype="html")
     return message

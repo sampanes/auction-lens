@@ -22,6 +22,7 @@ from auction_lens.valuation.json_path import read_path
 from auction_lens.valuation.reference import ReferenceAdapter
 from auction_lens.valuation.templates import fill_template
 from support import (
+    REPORT_ZONE,
     SOUNDBAR,
     FakeResponse,
     RecordingOpener,
@@ -85,10 +86,14 @@ class EngineTests(unittest.TestCase):
             self.configured_candidate(),
             valuation=summary,
         )
-        for report in (render_text([candidate]), render_html([candidate])):
+        rendered = (
+            render_text([candidate], REPORT_ZONE),
+            render_html([candidate], REPORT_ZONE),
+        )
+        for report in rendered:
             self.assertNotIn(private_detail, report)
             self.assertIn("broken: unavailable (RuntimeError)", report)
-        webhook = json.dumps(build_message([candidate], self.config.webhook))
+        webhook = json.dumps(build_message([candidate], self.config.webhook, REPORT_ZONE))
         self.assertNotIn(private_detail, webhook)
 
     def test_an_unknown_adapter_names_the_built_in_choices(self):

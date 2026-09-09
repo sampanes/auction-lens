@@ -17,7 +17,7 @@ from auction_lens.reporting.webhook import (
     webhook_address,
 )
 from auction_lens.scoring import evaluate
-from support import SOUNDBAR, example_config, example_listings
+from support import REPORT_ZONE, SOUNDBAR, example_config, example_listings
 
 ADDRESS = "https://discord.com/api/webhooks/000/secret-token"
 ENVIRONMENT = {"AUCTION_LENS_WEBHOOK_URL": ADDRESS}
@@ -38,20 +38,38 @@ class MessageShapeTests(unittest.TestCase):
         # The provider publishes app links for this address, so one link opens
         # the app on a phone and the site everywhere else. There is no second,
         # app-flavoured address to build.
-        message = build_message(_candidates(), self.config)
+        message = build_message(_candidates(), self.config, REPORT_ZONE)
         self.assertEqual(message["embeds"][0]["url"], _candidates()[0].listing.url)
 
+    def test_a_card_says_when_bidding_ends_in_the_providers_own_time(self):
+        message = build_message(_candidates(), self.config, REPORT_ZONE)
+        fields = {field["name"]: field["value"] for field in message["embeds"][0]["fields"]}
+        self.assertEqual(fields["Closes"], "Mon 19:30 MST")
+
+    def test_a_card_says_so_when_no_closing_time_was_published(self):
+        # A chat card has a fixed set of fields, so the absence has to be a
+        # word. An empty value would read as a rendering fault instead.
+        undated = _candidates()
+        undated[0] = replace(
+            undated[0], listing=replace(undated[0].listing, ends_at=None)
+        )
+        message = build_message(undated, self.config, REPORT_ZONE)
+        fields = {field["name"]: field["value"] for field in message["embeds"][0]["fields"]}
+        self.assertEqual(fields["Closes"], "unstated")
+
     def test_it_never_sends_more_cards_than_the_service_accepts(self):
-        message = build_message(_candidates(40), replace(self.config, max_items=99))
+        many = replace(self.config, max_items=99)
+        message = build_message(_candidates(40), many, REPORT_ZONE)
         self.assertEqual(len(message["embeds"]), HIGHEST_EMBED_COUNT)
         self.assertIn("the best 10 follow", message["content"])
 
     def test_a_smaller_limit_is_respected(self):
-        message = build_message(_candidates(40), replace(self.config, max_items=3))
+        few = replace(self.config, max_items=3)
+        message = build_message(_candidates(40), few, REPORT_ZONE)
         self.assertEqual(len(message["embeds"]), 3)
 
     def test_finding_nothing_still_says_so(self):
-        message = build_message([], self.config)
+        message = build_message([], self.config, REPORT_ZONE)
         self.assertEqual(message["embeds"], [])
         self.assertIn("Nothing matched", message["content"])
 
@@ -68,8 +86,8 @@ class MessageShapeTests(unittest.TestCase):
             ),
         )
         self.assertNotEqual(
-            build_message(clear, self.config)["embeds"][0]["color"],
-            build_message(worrying, self.config)["embeds"][0]["color"],
+            build_message(clear, self.config, REPORT_ZONE)["embeds"][0]["color"],
+            build_message(worrying, self.config, REPORT_ZONE)["embeds"][0]["color"],
         )
 
 
@@ -97,7 +115,7 @@ class PostingTests(unittest.TestCase):
     @patch("auction_lens.reporting.webhook.urlopen")
     def test_it_posts_json_to_the_configured_address(self, urlopen):
         with patch.dict("os.environ", ENVIRONMENT, clear=False):
-            send_webhook(_candidates(), WebhookConfig(enabled=True))
+            send_webhook(_candidates(), WebhookConfig(enabled=True), REPORT_ZONE)
 
         request = urlopen.call_args.args[0]
         self.assertEqual(request.full_url, ADDRESS)
@@ -112,7 +130,7 @@ class PostingTests(unittest.TestCase):
         candidates = _candidates()
         candidates[0] = replace(candidates[0], total_cost=Decimal("20.70"))
         with patch.dict("os.environ", ENVIRONMENT, clear=False):
-            send_webhook(candidates, WebhookConfig(enabled=True))
+            send_webhook(candidates, WebhookConfig(enabled=True), REPORT_ZONE)
         payload = json.loads(urlopen.call_args.args[0].data.decode("utf-8"))
         costs = [
             field["value"]

@@ -137,6 +137,17 @@ class AcquisitionConfig:
     # permission to poll public pages, so it needs its own confirmation.
     session_change_authorized: bool = False
 
+    @property
+    def zone(self) -> ZoneInfo:
+        """The provider's own clock, which every local time here is read against.
+
+        A lot closes at the auction house, not where the reader happens to be
+        standing, so the same zone that decides which day a request quota falls
+        in also decides what time a report says a lot ends. Built here rather
+        than by each caller so there is one answer to what "local" means.
+        """
+        return ZoneInfo(self.timezone)
+
     def __post_init__(self) -> None:
         _settle(self, "mode", AcquisitionMode)
         _settle(self, "run_mode", RunMode)

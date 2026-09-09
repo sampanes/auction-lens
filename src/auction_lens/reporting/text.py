@@ -8,6 +8,7 @@ This module decides layout only. What the report says comes from ``findings``.
 from __future__ import annotations
 
 from collections.abc import Iterator
+from zoneinfo import ZoneInfo
 
 from ..models import Candidate
 from .findings import Fact, Finding, Handling, Report, Valuation, build_report
@@ -18,9 +19,9 @@ SEPARATOR = " | "
 FACTS_PER_LINE = 3
 
 
-def render_text(candidates: list[Candidate]) -> str:
+def render_text(candidates: list[Candidate], zone: ZoneInfo) -> str:
     """Render every candidate, grouped by category and ordered by score."""
-    return _as_text(build_report(candidates))
+    return _as_text(build_report(candidates, zone))
 
 
 def _as_text(report: Report) -> str:

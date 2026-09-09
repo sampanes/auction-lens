@@ -16,10 +16,12 @@ import json
 import os
 from typing import Any
 from urllib.request import Request, urlopen
+from zoneinfo import ZoneInfo
 
 from ..config import WebhookConfig
 from ..grading import Tag
-from ..models import Candidate
+from ..models import Candidate, Listing
+from .findings import closing_time
 
 WEBHOOK_TIMEOUT_SECONDS = 15
 
@@ -33,10 +35,12 @@ COLOURS = {Tag.GREEN: 0x2E7D32, Tag.AMBER: 0xF9A825, Tag.RED: 0xC62828}
 ALL_CLEAR = "every tag green"
 
 
-def send_webhook(candidates: list[Candidate], config: WebhookConfig) -> None:
+def send_webhook(
+    candidates: list[Candidate], config: WebhookConfig, zone: ZoneInfo
+) -> None:
     """Post the best candidates to the configured chat webhook."""
     address = webhook_address(config)
-    payload = build_message(candidates, config)
+    payload = build_message(candidates, config, zone)
     request = Request(
         address,
         data=json.dumps(payload).encode("utf-8"),
@@ -57,7 +61,9 @@ def webhook_address(config: WebhookConfig) -> str:
     return address
 
 
-def build_message(candidates: list[Candidate], config: WebhookConfig) -> dict[str, Any]:
+def build_message(
+    candidates: list[Candidate], config: WebhookConfig, zone: ZoneInfo
+) -> dict[str, Any]:
     """One message: a line saying how many, then a card for each of the best.
 
     Public because it is worth testing without posting anything anywhere.
@@ -66,7 +72,7 @@ def build_message(candidates: list[Candidate], config: WebhookConfig) -> dict[st
     return {
         "username": config.username,
         "content": _headline(len(candidates), len(shown)),
-        "embeds": [_card(candidate) for candidate in shown],
+        "embeds": [_card(candidate, zone) for candidate in shown],
     }
 
 
@@ -78,7 +84,7 @@ def _headline(found: int, shown: int) -> str:
     return f"{found} match(es)."
 
 
-def _card(candidate: Candidate) -> dict[str, Any]:
+def _card(candidate: Candidate, zone: ZoneInfo) -> dict[str, Any]:
     """One lot, with its address on the title so a tap opens the listing.
 
     A provider that publishes app links serves that same address into its own
@@ -93,10 +99,20 @@ def _card(candidate: Candidate) -> dict[str, Any]:
             {"name": "Cost", "value": f"${candidate.total_cost}", "inline": True},
             {"name": "Retail", "value": _retail(candidate), "inline": True},
             {"name": "Where", "value": listing.location or "unstated", "inline": True},
+            {"name": "Closes", "value": _closes(listing, zone), "inline": True},
             {"name": "Condition", "value": _conditions(candidate), "inline": False},
             {"name": "Why", "value": ", ".join(candidate.reasons) or "-", "inline": False},
         ],
     }
+
+
+def _closes(listing: Listing, zone: ZoneInfo) -> str:
+    """Worded by the same function the mailed report uses, so the two agree.
+
+    A chat card has a fixed set of fields where the mailed report can simply
+    leave a fact out, so an unstated time is said rather than omitted.
+    """
+    return closing_time(listing.ends_at, zone) or "unstated"
 
 
 def _worst_tag(candidate: Candidate) -> Tag:
