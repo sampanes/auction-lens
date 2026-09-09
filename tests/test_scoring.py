@@ -7,7 +7,12 @@ from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
-from auction_lens.config import ConditionPolicy, InterestRule, LocationPolicy
+from auction_lens.config import (
+    ConditionPolicy,
+    InterestDefaults,
+    InterestRule,
+    LocationPolicy,
+)
 from auction_lens.models import LogisticsDecision
 from auction_lens.scoring import estimate_total_cost, evaluate
 from support import LASER_LEVEL, SOUNDBAR, example_config, example_listings
@@ -196,6 +201,98 @@ class MinimumRetailTests(unittest.TestCase):
     def test_a_negative_floor_is_refused(self):
         with self.assertRaisesRegex(ValueError, "minimum_retail"):
             InterestRule(name="x", minimum_retail=Decimal("-1"))
+
+
+class AccessoryTests(unittest.TestCase):
+    """The other half of telling a thing from what attaches to it.
+
+    The value floor above catches the cheap accessories. These catch the ones
+    that cost real money: a set of guitar hangers outsells a beginner guitar.
+    """
+
+    def setUp(self):
+        self.config = example_config()
+        self.listings = example_listings()
+
+    def _matches(self, title, *, rule=None):
+        rule = rule or InterestRule(
+            name="guitar",
+            any_terms=("guitar",),
+            accessory_nouns=("stand", "hanger", "case"),
+        )
+        config = replace(self.config, interests=(rule,))
+        listing = replace(
+            self.listings[SOUNDBAR], title=title, estimated_retail=Decimal("300")
+        )
+        scored = evaluate(listing, config)
+        return [item.rule_name for item in scored if item.category == "wanted"]
+
+    def test_a_fitting_named_beside_the_thing_is_not_the_thing(self):
+        self.assertEqual(self._matches("Hercules Guitar Hangers, Set of 3"), [])
+
+    def test_the_same_word_further_away_still_leaves_the_thing(self):
+        # A guitar sold with a stand is a guitar. Only nearness means accessory.
+        self.assertEqual(
+            self._matches("Fender Guitar Bundle with Amp, Strap and Stand"), ["guitar"]
+        )
+
+    def test_a_word_between_them_is_still_beside_the_thing(self):
+        self.assertEqual(self._matches("CAHAYA Acoustic Guitar Hard Case"), [])
+
+    def test_a_longer_word_that_merely_begins_the_same_is_not_it(self):
+        rule = InterestRule(
+            name="e-bike", any_terms=("electric bike",), accessory_nouns=("mount",)
+        )
+        self.assertEqual(
+            self._matches("Electric Bike, Mountain Trail Model", rule=rule), ["e-bike"]
+        )
+
+    def test_naming_the_thing_only_after_for_makes_it_an_accessory(self):
+        rule = InterestRule(name="tools", any_terms=("dewalt",))
+        self.assertEqual(
+            self._matches("Cordless Weed Wacker for DeWalt 20V Battery", rule=rule), []
+        )
+
+    def test_saying_who_the_thing_is_for_does_not_make_it_one(self):
+        # The wanted words come first, so this is an electric bike that happens
+        # to say who it suits -- not a fitting that attaches to one.
+        rule = InterestRule(name="e-bike", any_terms=("electric bike",))
+        self.assertEqual(
+            self._matches("Caroma Electric Bike for Adults, 48V Battery", rule=rule),
+            ["e-bike"],
+        )
+
+    def test_a_rule_naming_no_wanted_words_is_left_alone(self):
+        # Nothing to be positioned relative to "for", so the question does not
+        # arise. Asking it anyway would reject every title containing "for".
+        rule = InterestRule(name="tubing", all_terms=("square", "tubing"))
+        self.assertEqual(
+            self._matches("Square Steel Tubing for Sale, 3 Lengths", rule=rule),
+            ["tubing"],
+        )
+
+    def test_a_rule_that_asks_for_the_word_keeps_it(self):
+        defaults = InterestDefaults(
+            exclude_terms=("replacement",), accessory_nouns=("stand",)
+        )
+        rule = defaults.applied_to(
+            InterestRule(name="guitar stand", any_terms=("guitar stand",))
+        )
+        self.assertEqual(rule.accessory_nouns, ())
+        self.assertEqual(self._matches("DIDA Guitar Stand", rule=rule), ["guitar stand"])
+
+    def test_a_rule_inherits_words_it_never_named(self):
+        rule = InterestDefaults(exclude_terms=("compatible with",)).applied_to(
+            InterestRule(name="tools", any_terms=("dewalt",))
+        )
+        self.assertIn("compatible with", rule.exclude_terms)
+        self.assertEqual(self._matches("Heat Gun Compatible With Dewalt", rule=rule), [])
+
+    def test_a_word_the_rule_already_named_is_not_inherited_twice(self):
+        rule = InterestDefaults(exclude_terms=("adapter",)).applied_to(
+            InterestRule(name="tools", any_terms=("dewalt",), exclude_terms=("adapter",))
+        )
+        self.assertEqual(rule.exclude_terms, ("adapter",))
 
 
 class InterestWeightTests(unittest.TestCase):

@@ -17,6 +17,16 @@ from .signals import clamp_score
 # An explicitly wanted item is presumed reportable; penalties argue it back down.
 BASE_INTEREST_SCORE = 80
 
+# The word an accessory uses to name what it fits. Spaced so that it is the
+# whole word: "for" and not the tail of "comfort".
+HOST_MARKER = " for "
+
+# How far from the wanted word an accessory word still counts as attached to it.
+ACCESSORY_WORD_GAP = 2
+
+# Titles end words with these; they are not part of the word.
+TITLE_PUNCTUATION = ".,:;!?()[]{}\"'-*/"
+
 
 def score_interests(
     context: ScoringContext,
@@ -67,9 +77,91 @@ def matches_terms(listing: Listing, total_cost: Decimal, rule: InterestRule) -> 
         return False
     if any(term in searchable for term in rule.exclude_terms):
         return False
+    if describes_an_accessory(searchable, rule):
+        return False
     if not _worth_at_least(listing, rule.minimum_retail):
         return False
     return rule.max_total_cost is None or total_cost <= rule.max_total_cost
+
+
+def describes_an_accessory(searchable: str, rule: InterestRule) -> bool:
+    """Whether the lot names the wanted thing without being it.
+
+    An accessory is sold by the name of what it attaches to, so a guitar stand,
+    a monitor mount and a battery for a drill all say the wanted word as loudly
+    as the real article. The value floor was the first answer to this and it is
+    not enough on its own: a set of guitar hangers can retail for more than the
+    floor a cheap guitar has to clear.
+
+    Two things separate the accessory from the article, and both are about where
+    the words sit rather than which words they are.
+    """
+    return _named_after_its_host(searchable, rule) or _sold_as_a_fitting(
+        searchable, rule
+    )
+
+
+def _named_after_its_host(searchable: str, rule: InterestRule) -> bool:
+    """Whether the wanted words appear only after the word "for".
+
+    "Weed Wacker for DeWalt Battery" attaches to a DeWalt; "DeWalt Miter Saw"
+    is one. Which side of "for" the wanted word falls on is the whole
+    difference: an accessory names its host after it, and an article names
+    itself first. So "Electric Bike for Adults" stays -- it is an electric bike
+    that happens to say who it is for, and its wanted words come first.
+
+    A word appearing on both sides counts as the earlier one, which keeps a lot
+    in the report rather than out of it.
+    """
+    host_marker = searchable.find(HOST_MARKER)
+    if host_marker == -1:
+        return False
+    # A rule that named no wanted words has nothing here to be positioned, and
+    # an empty "all of them are late" would otherwise be vacuously true.
+    named = [term for term in rule.any_terms if term in searchable]
+    return bool(named) and all(searchable.find(term) > host_marker for term in named)
+
+
+def _sold_as_a_fitting(searchable: str, rule: InterestRule) -> bool:
+    """Whether an accessory word sits right beside one of the wanted words.
+
+    Only beside, because the same word means opposite things at a distance: a
+    table saw sold "with rolling stand" is a table saw, while a "guitar stand"
+    is not a guitar. Adjacency is what tells those apart, so a bare list of
+    words to reject would throw away the article along with the accessory.
+    """
+    return any(
+        _sits_beside(searchable, term, noun)
+        for term in rule.any_terms
+        for noun in rule.accessory_nouns
+    )
+
+
+def _sits_beside(searchable: str, term: str, noun: str) -> bool:
+    """Whether the noun is within a word or two of the term, on either side.
+
+    Room for a word or two because a title rarely puts them flush together:
+    "Guitar Hard Case" and "Guitar Tripod Holder" both describe a fitting, and
+    neither says the two words back to back.
+    """
+    found = searchable.find(term)
+    while found != -1:
+        before = searchable[:found].split()[-ACCESSORY_WORD_GAP:]
+        after = searchable[found + len(term) :].split()[:ACCESSORY_WORD_GAP]
+        if any(_is_the_word(word, noun) for word in (*before, *after)):
+            return True
+        found = searchable.find(term, found + 1)
+    return False
+
+
+def _is_the_word(word: str, noun: str) -> bool:
+    """The noun itself or its plural, and not merely a word starting with it.
+
+    Titles are full of punctuation and plurals -- "Hangers," is the noun, and
+    "Mountain" is not -- so this compares whole words rather than prefixes.
+    """
+    bare = word.strip(TITLE_PUNCTUATION)
+    return bare in (noun, f"{noun}s", f"{noun}es")
 
 
 def _worth_at_least(listing: Listing, floor: Decimal | None) -> bool:

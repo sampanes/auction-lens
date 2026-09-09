@@ -184,6 +184,9 @@ class InterestRule:
     any_terms: tuple[str, ...] = ()
     all_terms: tuple[str, ...] = ()
     exclude_terms: tuple[str, ...] = ()
+    # Words that name an accessory, checked only where they sit beside one of
+    # the terms above. Inherited from [interest_defaults]; see InterestDefaults.
+    accessory_nouns: tuple[str, ...] = ()
     max_total_cost: Decimal | None = None
     # The floor that separates a thing from its accessories. A guitar cable
     # says "guitar" as loudly as a guitar does, and only the value tells them
@@ -209,6 +212,47 @@ class InterestRule:
             require_not_negative(self.max_total_cost, field_name="max_total_cost")
         if self.minimum_retail is not None:
             require_not_negative(self.minimum_retail, field_name="minimum_retail")
+
+
+@dataclass(frozen=True)
+class InterestDefaults:
+    """Term filters that every interest rule inherits.
+
+    An accessory borrows the name of whatever it attaches to, so a guitar stand
+    says "guitar" exactly as loudly as a guitar does. Every rule therefore needs
+    the same sentence -- a stand for a guitar is not a guitar, a battery for a
+    drill is not a drill -- and before this existed each rule kept its own
+    partial copy of it: the monitor rule knew about "monitor stand", the guitar
+    rule about "wall mount", and neither knew what the other had learned.
+
+    Saying it once here is what keeps each rule below about what the operator
+    wants rather than about what keeps turning up next to it.
+    """
+
+    exclude_terms: tuple[str, ...] = ()
+    accessory_nouns: tuple[str, ...] = ()
+
+    def applied_to(self, rule: InterestRule) -> InterestRule:
+        """The rule, plus every shared filter it does not contradict.
+
+        A rule that explicitly asks for one of these words means it: an interest
+        in "guitar stand" must not be silently emptied by a shared "stand". What
+        a rule asked for outranks what it inherits, so a shared word that
+        appears in the rule's own terms is dropped for that rule alone.
+        """
+        asked_for = " ".join(rule.any_terms + rule.all_terms)
+        inherited = tuple(
+            term
+            for term in self.exclude_terms
+            if term not in asked_for and term not in rule.exclude_terms
+        )
+        return replace(
+            rule,
+            exclude_terms=rule.exclude_terms + inherited,
+            accessory_nouns=tuple(
+                noun for noun in self.accessory_nouns if noun not in asked_for
+            ),
+        )
 
 
 @dataclass(frozen=True)

@@ -23,6 +23,7 @@ from .schema import (
     EconomicsConfig,
     EmailConfig,
     EmailSecurity,
+    InterestDefaults,
     InterestRule,
     LargeItemPolicy,
     LocationPolicy,
@@ -137,7 +138,24 @@ def _scoring(section: Section, conditions: Section, profiles: Section) -> Scorin
 
 
 def _interests(root: Section, profiles: Section) -> tuple[InterestRule, ...]:
-    return tuple(_interest(item, profiles) for item in root.tables("interests"))
+    """Every rule, already carrying what it inherits.
+
+    Inheritance is resolved here, once, so that everything downstream reads a
+    finished rule and nothing has to remember to consult the defaults too.
+    """
+    defaults = _interest_defaults(root.table("interest_defaults"))
+    return tuple(
+        defaults.applied_to(_interest(item, profiles))
+        for item in root.tables("interests")
+    )
+
+
+def _interest_defaults(section: Section) -> InterestDefaults:
+    with in_section(section):
+        return InterestDefaults(
+            exclude_terms=section.lowercase_texts("exclude_terms"),
+            accessory_nouns=section.lowercase_texts("accessory_nouns"),
+        )
 
 
 def _interest(item: Section, profiles: Section) -> InterestRule:

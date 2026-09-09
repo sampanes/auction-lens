@@ -32,6 +32,12 @@ class ExampleConfigTests(unittest.TestCase):
     def test_anomaly_discovery_reuses_the_same_profile(self):
         self.assertIn("parts only", self.config.scoring.anomaly_condition.reject)
 
+    def test_shared_accessory_words_reach_a_rule_that_never_named_them(self):
+        # The rule says only what it wants; what it is not comes from one place.
+        monitor = next(rule for rule in self.config.interests if rule.name == "monitor")
+        self.assertIn("compatible with", monitor.exclude_terms)
+        self.assertIn("mount", monitor.accessory_nouns)
+
 
 class ConfigValidationTests(unittest.TestCase):
     def test_invalid_email_security_is_rejected_at_load_time(self):
