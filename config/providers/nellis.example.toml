@@ -109,7 +109,8 @@ exclude_terms = ["compatible with", "replacement", "adapter", "cable"]
 # Words that only mean "accessory" next to the thing itself. "Monitor stand" is
 # not a monitor, but a table saw "with rolling stand" is still a table saw, and
 # only the distance between the words tells those apart.
-accessory_nouns = ["stand", "case", "cover", "mount", "bracket", "holder", "arm"]
+accessory_nouns = ["stand", "case", "cover", "mount", "bracket", "holder", "arm",
+                   "controller"]
 
 [[interests]]
 name = "soundbar"
