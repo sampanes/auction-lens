@@ -97,6 +97,11 @@ class Listing:
     ends_at: datetime | None = None
     location: str = ""
     inventory_id: str = ""
+    # What the warehouse wrote on the lot after looking at it: "blower not
+    # included", "MISSING POWER SOURCE", "leaks air/ needs a patch". Rarer
+    # than a title and worth far more, because a title is the manufacturer's
+    # words and this is the only sentence about this particular item.
+    notes: str = ""
     conditions: tuple[str, ...] = ()
     photo_urls: tuple[str, ...] = ()
     grade: Grade | None = None
@@ -129,6 +134,26 @@ class Listing:
         it, and neither should carry its own idea of where to look.
         """
         return " ".join((self.title, self.location, *self.conditions)).lower()
+
+    @property
+    def disqualifying_text(self) -> str:
+        """Everything that can rule a lot out, which is more than what names it.
+
+        The warehouse note is the only sentence written about this particular
+        item rather than about the model -- "blower not included", "MISSING
+        POWER SOURCE", "leaks air/ needs a patch" -- so it has to be able to
+        take a lot out of the report.
+
+        It deliberately cannot put one in. A pallet lot's note lists everything
+        on the pallet, so reading wants from here would make one pallet match
+        every interest at once. A note is evidence against, never for.
+
+        Whitespace is flattened here rather than where the note was read, so
+        the guarantee holds whichever file it arrived in: a person typing into
+        a box over several visits must not defeat a match by where they
+        happened to press Enter.
+        """
+        return f"{self.searchable_text} {' '.join(self.notes.split())}".lower()
 
     @property
     def stock_photo_url(self) -> str:
@@ -165,6 +190,7 @@ class Listing:
             ends_at=parse_utc_datetime(data.get("ends_at"), field_name="ends_at"),
             location=_text(data, "location"),
             inventory_id=_text(data, "inventory_id"),
+            notes=_text(data, "notes"),
             conditions=_condition_words(data, grade),
             photo_urls=_photos(data),
             grade=grade,

@@ -203,6 +203,61 @@ class MinimumRetailTests(unittest.TestCase):
             InterestRule(name="x", minimum_retail=Decimal("-1"))
 
 
+class WarehouseNoteTests(unittest.TestCase):
+    """The one sentence written about this item rather than about the model.
+
+    A title is the manufacturer's words and is the same on every copy of a
+    product. The note is what somebody wrote after looking at this actual lot,
+    so it is the only place a missing blower or a leaking seam is ever said.
+    """
+
+    def setUp(self):
+        self.config = example_config()
+        self.listings = example_listings()
+
+    def _matches(self, *, notes="", title="Inflatable Water Slide Bounce House"):
+        rule = InterestRule(
+            name="bounce house",
+            any_terms=("water slide",),
+            exclude_terms=("blower not included",),
+        )
+        listing = replace(
+            self.listings[SOUNDBAR],
+            title=title,
+            notes=notes,
+            estimated_retail=Decimal("300"),
+        )
+        config = replace(self.config, interests=(rule,))
+        scored = evaluate(listing, config)
+        return [item.rule_name for item in scored if item.category == "wanted"]
+
+    def test_a_note_can_rule_a_lot_out(self):
+        # The seller said the fan is missing, which no title would ever say.
+        self.assertEqual(self._matches(notes="9/8 blower not included"), [])
+
+    def test_saying_nothing_is_not_the_same_as_saying_no(self):
+        # Almost nobody names the blower, so silence has to stay a pass.
+        self.assertEqual(self._matches(notes="updated 9/8"), ["bounce house"])
+
+    def test_a_note_written_across_several_lines_is_still_read(self):
+        # People type these into a box over several visits, and where they
+        # pressed Enter must not decide whether the lot is reported.
+        self.assertEqual(
+            self._matches(notes="9/8 blower\nnot included\nleaks air"), []
+        )
+
+    def test_a_note_cannot_make_a_lot_match(self):
+        # A pallet lists its contents in the note. Reading wants from there
+        # would make one pallet answer every interest at once.
+        self.assertEqual(
+            self._matches(
+                title="Nellis XL Pallet: Mixed Returns",
+                notes="7 items including an inflatable water slide",
+            ),
+            [],
+        )
+
+
 class AccessoryTests(unittest.TestCase):
     """The other half of telling a thing from what attaches to it.
 
