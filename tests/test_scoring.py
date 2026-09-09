@@ -239,6 +239,27 @@ class AccessoryTests(unittest.TestCase):
     def test_a_word_between_them_is_still_beside_the_thing(self):
         self.assertEqual(self._matches("CAHAYA Acoustic Guitar Hard Case"), [])
 
+    def test_a_thing_shaped_like_the_thing_is_not_the_thing(self):
+        # A plastic guitar that plugs into a games console says "guitar" first,
+        # so the "for" rule cannot see it: only the noun beside it can.
+        rule = InterestRule(
+            name="guitar", any_terms=("guitar",), accessory_nouns=("controller",)
+        )
+        self.assertEqual(
+            self._matches("Lyvix Wireless Guitar Controller for PS4/PS3/PC", rule=rule),
+            [],
+        )
+
+    def test_the_same_noun_serves_a_rule_that_wants_something_else(self):
+        # One shared word, two rules: a bike controller is a spare motor part
+        # exactly as a guitar controller is a toy. Neither rule had to know.
+        rule = InterestRule(
+            name="e-bike", any_terms=("electric bike",), accessory_nouns=("controller",)
+        )
+        self.assertEqual(
+            self._matches("Aramox 52V 1200W Electric Bike Controller Kit", rule=rule), []
+        )
+
     def test_a_longer_word_that_merely_begins_the_same_is_not_it(self):
         rule = InterestRule(
             name="e-bike", any_terms=("electric bike",), accessory_nouns=("mount",)
