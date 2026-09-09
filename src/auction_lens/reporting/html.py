@@ -11,12 +11,16 @@ from collections.abc import Iterable
 from html import escape
 
 from ..models import Candidate
-from .findings import Fact, Finding, Handling, Report, Valuation, build_report
+from .findings import Fact, Finding, Handling, Photo, Report, Valuation, build_report
 
 CARD_STYLE = "border:1px solid #ddd;border-radius:8px;padding:14px;margin:12px 0"
 HEADING_STYLE = "margin-top:0"
+PHOTOS_STYLE = "width:100%;border-collapse:collapse;table-layout:fixed;margin:12px 0"
+PHOTO_CELL_STYLE = "vertical-align:top;padding:0 4px"
+PHOTO_LABEL_STYLE = "color:#666;font-size:12px;margin:0 0 4px 0"
 PHOTO_STYLE = (
-    "display:block;width:100%;height:auto;border-radius:6px;margin:12px 0"
+    "display:block;width:100%;height:auto;max-height:220px;object-fit:contain;"
+    "border:0;border-radius:6px"
 )
 SEPARATOR = " &middot; "
 
@@ -44,7 +48,7 @@ def _card(finding: Finding) -> str:
             f"<p><strong>Score {finding.score}{SEPARATOR}{escape(finding.change)}</strong></p>",
             f"<p>{_facts(finding.facts)}</p>",
             f"<p>{escape('; '.join(finding.reasons))}</p>",
-            _photo(finding),
+            _photos(finding),
             _handling(finding.handling),
             _valuation(finding.valuation),
             f"<p><a href='{escape(finding.url, quote=True)}'>View listing</a></p>",
@@ -53,14 +57,26 @@ def _card(finding: Finding) -> str:
     )
 
 
-def _photo(finding: Finding) -> str:
-    if not finding.actual_lot_photo_url:
+def _photos(finding: Finding) -> str:
+    if not finding.photos:
         return ""
     listing_url = escape(finding.url, quote=True)
-    photo_url = escape(finding.actual_lot_photo_url, quote=True)
+    width = 100 // len(finding.photos)
+    cells = "".join(_photo_cell(photo, listing_url, width) for photo in finding.photos)
     return (
+        f"<table role='presentation' width='100%' cellpadding='0' cellspacing='0' "
+        f"style='{PHOTOS_STYLE}'><tr>{cells}</tr></table>"
+    )
+
+
+def _photo_cell(photo: Photo, listing_url: str, width: int) -> str:
+    label = escape(photo.label)
+    photo_url = escape(photo.url, quote=True)
+    return (
+        f"<td width='{width}%' style='{PHOTO_CELL_STYLE}'>"
+        f"<p style='{PHOTO_LABEL_STYLE}'><strong>{label}</strong></p>"
         f"<a href='{listing_url}'>"
-        f"<img src='{photo_url}' alt='Photo of this lot' style='{PHOTO_STYLE}'></a>"
+        f"<img src='{photo_url}' alt='{label}' style='{PHOTO_STYLE}'></a></td>"
     )
 
 
