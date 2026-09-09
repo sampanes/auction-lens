@@ -278,13 +278,14 @@ def run(args: argparse.Namespace) -> int:
         valuation_engine=_valuation_engine(config),
     )
     zone = config.acquisition.zone
-    print(render_text(result.candidates, zone), end="")
+    searches = result.searches
+    print(render_text(result.candidates, zone, searches), end="")
     _report_skipped(result.listings_from_other_providers, config.provider.provider_id)
     _report_capped(result.matches_not_shown, len(result.candidates))
     _report_followed(result.lots_followed, args.watchlist)
 
     if args.email:
-        send_email(result.candidates, config.email, zone)
+        send_email(result.candidates, config.email, zone, searches)
     if args.webhook:
         send_webhook(result.candidates, config.webhook, zone)
         print(f"Posted {len(result.candidates)} match(es) to the webhook.")

@@ -13,6 +13,7 @@ from zoneinfo import ZoneInfo
 
 from ..models import Candidate
 from .findings import Fact, Finding, Handling, Photo, Report, Valuation, build_report
+from .searches import SearchHint
 
 CARD_STYLE = "border:1px solid #ddd;border-radius:8px;padding:14px;margin:12px 0"
 HEADING_STYLE = "margin-top:0"
@@ -25,10 +26,19 @@ PHOTO_STYLE = (
 )
 SEPARATOR = " &middot; "
 
+# Worded as an instruction rather than as another heading, because it is one.
+SEARCH_HEADING = "Paste into the site search to see a whole category:"
+SEARCH_RULE_STYLE = "margin:12px 0 4px 0;font-weight:bold"
+SEARCH_NOTE_STYLE = "color:#666;font-size:12px"
 
-def render_html(candidates: list[Candidate], zone: ZoneInfo) -> str:
+
+def render_html(
+    candidates: list[Candidate],
+    zone: ZoneInfo,
+    searches: tuple[SearchHint, ...] = (),
+) -> str:
     """Render every candidate as a card, strongest first."""
-    return _as_html(build_report(candidates, zone))
+    return _as_html(build_report(candidates, zone, searches))
 
 
 def _as_html(report: Report) -> str:
@@ -38,7 +48,37 @@ def _as_html(report: Report) -> str:
     for group in report.groups:
         sections.append(f"<h3>{escape(group.title.title())}</h3>")
         sections.extend(_card(finding) for finding in group.findings)
+    sections.append(_searches(report))
     return "".join(sections)
+
+
+def _searches(report: Report) -> str:
+    """The paste-able phrases, as text a phone will let you select and copy.
+
+    Deliberately not links: the point is to arrive at the provider's search
+    with the words in the box, so that the next search can be edited by hand.
+    """
+    if not report.searches:
+        return ""
+    rules = dict.fromkeys(hint.rule for hint in report.searches)
+    blocks = [f"<h3>{escape(SEARCH_HEADING)}</h3>"]
+    for rule in rules:
+        blocks.append(f"<p style='{SEARCH_RULE_STYLE}'>{escape(rule)}</p><ul>")
+        for hint in report.searches:
+            if hint.rule == rule:
+                blocks.append(
+                    f"<li><code>{escape(hint.phrase)}</code> "
+                    f"<span style='{SEARCH_NOTE_STYLE}'>{escape(_note(hint))}</span></li>"
+                )
+        blocks.append("</ul>")
+    return "".join(blocks)
+
+
+def _note(hint: SearchHint) -> str:
+    """What the phrase costs, said plainly enough to decide by."""
+    if not hint.also_finds:
+        return f"finds {hint.finds}, nothing else"
+    return f"finds {hint.finds}, plus {hint.also_finds} other lot(s)"
 
 
 def _card(finding: Finding) -> str:

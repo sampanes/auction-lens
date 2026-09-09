@@ -17,6 +17,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from ..models import Candidate, LogisticsStatus, ValuationBand, ValuationSummary, ranked
+from .searches import SearchHint
 
 EMPTY_REPORT = "Auction Lens found no listings meeting the configured criteria."
 
@@ -113,13 +114,20 @@ class Report:
 
     headline: str
     groups: tuple[Group, ...] = ()
+    # Ways to reach the same lots at the provider's end, for the categories
+    # the report found too many of to click through one at a time.
+    searches: tuple[SearchHint, ...] = ()
 
     @property
     def is_empty(self) -> bool:
         return not self.groups
 
 
-def build_report(candidates: list[Candidate], zone: ZoneInfo) -> Report:
+def build_report(
+    candidates: list[Candidate],
+    zone: ZoneInfo,
+    searches: tuple[SearchHint, ...] = (),
+) -> Report:
     """Turn scored candidates into everything a report has to say about them.
 
     The zone is the provider's, because a closing time is a fact about the
@@ -129,6 +137,7 @@ def build_report(candidates: list[Candidate], zone: ZoneInfo) -> Report:
         return Report(headline=EMPTY_REPORT)
     return Report(
         headline=f"Auction Lens found {len(candidates)} match(es).",
+        searches=searches,
         groups=tuple(
             Group(
                 title=category,

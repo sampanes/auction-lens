@@ -148,6 +148,35 @@ A lot that publishes no closing time simply says nothing about one, rather than
 being given an invented deadline. Every lot seen so far publishes one, so if
 that line goes missing across the board, the page shape changed.
 
+## Reaching a whole category
+
+When a rule finds more lots than anyone will click through, the report ends
+with a way to see the same thing at the provider's end:
+
+```
+Paste into the site search to see a whole category:
+  bounce house:
+    splash pool | finds 3, plus 1 other lot(s)
+    water slide | finds 7, plus 7 other lot(s)
+    water park | finds 1, plus 3 other lot(s)
+```
+
+Several phrases rather than one, because the provider's search has no OR and a
+single query cannot cover a set of unlike titles. These are chosen greedily,
+cheapest first, where cheapest means the most wanted lots per unwanted lot the
+same phrase surfaces -- which is the trade you actually make when you paste one
+in and look at what comes back. Every phrase is one the interest rule already
+asks for, so nothing here invents vocabulary you did not choose.
+
+The counts are the point. A phrase that finds one lot and brings thirty-seven
+strangers is not a shortcut, and is left out rather than offered: that lot
+keeps its link. Rules matching only a handful get no phrases at all, since the
+links are the shorter path.
+
+The phrases are built from everything that matched, not from the thirty that
+fitted in the report, because reaching what the cap held back is the whole
+reason to offer one.
+
 ## Chat webhook
 
 Email is the scheduled digest; it arrives whether or not anybody asked. A

@@ -3,6 +3,7 @@
 from .delivery import check_email_ready, send_email, send_watchlist_email
 from .findings import Report, build_report
 from .html import render_html
+from .searches import SearchHint, search_hints
 from .text import render_text
 from .watchlist import render_watchlist, render_watchlist_html
 from .webhook import send_webhook
@@ -10,6 +11,8 @@ from .webhook import send_webhook
 __all__ = [
     "Report",
     "build_report",
+    "SearchHint",
+    "search_hints",
     "check_email_ready",
     "render_html",
     "render_text",
