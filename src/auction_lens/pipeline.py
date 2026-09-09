@@ -12,6 +12,7 @@ from decimal import Decimal
 
 from .config import AppConfig
 from .models import Candidate, Listing, ranked, uid_of
+from .reporting.searches import SearchHint, search_hints
 from .scoring import evaluate
 from .storage import LogisticsDecisionStore, ObservationStore, WatchlistStore
 from .valuation import ValuationEngine
@@ -26,6 +27,10 @@ class RunResult:
     listings_scored: int
     matches_found: int = 0
     lots_followed: int = 0
+    # Ways to reach these lots at the provider's end. Built from everything
+    # that matched rather than from the part that fitted, because reaching
+    # what the cap held back is the whole reason to offer a phrase.
+    searches: tuple[SearchHint, ...] = ()
 
     @property
     def listings_from_other_providers(self) -> int:
@@ -73,6 +78,7 @@ def analyze_listings(
     reportable = ranked(candidates, config.reports.max_items)
     return RunResult(
         candidates=reportable,
+        searches=search_hints(candidates, listings, config.interests),
         listings_read=len(listings),
         listings_scored=scored,
         matches_found=len(candidates),

@@ -12,16 +12,24 @@ from zoneinfo import ZoneInfo
 
 from ..models import Candidate
 from .findings import Fact, Finding, Handling, Report, Valuation, build_report
+from .searches import SearchHint
 
 SEPARATOR = " | "
 
 # Enough facts per line to stay compact, few enough to read on a phone.
 FACTS_PER_LINE = 3
 
+# Worded as an instruction rather than as another heading, because it is one.
+SEARCH_HEADING = "Paste into the site search to see a whole category:"
 
-def render_text(candidates: list[Candidate], zone: ZoneInfo) -> str:
+
+def render_text(
+    candidates: list[Candidate],
+    zone: ZoneInfo,
+    searches: tuple[SearchHint, ...] = (),
+) -> str:
     """Render every candidate, grouped by category and ordered by score."""
-    return _as_text(build_report(candidates, zone))
+    return _as_text(build_report(candidates, zone, searches))
 
 
 def _as_text(report: Report) -> str:
@@ -32,7 +40,32 @@ def _as_text(report: Report) -> str:
         lines.extend(("", group.title.upper()))
         for finding in group.findings:
             lines.extend(_finding_lines(finding))
+    lines.extend(_search_lines(report))
     return "\n".join(lines).rstrip() + "\n"
+
+
+def _search_lines(report: Report) -> Iterator[str]:
+    """A footer for looking through a whole category at the provider's end.
+
+    Grouped by the interest that earned it, because the phrases for two
+    different wants are two different trips through the search bar.
+    """
+    if not report.searches:
+        return
+    yield ""
+    yield SEARCH_HEADING
+    for rule in dict.fromkeys(hint.rule for hint in report.searches):
+        yield f"  {rule}:"
+        for hint in report.searches:
+            if hint.rule == rule:
+                yield f"    {hint.phrase}{SEPARATOR}{_hint_note(hint)}"
+
+
+def _hint_note(hint: SearchHint) -> str:
+    """What the phrase costs, said plainly enough to decide by."""
+    if not hint.also_finds:
+        return f"finds {hint.finds}, nothing else"
+    return f"finds {hint.finds}, plus {hint.also_finds} other lot(s)"
 
 
 def _finding_lines(finding: Finding) -> Iterator[str]:
