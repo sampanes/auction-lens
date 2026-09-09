@@ -338,6 +338,36 @@ accessories: a guitar cable says "guitar" as loudly as a guitar does, and only
 the stated value tells them apart. It pairs with `max_total_cost` -- what a lot
 must be worth, and what it may cost.
 
+### What a thing is not
+
+The value floor stops the cheap accessories. It does not stop the expensive
+ones: a set of guitar hangers outsells a beginner guitar, and a differential
+carrying a power-tool brand outsells a drill. `[interest_defaults]` is where you
+say what an accessory looks like, once, for every rule:
+
+```toml
+[interest_defaults]
+exclude_terms = ["compatible with", "replacement", "adapter", "cable"]
+accessory_nouns = ["stand", "case", "cover", "mount", "bracket", "holder"]
+```
+
+`exclude_terms` are plain phrases that mean "accessory" anywhere in a title.
+`accessory_nouns` are checked only *beside* the words a rule asked for, because
+the same word means opposite things at a distance -- "guitar stand" is not a
+guitar, while a table saw sold "with rolling stand" is still a table saw.
+
+One more rule needs no configuration, because it is about English rather than
+about you: a title that names the wanted thing only *after* the word "for" is
+describing what the lot attaches to. "Weed Wacker for DeWalt" is not a DeWalt.
+"Electric Bike for Adults" still is an electric bike -- it says what it is
+first, and only then who it suits.
+
+Put only what is true of every interest in `[interest_defaults]`. Audience words
+are the usual mistake: a children's guitar is a toy, but a children's water
+slide is the whole point, so `kids` belongs on the guitar rule rather than in
+the shared list. Anything a rule explicitly asks for is kept, so an interest in
+`"monitor stand"` is never emptied by a shared `stand`.
+
 Each rule also has a `weight`, defaulting to `1`. It decides reading order, not
 eligibility: a wanted item at a fair price ranks above something you never asked
 for at a steep discount. Weight is deliberately kept out of every threshold, so

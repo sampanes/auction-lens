@@ -94,6 +94,23 @@ minimum_report_score = 70
 ending_soon_minutes = 20
 anomaly_condition_profile = "ready_to_use"
 
+# Inherited by every [[interests]] rule below.
+#
+# An accessory is sold under the name of whatever it attaches to, so a monitor
+# mount says "monitor" as loudly as a monitor does. Every rule needs the same
+# sentence, so it is written once rather than copied into each of them.
+#
+# Put only what is true of every interest here. A rule that explicitly asks for
+# one of these words keeps it: an interest in "monitor stand" is not emptied by
+# the "stand" below.
+[interest_defaults]
+# Plain phrases, which mean "accessory" anywhere in a title.
+exclude_terms = ["compatible with", "replacement", "adapter", "cable"]
+# Words that only mean "accessory" next to the thing itself. "Monitor stand" is
+# not a monitor, but a table saw "with rolling stand" is still a table saw, and
+# only the distance between the words tells those apart.
+accessory_nouns = ["stand", "case", "cover", "mount", "bracket", "holder", "arm"]
+
 [[interests]]
 name = "soundbar"
 purpose = "use"
