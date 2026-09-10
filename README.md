@@ -74,7 +74,7 @@ again -- but neither has to be typed day to day.
 | command | when you want it |
 | --- | --- |
 | `setup` | first run on a new machine |
-| `profile` | read back what your interests and practical limits mean |
+| `profile` | read or safely edit practical limits in plain language |
 | `doctor` | check authorization, configuration, and delivery settings without network access |
 | `daily` | every day: find, score, report |
 | `discover` | find lots and write them, without scoring |
@@ -83,7 +83,7 @@ again -- but neither has to be typed day to day.
 | `watch` / `watchlist` | record what you think of a lot; read what you are following |
 | `logistics` | record how a bulky lot would be collected |
 
-## Read your profile
+## Read or edit your profile
 
 The TOML is the source of truth, but it does not have to be read like source
 code. One command translates its stable operator choices into plain language:
@@ -102,6 +102,32 @@ writes the configuration.
 Temporary circumstances remain temporary. For example, a branch already on
 today's route is supplied to `daily --visiting`; it is not silently saved into
 the stable profile.
+
+The guided editor starts with the three durable answers that settle how large
+lots are treated:
+
+```cmd
+.venv\Scripts\auction-lens.exe profile --edit
+```
+
+It asks whether large lots should be kept with a handling question, kept
+without one, or rejected, plus the published weight and dimension at which
+special planning begins. It does not ask whether you own a truck or can call a
+friend: those are changing circumstances, while the action Auction Lens should
+take is the useful configuration.
+
+Before writing, the command shows the resulting plain-language profile and the
+exact TOML lines that would change. Only an explicit `y` or `yes` applies them.
+The original file is kept beside it as an ignored `.previous` snapshot, and can
+be previewed and restored with:
+
+```cmd
+.venv\Scripts\auction-lens.exe profile --restore
+```
+
+The editor never reads `.env`, runtime history, listings, or the network. More
+advanced rules remain ordinary, human-editable TOML. See
+[Profile editing](docs/PROFILE.md) for the full safety contract.
 
 ## How long the report is
 

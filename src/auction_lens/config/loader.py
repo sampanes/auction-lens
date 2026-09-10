@@ -47,7 +47,17 @@ VALUATION_SOURCE_KEYS = frozenset({"id", "adapter", "enabled", "label", "categor
 def load_config(path: str | Path) -> AppConfig:
     """Read a provider configuration file and validate it as a whole."""
     with Path(path).open("rb") as handle:
-        root = Section(tomllib.load(handle))
+        document = tomllib.load(handle)
+    return _app_config(Section(document))
+
+
+def parse_config(text: str) -> AppConfig:
+    """Read configuration text through the same validation as a file."""
+    return _app_config(Section(tomllib.loads(text)))
+
+
+def _app_config(root: Section) -> AppConfig:
+    """Build the application record once, whichever boundary supplied TOML."""
     if root.contains("wanted"):
         raise ValueError("[[wanted]] was renamed to [[interests]]; rename the tables")
 

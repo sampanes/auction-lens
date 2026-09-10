@@ -1434,7 +1434,7 @@ class DefaultsTests(unittest.TestCase):
             build_parser().parse_args(["--version"])
 
         self.assertEqual(stopped.exception.code, 0)
-        self.assertEqual(output.getvalue(), "auction-lens 0.5.0\n")
+        self.assertEqual(output.getvalue(), "auction-lens 0.6.0\n")
 
     def test_package_metadata_and_runtime_use_the_same_version(self):
         with (ROOT / "pyproject.toml").open("rb") as project_file:

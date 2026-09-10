@@ -1,6 +1,16 @@
-"""Reading and describing one provider's TOML configuration."""
+"""Reading, describing, and safely editing one provider's TOML configuration."""
 
-from .loader import load_config
+from .editor import (
+    REMOVE,
+    ProfileEdits,
+    profile_restore_recovery_path,
+    profile_snapshot_path,
+    recover_profile_restore,
+    restore_profile_text,
+    save_profile_text,
+    update_profile_text,
+)
+from .loader import load_config, parse_config
 from .profile import render_profile
 from .schema import (
     AcquisitionConfig,
@@ -40,6 +50,8 @@ __all__ = [
     "LocationPolicy",
     "LogisticsConfig",
     "ProviderConfig",
+    "ProfileEdits",
+    "REMOVE",
     "ReportsConfig",
     "RunMode",
     "ScoringConfig",
@@ -48,5 +60,12 @@ __all__ = [
     "ValuationSourceConfig",
     "in_section",
     "load_config",
+    "parse_config",
+    "profile_restore_recovery_path",
+    "profile_snapshot_path",
+    "recover_profile_restore",
     "render_profile",
+    "restore_profile_text",
+    "save_profile_text",
+    "update_profile_text",
 ]
