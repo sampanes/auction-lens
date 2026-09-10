@@ -54,7 +54,7 @@ def _score_rule(
         return None
     rule_penalty = penalty_for(context.conditions, rule.condition.penalties)
     penalty = context.baseline_penalty + rule_penalty
-    score = clamp_score(BASE_INTEREST_SCORE + context.bonuses - penalty)
+    score = clamp_score(BASE_INTEREST_SCORE + context.score_bonus - penalty)
     if score < max(rule.minimum_score, minimum_report_score):
         return None
     reasons = [f"matches {rule.purpose} interest '{rule.name}'"]

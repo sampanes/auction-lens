@@ -44,6 +44,13 @@ UID_SEPARATOR = ":"
 LOWEST_SCORE = 0
 HIGHEST_SCORE = 100
 
+# A fresh auction event deserves to be read before an equally good old one,
+# and a moved price deserves nearly the same attention. These affect reading
+# order only: observation history is allowed to reorder a report, but never to
+# decide whether a listing clears a configured quality bar.
+NEW_LISTING_PRIORITY_BONUS = 3
+PRICE_CHANGE_PRIORITY_BONUS = 2
+
 
 class LogisticsStatus(StrEnum):
     """How settled the question of getting one item home is."""
@@ -268,6 +275,15 @@ class ObservationChange:
     price_changed: bool
     previous_bid: Decimal | None = None
 
+    @property
+    def priority_bonus(self) -> int:
+        """A small reading-order bias that cannot make a lot reportable."""
+        if self.is_new:
+            return NEW_LISTING_PRIORITY_BONUS
+        if self.price_changed:
+            return PRICE_CHANGE_PRIORITY_BONUS
+        return 0
+
 
 @dataclass(frozen=True)
 class LogisticsDecision:
@@ -367,14 +383,16 @@ class Candidate:
 
     @property
     def priority(self) -> Decimal:
-        """Reading order: how good this is, scaled by how much it was wanted.
+        """Reading order: quality plus fresh news, scaled by how much it was wanted.
 
         Deliberately separate from ``score``. Score answers "is this worth
         reporting at all", and every configured bar is tuned against it.
-        Priority answers "what should be read first". Folding the two together
-        would let a weight quietly push a lot past a bar it never cleared.
+        Priority answers "what should be read first". A new listing or changed
+        price can move an already-qualified candidate up, but cannot push it
+        past a bar. The clamp preserves the same ceiling as every score.
         """
-        return self.score * self.weight
+        attention_score = min(HIGHEST_SCORE, self.score + self.change.priority_bonus)
+        return attention_score * self.weight
 
 
 class ReadingOrder(StrEnum):

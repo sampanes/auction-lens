@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import argparse
 
+from .. import __version__
 from ..models import OPERATOR_DECIDABLE, Verdict
-from ..storage import DEFAULT_WATCHLIST_FILE
+from ..storage import DEFAULT_DELIVERY_LEDGER, DEFAULT_WATCHLIST_FILE
 
 PROGRAM = "auction-lens"
 DEFAULT_DATABASE = "data/auction-lens.sqlite3"
@@ -44,6 +45,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog=PROGRAM,
         description="Normalize, score, remember, and report auction listings.",
+    )
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"%(prog)s {__version__}",
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
     # The operator-facing doors come first, before the tools for one job each.
@@ -90,6 +96,7 @@ def _add_doctor(subparsers) -> None:
     )
     doctor.add_argument("--config", default=DEFAULT_CONFIG)
     doctor.add_argument("--env-file", default=DEFAULT_ENV_FILE)
+    _add_delivery_ledger(doctor, allow_repeat=False)
     doctor.add_argument(
         "--email",
         action="store_true",
@@ -118,6 +125,7 @@ def _add_daily(subparsers) -> None:
     daily.add_argument("--database", default=DEFAULT_DATABASE)
     daily.add_argument("--watchlist", default=DEFAULT_WATCHLIST_FILE)
     daily.add_argument("--env-file", default=DEFAULT_ENV_FILE)
+    _add_delivery_ledger(daily)
     daily.add_argument(
         "--search", action="append", default=[], metavar="TERM",
         help=(
@@ -159,6 +167,7 @@ def _add_run(subparsers) -> None:
     run.add_argument(
         "--env-file", default=DEFAULT_ENV_FILE, help="optional local KEY=VALUE settings file"
     )
+    _add_delivery_ledger(run)
     _add_visiting(run)
     run.add_argument(
         "--email", action="store_true", help="send the report using configured SMTP settings"
@@ -269,3 +278,19 @@ def _add_watchlist(subparsers) -> None:
     watchlist.add_argument(
         "--env-file", default=DEFAULT_ENV_FILE, help="optional local KEY=VALUE settings file"
     )
+    _add_delivery_ledger(watchlist)
+
+
+def _add_delivery_ledger(command, *, allow_repeat: bool = True) -> None:
+    """Give every outbound report one private receipt ledger and one override."""
+    command.add_argument(
+        "--delivery-ledger",
+        default=DEFAULT_DELIVERY_LEDGER,
+        help="private receipt database used to suppress unchanged deliveries",
+    )
+    if allow_repeat:
+        command.add_argument(
+            "--repeat-delivery",
+            action="store_true",
+            help="send the current report even when this destination already received it",
+        )

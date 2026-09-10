@@ -28,6 +28,7 @@ from ..models import (
 from .searches import SearchHint
 
 EMPTY_REPORT = "Auction Lens found no listings meeting the configured criteria."
+EMPTY_DELIVERY = "Auction Lens found no new or price-changed listings for this destination."
 
 # Day, hour, and the zone's own name: enough to act on, short enough to sit on
 # one line. The zone is named because a report is read wherever the reader is.
@@ -140,6 +141,62 @@ class OutcomeSummary:
 
 
 @dataclass(frozen=True)
+class DeliverySummary:
+    """What destination-specific receipt filtering changed about this report."""
+
+    active: bool = False
+    repeated: bool = False
+    unchanged_matches: int = 0
+    held_back_matches: int = 0
+    item_singular: str = "match"
+    item_plural: str = "matches"
+
+    def __post_init__(self) -> None:
+        for field_name in ("unchanged_matches", "held_back_matches"):
+            value = getattr(self, field_name)
+            if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+                raise ValueError(f"{field_name} must be a non-negative integer")
+        for field_name in ("item_singular", "item_plural"):
+            value = getattr(self, field_name)
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(f"{field_name} must be non-empty text")
+
+    @property
+    def lines(self) -> tuple[str, ...]:
+        """Reader-facing facts shared by text, HTML, and webhook delivery."""
+        if not self.active:
+            return ()
+        lines = [
+            (
+                "Delivery filter bypassed for this requested repeat."
+                if self.repeated
+                else f"Only new or price-changed {self.item_plural} are included "
+                "in this delivery."
+            )
+        ]
+        if self.unchanged_matches:
+            noun = self._noun(self.unchanged_matches)
+            verb = "was" if self.unchanged_matches == 1 else "were"
+            lines.append(
+                f"{self.unchanged_matches} unchanged {noun} {verb} already delivered here."
+            )
+        if self.held_back_matches:
+            noun = self._noun(self.held_back_matches)
+            verb = "was" if self.held_back_matches == 1 else "were"
+            lines.append(
+                f"{self.held_back_matches} more new or changed {noun} {verb} held "
+                "back by this report's limit."
+            )
+        return tuple(lines)
+
+    def _noun(self, count: int) -> str:
+        return self.item_singular if count == 1 else self.item_plural
+
+
+NO_DELIVERY_FILTER = DeliverySummary()
+
+
+@dataclass(frozen=True)
 class Report:
     """One rendering-independent report."""
 
@@ -149,6 +206,7 @@ class Report:
     # the report found too many of to click through one at a time.
     searches: tuple[SearchHint, ...] = ()
     outcomes: OutcomeSummary = OutcomeSummary()
+    delivery: DeliverySummary = NO_DELIVERY_FILTER
 
     @property
     def is_empty(self) -> bool:
@@ -162,6 +220,7 @@ def build_report(
     order: ReadingOrder = ReadingOrder.PRIORITY,
     interest_progress: tuple[InterestProgress, ...] = (),
     unreviewed_wins: int = 0,
+    delivery: DeliverySummary = NO_DELIVERY_FILTER,
 ) -> Report:
     """Turn scored candidates into everything a report has to say about them.
 
@@ -170,11 +229,17 @@ def build_report(
     """
     outcomes = build_outcome_summary(interest_progress, unreviewed_wins)
     if not candidates:
-        return Report(headline=EMPTY_REPORT, outcomes=outcomes)
+        headline = (
+            EMPTY_DELIVERY
+            if delivery.active and not delivery.repeated
+            else EMPTY_REPORT
+        )
+        return Report(headline=headline, outcomes=outcomes, delivery=delivery)
     return Report(
         headline=_headline(candidates, zone),
         searches=searches,
         outcomes=outcomes,
+        delivery=delivery,
         groups=tuple(
             Group(
                 title=category,
@@ -320,6 +385,8 @@ def _change(candidate: Candidate) -> str:
     if candidate.change.is_new:
         return NEW_LABEL
     if candidate.change.price_changed:
+        if candidate.change.previous_bid is not None:
+            return f"{PRICE_CHANGED_LABEL} from ${candidate.change.previous_bid}"
         return PRICE_CHANGED_LABEL
     return SEEN_LABEL
 

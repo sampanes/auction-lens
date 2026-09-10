@@ -101,13 +101,20 @@ photo and link. Mark it `hunting` if needed:
 Then email only the selected lots:
 
 ```cmd
-.venv\Scripts\auction-lens.exe watchlist --verdict hunting --email
+.venv\Scripts\auction-lens.exe watchlist --verdict hunting --email --repeat-delivery
 ```
 
 Confirm that the message arrives, the card is readable, and its photo and
 listing link work. After that proof, `scripts\run-daily.cmd` is the
 ready-to-schedule Windows entry point. It runs `doctor --email` first, never
 requires a webhook, and skips the second email when no `hunting` lots exist.
+
+`--repeat-delivery` is appropriate here because this command is an explicit
+delivery test. Normal scheduled runs omit it. A successful send records a
+receipt in the ignored `private/deliveries.sqlite3`; the next run omits
+unchanged listings for that recipient. Findings mail and the selected-watchlist
+mail are separate receipt streams. See [Delivery receipts](DELIVERY.md) for
+price changes, relistings, overlapping runs, and retry behavior.
 
 ## Troubleshooting
 
@@ -122,3 +129,6 @@ requires a webhook, and skips the second email when no `hunting` lots exist.
   `enabled = true` in `config\local.toml`.
 - **No useful cards appear:** add or update a watchlist entry to the `hunting`
   verdict before running the watchlist email command.
+- **No new message appears after a successful run:** an unchanged report is
+  normally suppressed. Use `--repeat-delivery` only when a deliberate resend
+  is wanted.

@@ -8,12 +8,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from ..models import HIGHEST_SCORE, LOWEST_SCORE, Listing, ObservationChange
-
-# A listing first seen this run is worth more attention than one already read
-# about, and a moved price is worth slightly more than an unchanged one.
-NEW_LISTING_BONUS = 3
-PRICE_CHANGE_BONUS = 2
+from ..models import HIGHEST_SCORE, LOWEST_SCORE, Listing
 
 # A lot about to close is actionable now, which is worth more than a better lot
 # that cannot be acted on for another day.
@@ -25,14 +20,6 @@ SECONDS_PER_MINUTE = 60
 def clamp_score(value: int) -> int:
     """Keep every scoring path on the same 0-100 scale."""
     return max(LOWEST_SCORE, min(HIGHEST_SCORE, value))
-
-
-def change_bonus(change: ObservationChange) -> int:
-    if change.is_new:
-        return NEW_LISTING_BONUS
-    if change.price_changed:
-        return PRICE_CHANGE_BONUS
-    return LOWEST_SCORE
 
 
 def ending_soon_bonus(listing: Listing, within_minutes: int, now: datetime) -> int:

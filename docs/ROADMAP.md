@@ -67,18 +67,22 @@ a renamed rule remains continuous.
 
 ## Delivery deduplication
 
-Status: planned as the next stateful milestone.
+Status: implemented.
 
 Observation history and delivery history answer different questions. The
-database may know that a lot was seen before without knowing whether one email,
-webhook, or failed retry actually delivered it. Today, overlapping closing
-windows can therefore repeat a still-open lot.
+observation database knows what the collector saw; the private delivery ledger
+knows which revision a particular destination accepted. Unchanged listings are
+removed before each destination's report cap, while a changed bid or a new
+auction id remains eligible. Email, webhook, findings, and watchlist selections
+keep independent receipt streams, and `--repeat-delivery` provides an explicit
+override.
 
-A future private delivery ledger should record success per destination only
-after that destination accepts a report. It should make retries idempotent,
-treat a relisting as a new auction event, retain changed-price context, and
-offer an explicit way to repeat a report. It must not overload the observation
-database or silently suppress a lot merely because another channel succeeded.
+Receipts are committed only after a transport returns successfully. Overlapping
+runs serialize around that decision, while a failed channel remains eligible
+for retry. A remote can accept a report immediately before the connection,
+process, or local commit fails, so the guarantee is deliberately at-least-once,
+not exactly-once.
+See [Delivery receipts](DELIVERY.md) for the operator contract.
 
 ## Open questions
 

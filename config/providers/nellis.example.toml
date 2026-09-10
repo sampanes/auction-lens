@@ -48,9 +48,10 @@ processing_fee = 0.0
 # so distance costs a lot something rather than excluding it outright.
 #   far = ["phoenix"]
 #   far_minimum_score = 85
-# An interest match tops out at 90 (80 base, 3 for new, 7 for ending soon), so
-# a far_minimum_score of 90 or more hides those branches instead of being
-# choosier about them. Leave room under the ceiling.
+# An interest match's quality score tops out at 87 (80 base plus 7 for ending
+# soon). Freshness can raise its reading priority to 90, but the far-branch gate
+# uses quality: a far_minimum_score of 88 or more excludes wanted matches.
+# Leave room under the quality ceiling.
 # Empty means any location. Values are case-insensitive substrings.
 allowed = []
 

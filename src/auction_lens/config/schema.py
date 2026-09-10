@@ -434,10 +434,10 @@ class ReportsConfig:
             require_at_least(self.closing_within_hours, 1, field_name="closing_within_hours")
 
 
-# An interest match tops out at 90 (80 base, 3 for new, 7 for ending soon), so
-# a bar at 90 or above hides far branches rather than being choosier about
-# them. This sits just under the ceiling: a wanted thing still gets through,
-# and a plain one no longer justifies the drive.
+# An interest match's quality score tops out at 87 (80 base plus 7 for ending
+# soon). Freshness may raise its reading priority to 90, but this gate uses
+# quality: a bar at 88 or above excludes wanted matches. This default lets a
+# strong wanted match through while making a plain one insufficient.
 DEFAULT_FAR_MINIMUM_SCORE = 85
 
 

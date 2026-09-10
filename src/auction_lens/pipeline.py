@@ -38,6 +38,10 @@ class RunResult:
     candidates: list[Candidate]
     listings_read: int
     listings_scored: int
+    # Every match before the reader-facing cap. Delivery suppresses receipts
+    # before applying its own cap, otherwise yesterday's top results can keep a
+    # newly found lower-ranked lot out of every later email.
+    all_candidates: tuple[Candidate, ...] = ()
     matches_found: int = 0
     lots_followed: int = 0
     # Lots left unscored because they cannot be acted on: already closed, or
@@ -114,17 +118,18 @@ def analyze_listings(
         )
         candidates.extend(_with_valuation(matches, listing, valuation_engine))
 
-    # Ranked and capped once, here, so the printed report, the email, the chat
-    # message, and the lots the watchlist starts following are all the same
-    # report. Capping in each renderer instead would let them disagree.
+    # The local report is ranked and capped here. Every pre-cap match is also
+    # retained: destination-specific delivery can first remove receipts that
+    # were already accepted, then spend its cap on genuinely new information.
     reportable = ranked(candidates, config.reports.max_items)
     return RunResult(
         candidates=reportable,
         searches=search_hints(candidates, listings, plan.active_rules),
         listings_read=len(listings),
         listings_scored=scored,
+        all_candidates=tuple(candidates),
         matches_found=len(candidates),
-        lots_followed=_follow(reportable, candidates, watchlist),
+        lots_followed=follow_candidates(reportable, candidates, watchlist),
         lots_outside_the_window=skipped,
         interest_progress=plan.progress,
         unreviewed_wins=plan.unreviewed_wins,
@@ -168,19 +173,20 @@ def _with_valuation(
     return [replace(candidate, valuation=valuation) for candidate in matches]
 
 
-def _follow(
-    reportable: list[Candidate],
-    all_matches: list[Candidate],
+def follow_candidates(
+    reportable: list[Candidate] | tuple[Candidate, ...],
+    all_matches: list[Candidate] | tuple[Candidate, ...],
     watchlist: WatchlistStore | None,
 ) -> int:
-    """Add one price reading per reported lot to the person's own file."""
+    """Remember every lot that reached a local or accepted external report."""
     if watchlist is None:
         return 0
     return watchlist.record(_one_entry_per_lot(reportable, all_matches))
 
 
 def _one_entry_per_lot(
-    reportable: list[Candidate], all_matches: list[Candidate]
+    reportable: list[Candidate] | tuple[Candidate, ...],
+    all_matches: list[Candidate] | tuple[Candidate, ...],
 ) -> list[FollowedListing]:
     """Collapse a lot that matched several rules down to a single reading.
 

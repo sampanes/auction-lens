@@ -5,6 +5,7 @@ from __future__ import annotations
 import io
 import json
 import os
+import tomllib
 import unittest
 import warnings
 from contextlib import redirect_stderr, redirect_stdout
@@ -13,6 +14,7 @@ from decimal import Decimal
 from getpass import GetPassWarning
 from unittest.mock import patch
 
+from auction_lens import __version__
 from auction_lens.cli import build_parser, console, main
 from auction_lens.config import load_config
 from auction_lens.env_file import load_env_file
@@ -44,11 +46,24 @@ def _enable_email(config) -> None:
     )
 
 
-def _config_copy(directory, *, email_enabled=False):
+def _enable_webhook(config) -> None:
+    text = config.read_text(encoding="utf-8")
+    config.write_text(
+        text.replace(
+            "[reports.webhook]\nenabled = false",
+            "[reports.webhook]\nenabled = true",
+        ),
+        encoding="utf-8",
+    )
+
+
+def _config_copy(directory, *, email_enabled=False, webhook_enabled=False):
     config = directory / "config.toml"
     config.write_text(EXAMPLE_CONFIG.read_text(encoding="utf-8"), encoding="utf-8")
     if email_enabled:
         _enable_email(config)
+    if webhook_enabled:
+        _enable_webhook(config)
     return config
 
 
@@ -87,7 +102,11 @@ class RunCommandTests(unittest.TestCase):
     def test_email_is_refused_when_the_configuration_disables_it(self):
         with temporary_directory() as directory:
             database = directory / "observations.sqlite3"
-            argv = self._run_argv(directory, database) + ["--email"]
+            argv = self._run_argv(directory, database) + [
+                "--delivery-ledger",
+                str(directory / "deliveries.sqlite3"),
+                "--email",
+            ]
             with self.assertRaisesRegex(RuntimeError, "email reporting is disabled"):
                 run_cli(argv)
             self.assertFalse(database.exists())
@@ -100,7 +119,14 @@ class RunCommandTests(unittest.TestCase):
             argv[argv.index(str(EXAMPLE_CONFIG))] = str(config)
             with patch.dict(os.environ, {}, clear=True):
                 with self.assertRaisesRegex(RuntimeError, "missing email environment"):
-                    run_cli(argv + ["--email"])
+                    run_cli(
+                        argv
+                        + [
+                            "--delivery-ledger",
+                            str(directory / "deliveries.sqlite3"),
+                            "--email",
+                        ]
+                    )
             self.assertFalse(database.exists())
 
     def test_console_reports_bad_input_without_a_traceback(self):
@@ -186,6 +212,256 @@ class RunCommandTests(unittest.TestCase):
             "--env-file",
             str(directory / "absent.env"),
         ]
+
+
+class DeliveryLedgerCommandTests(unittest.TestCase):
+    """The CLI records accepted destinations, not merely attempted reports."""
+
+    @patch("auction_lens.cli.commands.email_destination", return_value="a" * 64)
+    @patch("auction_lens.cli.commands.send_email")
+    def test_first_email_sends_and_an_unchanged_run_is_suppressed(
+        self, send_email, email_destination
+    ):
+        with temporary_directory() as directory:
+            config = _config_copy(directory, email_enabled=True)
+            argv, ledger = self._run_argv(directory, config)
+
+            first = run_cli([*argv, "--email"])
+            second = run_cli([*argv, "--email"])
+
+            self.assertTrue(ledger.exists())
+
+        self.assertEqual(send_email.call_count, 1)
+        self.assertEqual(email_destination.call_count, 2)
+        self.assertIn("Emailed", first)
+        self.assertIn("Email report is up to date", second)
+        self.assertIn("already delivered", second)
+
+    @patch("auction_lens.cli.commands.email_destination", return_value="a" * 64)
+    @patch("auction_lens.cli.commands.send_email")
+    def test_an_empty_first_report_establishes_one_quiet_baseline(
+        self, send_email, _email_destination
+    ):
+        with temporary_directory() as directory:
+            empty = directory / "empty.json"
+            empty.write_text('{"listings": []}', encoding="utf-8")
+            config = _config_copy(directory, email_enabled=True)
+            argv, _ledger = self._run_argv(directory, config, input_path=empty)
+
+            first = run_cli([*argv, "--email"])
+            second = run_cli([*argv, "--email"])
+
+        self.assertEqual(send_email.call_count, 1)
+        self.assertEqual(send_email.call_args.args[0], [])
+        self.assertIn("Emailed 0 match", first)
+        self.assertIn("outcome summary is unchanged", second)
+
+    @patch("auction_lens.cli.commands.email_destination", return_value="a" * 64)
+    @patch(
+        "auction_lens.cli.commands.send_email",
+        side_effect=(OSError("synthetic SMTP failure"), None),
+    )
+    def test_failed_email_records_nothing_and_the_retry_sends(
+        self, send_email, _email_destination
+    ):
+        with temporary_directory() as directory:
+            config = _config_copy(directory, email_enabled=True)
+            argv, _ledger = self._run_argv(directory, config)
+
+            with self.assertRaisesRegex(
+                RuntimeError, "no receipt was saved.*retry may repeat"
+            ):
+                run_cli([*argv, "--email"])
+            retry = run_cli([*argv, "--email"])
+
+        self.assertEqual(send_email.call_count, 2)
+        self.assertIn("Emailed", retry)
+
+    @patch("auction_lens.cli.commands.email_destination", return_value="a" * 64)
+    @patch(
+        "auction_lens.cli.commands.send_email",
+        side_effect=OSError(
+            "synthetic transport leaked recipient@example.invalid and secret-token"
+        ),
+    )
+    def test_transport_errors_do_not_copy_destination_details_into_logs(
+        self, _send_email, _email_destination
+    ):
+        with temporary_directory() as directory:
+            config = _config_copy(directory, email_enabled=True)
+            argv, _ledger = self._run_argv(directory, config)
+
+            with self.assertRaises(RuntimeError) as failed:
+                run_cli([*argv, "--email"])
+
+        message = str(failed.exception)
+        self.assertIn("a retry may repeat it", message)
+        self.assertIn("Check SMTP settings and connectivity", message)
+        self.assertIn("[OSError]", message)
+        self.assertNotIn("recipient@example.invalid", message)
+        self.assertNotIn("secret-token", message)
+
+    @patch("auction_lens.cli.commands.email_destination", return_value="a" * 64)
+    @patch("auction_lens.cli.commands.follow_candidates", side_effect=(OSError(), 0))
+    @patch("auction_lens.cli.commands.send_email")
+    def test_acceptance_without_a_saved_receipt_warns_that_retry_can_repeat(
+        self, send_email, _follow_candidates, _email_destination
+    ):
+        with temporary_directory() as directory:
+            config = _config_copy(directory, email_enabled=True)
+            argv, _ledger = self._run_argv(directory, config)
+
+            with self.assertRaisesRegex(RuntimeError, "accepted.*retry may repeat"):
+                run_cli([*argv, "--email"])
+            run_cli([*argv, "--email"])
+
+        self.assertEqual(send_email.call_count, 2)
+
+    @patch("auction_lens.cli.commands.webhook_destination", return_value="b" * 64)
+    @patch("auction_lens.cli.commands.email_destination", return_value="a" * 64)
+    @patch(
+        "auction_lens.cli.commands.send_webhook",
+        side_effect=(OSError("synthetic webhook failure"), None),
+    )
+    @patch("auction_lens.cli.commands.send_email")
+    def test_each_destination_retries_independently(
+        self,
+        send_email,
+        send_webhook,
+        _email_destination,
+        _webhook_destination,
+    ):
+        with temporary_directory() as directory:
+            config = _config_copy(
+                directory,
+                email_enabled=True,
+                webhook_enabled=True,
+            )
+            argv, _ledger = self._run_argv(directory, config)
+
+            with self.assertRaisesRegex(
+                RuntimeError, "webhook delivery did not finish cleanly"
+            ):
+                run_cli([*argv, "--email", "--webhook"])
+            retry = run_cli([*argv, "--email", "--webhook"])
+
+        self.assertEqual(send_email.call_count, 1)
+        self.assertEqual(send_webhook.call_count, 2)
+        self.assertIn("Email report is up to date", retry)
+        self.assertIn("Posted", retry)
+
+    @patch("auction_lens.cli.commands.email_destination", return_value="a" * 64)
+    @patch("auction_lens.cli.commands.send_email")
+    def test_a_price_change_is_delivered_again_with_delivery_relative_context(
+        self, send_email, _email_destination
+    ):
+        with temporary_directory() as directory:
+            config = _config_copy(directory, email_enabled=True)
+            input_path = directory / "listings.json"
+            payload = json.loads(SYNTHETIC_LISTINGS.read_text(encoding="utf-8"))
+            input_path.write_text(json.dumps(payload), encoding="utf-8")
+            argv, _ledger = self._run_argv(directory, config, input_path=input_path)
+
+            run_cli([*argv, "--email"])
+            payload["listings"][0]["current_bid"] = "19.00"
+            input_path.write_text(json.dumps(payload), encoding="utf-8")
+            run_cli([*argv, "--email"])
+
+        self.assertEqual(send_email.call_count, 2)
+        resent = send_email.call_args.args[0]
+        self.assertEqual(
+            {candidate.listing.listing_id for candidate in resent},
+            {"synthetic-001"},
+        )
+        self.assertTrue(all(candidate.change.price_changed for candidate in resent))
+        self.assertTrue(
+            all(candidate.change.previous_bid == Decimal("18") for candidate in resent)
+        )
+
+    @patch("auction_lens.cli.commands.email_destination", return_value="a" * 64)
+    @patch("auction_lens.cli.commands.send_email")
+    def test_changed_interest_progress_sends_even_when_every_listing_is_unchanged(
+        self, send_email, _email_destination
+    ):
+        with temporary_directory() as directory:
+            config = _config_copy(directory, email_enabled=True)
+            argv, _ledger = self._run_argv(directory, config)
+            watchlist = directory / "watchlist.json"
+
+            run_cli([*argv, "--email"])
+            run_cli(
+                [
+                    "watch",
+                    "--watchlist",
+                    str(watchlist),
+                    "--key",
+                    "nellis/synthetic-001",
+                    "--verdict",
+                    "won",
+                    "--fulfills",
+                    "soundbar",
+                ]
+            )
+            run_cli([*argv, "--email"])
+
+        self.assertEqual(send_email.call_count, 2)
+        self.assertEqual(send_email.call_args.args[0], [])
+        progress = send_email.call_args.args[5]
+        soundbar = next(item for item in progress if item.interest.interest_id == "soundbar")
+        self.assertTrue(soundbar.is_retired)
+
+    @patch("auction_lens.cli.commands.email_destination", return_value="a" * 64)
+    @patch("auction_lens.cli.commands.send_email")
+    def test_repeat_delivery_forces_an_unchanged_email(
+        self, send_email, _email_destination
+    ):
+        with temporary_directory() as directory:
+            config = _config_copy(directory, email_enabled=True)
+            argv, _ledger = self._run_argv(directory, config)
+
+            run_cli([*argv, "--email"])
+            repeated = run_cli([*argv, "--email", "--repeat-delivery"])
+
+        self.assertEqual(send_email.call_count, 2)
+        self.assertTrue(send_email.call_args.args[-1].repeated)
+        self.assertIn("Emailed", repeated)
+
+    def test_repeat_delivery_requires_a_destination_before_creating_state(self):
+        with temporary_directory() as directory:
+            config = _config_copy(directory)
+            argv, ledger = self._run_argv(directory, config)
+            database = directory / "observations.sqlite3"
+
+            with self.assertRaisesRegex(
+                ValueError,
+                "--repeat-delivery requires --email or --webhook",
+            ):
+                run_cli([*argv, "--repeat-delivery"])
+
+            self.assertFalse(database.exists())
+            self.assertFalse(ledger.exists())
+
+    @staticmethod
+    def _run_argv(directory, config, *, input_path=SYNTHETIC_LISTINGS):
+        ledger = directory / "deliveries.sqlite3"
+        return (
+            [
+                "run",
+                "--input",
+                str(input_path),
+                "--config",
+                str(config),
+                "--database",
+                str(directory / "observations.sqlite3"),
+                "--watchlist",
+                str(directory / "watchlist.json"),
+                "--env-file",
+                str(directory / "absent.env"),
+                "--delivery-ledger",
+                str(ledger),
+            ],
+            ledger,
+        )
 
 
 class WatchCommandTests(unittest.TestCase):
@@ -523,6 +799,8 @@ class WatchlistCommandTests(unittest.TestCase):
                         str(EXAMPLE_CONFIG),
                         "--env-file",
                         str(directory / "absent.env"),
+                        "--delivery-ledger",
+                        str(directory / "deliveries.sqlite3"),
                         "--email",
                     ]
                 )
@@ -541,16 +819,18 @@ class WatchlistCommandTests(unittest.TestCase):
                     str(EXAMPLE_CONFIG),
                     "--env-file",
                     str(directory / "absent.env"),
+                    "--delivery-ledger",
+                    str(directory / "deliveries.sqlite3"),
                     "--email",
                 ]
             )
         send_watchlist_email.assert_not_called()
         self.assertIn("No selected lots; no email sent", message)
 
-    @patch("auction_lens.cli.commands.check_email_ready")
+    @patch("auction_lens.cli.commands.email_destination", return_value="0" * 64)
     @patch("auction_lens.cli.commands.send_watchlist_email")
     def test_email_sends_only_the_selected_verdict(
-        self, send_watchlist_email, check_email_ready
+        self, send_watchlist_email, email_destination
     ):
         with temporary_directory() as directory:
             watchlist = directory / "watchlist.json"
@@ -577,13 +857,50 @@ class WatchlistCommandTests(unittest.TestCase):
                     str(config),
                     "--env-file",
                     str(directory / "absent.env"),
+                    "--delivery-ledger",
+                    str(directory / "deliveries.sqlite3"),
                     "--email",
                 ]
             )
 
         selected = send_watchlist_email.call_args.args[0]
         self.assertEqual([item.listing_id for item in selected], ["1"])
-        check_email_ready.assert_called_once()
+        email_destination.assert_called_once()
+
+    @patch("auction_lens.cli.commands.email_destination", return_value="a" * 64)
+    @patch("auction_lens.cli.commands.send_watchlist_email")
+    def test_watchlist_email_suppresses_unchanged_items_and_repeat_overrides_it(
+        self, send_watchlist_email, _email_destination
+    ):
+        with temporary_directory() as directory:
+            watchlist = directory / "watchlist.json"
+            WatchlistStore(watchlist).save(
+                WatchedItem(source="synthetic", listing_id="one", verdict="watching")
+            )
+            config = _config_copy(directory, email_enabled=True)
+            argv = [
+                "watchlist",
+                "--watchlist",
+                str(watchlist),
+                "--config",
+                str(config),
+                "--env-file",
+                str(directory / "absent.env"),
+                "--delivery-ledger",
+                str(directory / "deliveries.sqlite3"),
+                "--email",
+            ]
+
+            first = run_cli(argv)
+            unchanged = run_cli(argv)
+            repeated = run_cli([*argv, "--repeat-delivery"])
+
+        self.assertEqual(send_watchlist_email.call_count, 2)
+        self.assertIn("Emailed 1 selected lot", first)
+        self.assertIn("Watchlist email is up to date", unchanged)
+        self.assertIn("already delivered", unchanged)
+        self.assertIn("Emailed 1 selected lot", repeated)
+        self.assertTrue(send_watchlist_email.call_args.args[-1].repeated)
 
 
 class LogisticsCommandTests(unittest.TestCase):
@@ -872,6 +1189,8 @@ class DailyCommandTests(unittest.TestCase):
                         str(output),
                         "--env-file",
                         str(directory / "absent.env"),
+                        "--delivery-ledger",
+                        str(directory / "deliveries.sqlite3"),
                         "--email",
                     ]
                 )
@@ -1042,11 +1361,54 @@ class DoctorCommandTests(unittest.TestCase):
             )
             with patch.dict(os.environ, {}, clear=True):
                 message = run_cli(
-                    ["doctor", "--config", str(config), "--env-file", str(env_file),
-                     "--email"]
+                    [
+                        "doctor",
+                        "--config",
+                        str(config),
+                        "--env-file",
+                        str(env_file),
+                        "--delivery-ledger",
+                        str(directory / "deliveries.sqlite3"),
+                        "--email",
+                    ]
                 )
         self.assertIn("discovery is configured and authorized", message)
         self.assertIn("email is enabled", message)
+        self.assertIn("no network requests were made", message)
+
+    @patch("auction_lens.cli.commands.email_destination", return_value="a" * 64)
+    def test_it_validates_a_missing_ledger_without_creating_it(
+        self, email_destination
+    ):
+        with temporary_directory() as directory:
+            config = _ready_config(directory, email_enabled=True)
+            env_file = directory / ".env"
+            env_file.write_text(
+                "AUCTION_LENS_HTTP_USER_AGENT=AuctionLens/1.0 "
+                "(contact: operator@auction-lens.dev)\n",
+                encoding="utf-8",
+            )
+            ledger = directory / "missing" / "deliveries.sqlite3"
+
+            with patch.dict(os.environ, {}, clear=True):
+                message = run_cli(
+                    [
+                        "doctor",
+                        "--config",
+                        str(config),
+                        "--env-file",
+                        str(env_file),
+                        "--delivery-ledger",
+                        str(ledger),
+                        "--email",
+                    ]
+                )
+
+            self.assertFalse(ledger.exists())
+            self.assertFalse(ledger.parent.exists())
+
+        email_destination.assert_called_once()
+        self.assertIn("delivery receipts are ready", message)
         self.assertIn("no network requests were made", message)
 
     def test_it_refuses_development_pacing_for_an_unattended_run(self):
@@ -1066,6 +1428,20 @@ class DoctorCommandTests(unittest.TestCase):
 
 
 class DefaultsTests(unittest.TestCase):
+    def test_the_program_reports_its_release_version(self):
+        output = io.StringIO()
+        with redirect_stdout(output), self.assertRaises(SystemExit) as stopped:
+            build_parser().parse_args(["--version"])
+
+        self.assertEqual(stopped.exception.code, 0)
+        self.assertEqual(output.getvalue(), "auction-lens 0.5.0\n")
+
+    def test_package_metadata_and_runtime_use_the_same_version(self):
+        with (ROOT / "pyproject.toml").open("rb") as project_file:
+            declared = tomllib.load(project_file)["project"]["version"]
+
+        self.assertEqual(declared, __version__)
+
     def test_the_configuration_flag_can_be_left_off(self):
         # One door: the file a person edits is where every command looks.
         for command in (
@@ -1073,6 +1449,14 @@ class DefaultsTests(unittest.TestCase):
         ):
             with self.subTest(command=command):
                 self.assertEqual(_parsed_default(command, "config"), "config/local.toml")
+
+    def test_every_delivered_report_shares_one_private_receipt_ledger(self):
+        for command in ("doctor", "daily", "run", "watchlist"):
+            with self.subTest(command=command):
+                self.assertEqual(
+                    _parsed_default(command, "delivery_ledger"),
+                    "private/deliveries.sqlite3",
+                )
 
     def test_daily_writes_where_it_then_reads(self):
         self.assertEqual(_parsed_default("daily", "output"), "data/inbox/listings.json")

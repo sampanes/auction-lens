@@ -32,7 +32,7 @@ def score_retail_anomaly(context: ScoringContext, scoring: ScoringConfig) -> Can
     penalty = context.baseline_penalty + penalty_for(
         context.conditions, scoring.anomaly_condition.penalties
     )
-    score = clamp_score(_discount_score(ratio) + context.bonuses - penalty)
+    score = clamp_score(_discount_score(ratio) + context.score_bonus - penalty)
     if score < scoring.minimum_report_score:
         return None
     reasons = [f"estimated total is {ratio:.1%} of stated retail"]

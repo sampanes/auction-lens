@@ -13,6 +13,8 @@ from zoneinfo import ZoneInfo
 
 from ..models import Candidate, InterestProgress, ReadingOrder
 from .findings import (
+    NO_DELIVERY_FILTER,
+    DeliverySummary,
     Fact,
     Finding,
     Handling,
@@ -51,6 +53,7 @@ def render_html(
     order: ReadingOrder = ReadingOrder.PRIORITY,
     interest_progress: tuple[InterestProgress, ...] = (),
     unreviewed_wins: int = 0,
+    delivery: DeliverySummary = NO_DELIVERY_FILTER,
 ) -> str:
     """Render every candidate as a card, strongest first."""
     return _as_html(
@@ -61,6 +64,7 @@ def render_html(
             order,
             interest_progress,
             unreviewed_wins,
+            delivery,
         )
     )
 
@@ -70,6 +74,7 @@ def _as_html(report: Report) -> str:
         sections = [f"<p>{escape(report.headline)}</p>"]
     else:
         sections = [f"<h2>{escape(report.headline)}</h2>"]
+    sections.extend(f"<p>{escape(line)}</p>" for line in report.delivery.lines)
     sections.append(_outcomes(report.outcomes))
     for group in report.groups:
         sections.append(f"<h3>{escape(group.title.title())}</h3>")

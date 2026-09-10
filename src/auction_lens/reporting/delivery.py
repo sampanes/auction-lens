@@ -11,11 +11,13 @@ import smtplib
 import ssl
 from dataclasses import dataclass
 from email.message import EmailMessage
+from html import escape
 from zoneinfo import ZoneInfo
 
 from ..config import EmailConfig, EmailSecurity
 from ..models import Candidate, InterestProgress, ReadingOrder, WatchedItem
-from .findings import closing_time, soonest_close
+from .destinations import destination_fingerprint
+from .findings import NO_DELIVERY_FILTER, DeliverySummary, closing_time, soonest_close
 from .html import render_html
 from .searches import SearchHint
 from .text import render_text
@@ -45,6 +47,11 @@ def check_email_ready(config: EmailConfig) -> None:
     _ready_account(config)
 
 
+def email_destination(config: EmailConfig) -> str:
+    """An opaque identity for the resolved recipient this run would contact."""
+    return destination_fingerprint(_ready_account(config).recipient)
+
+
 def _ready_account(config: EmailConfig) -> MailAccount:
     """Resolve a usable account once every public sending boundary is safe."""
     if not config.enabled:
@@ -61,6 +68,7 @@ def send_email(
     order: ReadingOrder = ReadingOrder.PRIORITY,
     interest_progress: tuple[InterestProgress, ...] = (),
     unreviewed_wins: int = 0,
+    delivery: DeliverySummary = NO_DELIVERY_FILTER,
 ) -> None:
     """Send one report as a text message with an HTML alternative."""
     account = _ready_account(config)
@@ -73,20 +81,32 @@ def send_email(
         order,
         interest_progress,
         unreviewed_wins,
+        delivery,
     )
 
     _deliver(message, config, account)
 
 
-def send_watchlist_email(items: tuple[WatchedItem, ...], config: EmailConfig) -> None:
+def send_watchlist_email(
+    items: tuple[WatchedItem, ...],
+    config: EmailConfig,
+    delivery: DeliverySummary = NO_DELIVERY_FILTER,
+) -> None:
     """Send selected lots without exposing the local watchlist path."""
     account = _ready_account(config)
     message = EmailMessage()
     message["Subject"] = WATCHLIST_SUBJECT.format(selection=_selection(len(items)))
     message["From"] = account.sender
     message["To"] = account.recipient
-    message.set_content(render_watchlist(items))
-    message.add_alternative(render_watchlist_html(items), subtype="html")
+    plain = render_watchlist(items)
+    markup = render_watchlist_html(items)
+    if delivery.lines:
+        introduction = "\n".join(delivery.lines)
+        plain = f"{introduction}\n\n{plain}"
+        html_lines = "".join(f"<p>{escape(line)}</p>" for line in delivery.lines)
+        markup = f"{html_lines}{markup}"
+    message.set_content(plain)
+    message.add_alternative(markup, subtype="html")
     _deliver(message, config, account)
 
 
@@ -158,6 +178,7 @@ def _build_message(
     order: ReadingOrder,
     interest_progress: tuple[InterestProgress, ...] = (),
     unreviewed_wins: int = 0,
+    delivery: DeliverySummary = NO_DELIVERY_FILTER,
 ) -> EmailMessage:
     message = EmailMessage()
     message["Subject"] = _subject(config.subject, candidates, zone)
@@ -171,6 +192,7 @@ def _build_message(
             order,
             interest_progress,
             unreviewed_wins,
+            delivery,
         )
     )
     message.add_alternative(
@@ -181,6 +203,7 @@ def _build_message(
             order,
             interest_progress,
             unreviewed_wins,
+            delivery,
         ),
         subtype="html",
     )
