@@ -6,6 +6,7 @@ import unittest
 from dataclasses import replace
 
 from auction_lens.config import LocationPolicy, ReportsConfig, render_profile
+from auction_lens.config.schema import DEFAULT_FAR_MINIMUM_SCORE
 from support import example_config
 
 
@@ -44,7 +45,11 @@ class ProfileRenderingTests(unittest.TestCase):
 
         self.assertIn("No interests configured", rendered)
         self.assertIn("Allowed: any pickup location", rendered)
-        self.assertIn("Far locations (minimum score 90): none", rendered)
+        # Read the default rather than restating it, so the assertion cannot
+        # drift away from the value the profile is actually reporting.
+        self.assertIn(
+            f"Far locations (minimum score {DEFAULT_FAR_MINIMUM_SCORE}): none", rendered
+        )
         self.assertIn("Length: all matches", rendered)
         self.assertIn("Valuation: off", rendered)
 

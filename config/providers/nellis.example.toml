@@ -47,7 +47,10 @@ processing_fee = 0.0
 # of the way, and a lot there is reported only if it clears far_minimum_score,
 # so distance costs a lot something rather than excluding it outright.
 #   far = ["phoenix"]
-#   far_minimum_score = 90
+#   far_minimum_score = 85
+# An interest match tops out at 90 (80 base, 3 for new, 7 for ending soon), so
+# a far_minimum_score of 90 or more hides those branches instead of being
+# choosier about them. Leave room under the ceiling.
 # Empty means any location. Values are case-insensitive substrings.
 allowed = []
 

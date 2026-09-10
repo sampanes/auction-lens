@@ -15,6 +15,7 @@ from ..models import ReadingOrder
 from .conditions import resolve_condition_policy
 from .schema import (
     DEFAULT_CACHE_FILE,
+    DEFAULT_FAR_MINIMUM_SCORE,
     DEFAULT_LEDGER_FILE,
     DEFAULT_SEARCH_CACHE_DIR,
     DEFAULT_USER_AGENT_ENV,
@@ -208,7 +209,7 @@ def _locations(section: Section) -> LocationPolicy:
         return LocationPolicy(
             allowed=section.lowercase_texts("allowed"),
             far=section.lowercase_texts("far"),
-            far_minimum_score=section.integer("far_minimum_score", 90),
+            far_minimum_score=section.integer("far_minimum_score", DEFAULT_FAR_MINIMUM_SCORE),
         )
 
 
