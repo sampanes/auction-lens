@@ -27,7 +27,7 @@ LAYERS = (
     ("grading",),
     ("env_file", "file_io", "http_safety", "models", "text_match", "throttle"),
     ("config",),
-    ("logistics", "outcomes"),
+    ("logistics", "notifications", "outcomes"),
     ("acquisition", "ingest", "reporting", "scoring", "storage", "valuation"),
     ("pipeline",),
     ("cli",),

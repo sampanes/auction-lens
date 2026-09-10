@@ -36,9 +36,22 @@ class AnalysisRunTests(unittest.TestCase):
 
     def test_a_second_run_no_longer_reports_the_listings_as_new(self):
         with temporary_database() as database:
-            self._run(database, self.listings)
+            first = self._run(database, self.listings)
             second = self._run(database, self.listings)
         self.assertFalse(any(item.change.is_new for item in second.candidates))
+        first_by_rule = {
+            (item.listing.listing_id, item.rule_id): item for item in first.candidates
+        }
+        for candidate in second.candidates:
+            first_seen = first_by_rule[(candidate.listing.listing_id, candidate.rule_id)]
+            self.assertEqual(candidate.score, first_seen.score)
+        self.assertTrue(
+            any(
+                first_by_rule[(item.listing.listing_id, item.rule_id)].priority
+                > item.priority
+                for item in second.candidates
+            )
+        )
 
     def test_valuation_is_attached_to_every_candidate(self):
         engine = ValuationEngine(self.config.valuation)

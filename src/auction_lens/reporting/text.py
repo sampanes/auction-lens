@@ -12,6 +12,8 @@ from zoneinfo import ZoneInfo
 
 from ..models import Candidate, InterestProgress, ReadingOrder
 from .findings import (
+    NO_DELIVERY_FILTER,
+    DeliverySummary,
     Fact,
     Finding,
     Handling,
@@ -39,6 +41,7 @@ def render_text(
     order: ReadingOrder = ReadingOrder.PRIORITY,
     interest_progress: tuple[InterestProgress, ...] = (),
     unreviewed_wins: int = 0,
+    delivery: DeliverySummary = NO_DELIVERY_FILTER,
 ) -> str:
     """Render every candidate, grouped by category and ordered by score."""
     return _as_text(
@@ -49,12 +52,14 @@ def render_text(
             order,
             interest_progress,
             unreviewed_wins,
+            delivery,
         )
     )
 
 
 def _as_text(report: Report) -> str:
     lines = [report.headline]
+    lines.extend(report.delivery.lines)
     lines.extend(_outcome_lines(report.outcomes))
     for group in report.groups:
         lines.extend(("", group.title.upper()))

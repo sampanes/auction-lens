@@ -27,20 +27,41 @@ from ..env_file import write_settings
 from ..fields import parse_money
 from ..file_io import read_json, write_json_atomically
 from ..ingest import load_listings, read_saved_page, read_search_page, unique_lots
-from ..models import InterestRef, LogisticsDecision, LogisticsStatus, Verdict, WatchedItem
+from ..models import (
+    Candidate,
+    InterestRef,
+    LogisticsDecision,
+    LogisticsStatus,
+    Verdict,
+    WatchedItem,
+)
+from ..notifications import (
+    DeliveryChannel,
+    DeliveryRoute,
+    ReportKind,
+    candidate_items,
+    outcome_fingerprint,
+    plan_candidates,
+    plan_watchlist,
+    watchlist_items,
+)
 from ..outcomes import plan_interests
-from ..pipeline import analyze_listings
+from ..pipeline import RunResult, analyze_listings, follow_candidates
 from ..reporting import (
-    check_email_ready,
+    DeliverySummary,
+    destination_fingerprint,
+    email_destination,
     render_text,
     render_watchlist,
     send_email,
     send_watchlist_email,
     send_webhook,
+    webhook_destination,
 )
-from ..reporting.webhook import webhook_address
+from ..reporting.webhook import webhook_item_limit
 from ..storage import (
     Database,
+    DeliveryLedger,
     LogisticsDecisionStore,
     ObservationStore,
     WatchlistStore,
@@ -252,7 +273,7 @@ def daily(args: argparse.Namespace) -> int:
     but nobody wants to type both every morning.
     """
     config = _with_todays_trips(load_config(args.config), args.visiting)
-    _preflight_reports(config, args)
+    destinations = _preflight_reports(config, args)
     watchlist = WatchlistStore(Path(args.watchlist))
     plan = plan_interests(config.interests, watchlist.items())
     terms = _daily_search_terms(config, args.search, plan.active_rules)
@@ -266,7 +287,7 @@ def daily(args: argparse.Namespace) -> int:
     else:
         _discover(args, config, terms)
     run_args = argparse.Namespace(**{**vars(args), "input": args.output})
-    return _run(run_args, config, watchlist)
+    return _run(run_args, config, watchlist, destinations)
 
 
 def _with_todays_trips(config: AppConfig, visiting: list[str]) -> AppConfig:
@@ -284,11 +305,16 @@ def _with_todays_trips(config: AppConfig, visiting: list[str]) -> AppConfig:
 def run(args: argparse.Namespace) -> int:
     """Score a listing file and print, and optionally email, the report."""
     config = _with_todays_trips(load_config(args.config), args.visiting)
-    _preflight_reports(config, args)
-    return _run(args, config, WatchlistStore(Path(args.watchlist)))
+    destinations = _preflight_reports(config, args)
+    return _run(args, config, WatchlistStore(Path(args.watchlist)), destinations)
 
 
-def _run(args: argparse.Namespace, config: AppConfig, watchlist: WatchlistStore) -> int:
+def _run(
+    args: argparse.Namespace,
+    config: AppConfig,
+    watchlist: WatchlistStore,
+    destinations: dict[DeliveryChannel, str],
+) -> int:
     """Execute an already-loaded run, so ``daily`` need not load its inputs twice."""
     listings = load_listings(args.input)
     database = Database.at(args.database)
@@ -321,31 +347,170 @@ def _run(args: argparse.Namespace, config: AppConfig, watchlist: WatchlistStore)
         result.lots_outside_the_window, config.reports.closing_within_hours
     )
     _report_capped(result.matches_not_shown, len(result.candidates))
-    _report_followed(result.lots_followed, args.watchlist)
-
-    if args.email:
-        send_email(
-            result.candidates,
-            config.email,
-            zone,
-            searches,
-            order,
-            result.interest_progress,
-            result.unreviewed_wins,
-        )
-        # Name the variable, not the address: the same reason the webhook line
-        # says "the webhook" rather than printing the URL it posted to.
-        print(f"Emailed {len(result.candidates)} match(es) to {config.email.recipient_env}.")
-    if args.webhook:
-        send_webhook(
-            result.candidates,
-            config.webhook,
-            zone,
-            result.interest_progress,
-            result.unreviewed_wins,
-        )
-        print(f"Posted {len(result.candidates)} match(es) to the webhook.")
+    additionally_followed, delivery_failures = _deliver_findings(
+        args,
+        config,
+        result,
+        watchlist,
+        destinations,
+    )
+    _report_followed(result.lots_followed + additionally_followed, args.watchlist)
+    if delivery_failures:
+        raise RuntimeError("; ".join(delivery_failures))
     return SUCCESS
+
+
+def _deliver_findings(
+    args: argparse.Namespace,
+    config: AppConfig,
+    result: RunResult,
+    watchlist: WatchlistStore,
+    destinations: dict[DeliveryChannel, str],
+) -> tuple[int, list[str]]:
+    """Send each route independently and remember only accepted reports.
+
+    A failed webhook must not erase a successful email receipt. On the next
+    scheduled retry, email is therefore skipped while the webhook is tried
+    again. A remote may accept immediately before the connection, process, or
+    local commit fails; that ambiguous gap is reported honestly because no
+    local ledger can close it.
+    """
+    if not destinations:
+        return 0, []
+
+    ledger = DeliveryLedger(Path(args.delivery_ledger))
+    summary = outcome_fingerprint(result.interest_progress, result.unreviewed_wins)
+    additionally_followed = 0
+    failures = []
+    for channel, fingerprint in destinations.items():
+        accepted = False
+        phase = "receipt planning"
+        try:
+            route = DeliveryRoute(ReportKind.FINDINGS, channel, fingerprint)
+            with ledger.session(route) as delivery:
+                proposed = candidate_items(result.all_candidates)
+                plan = plan_candidates(
+                    result.all_candidates,
+                    delivery.revisions(proposed),
+                    limit=_delivery_limit(channel, config),
+                    repeat=args.repeat_delivery,
+                )
+                summary_changed = delivery.summary_changed(summary)
+                if not plan.candidates and not summary_changed and not args.repeat_delivery:
+                    _report_delivery_current(channel, plan.unchanged_matches)
+                    continue
+
+                note = DeliverySummary(
+                    active=True,
+                    repeated=args.repeat_delivery,
+                    unchanged_matches=plan.unchanged_matches,
+                    held_back_matches=plan.held_back_matches,
+                )
+                phase = "transport"
+                _send_findings(channel, plan.candidates, config, result, note)
+                accepted = True
+                phase = "local receipt"
+                additionally_followed += follow_candidates(
+                    plan.candidates,
+                    result.all_candidates,
+                    watchlist,
+                )
+                delivery.accept(plan.receipts, summary)
+            _report_delivery_sent(channel, len(plan.candidates), config)
+        except (OSError, RuntimeError, ValueError) as error:
+            failures.append(_delivery_failure(channel, accepted, phase, error))
+    return additionally_followed, failures
+
+
+def _delivery_limit(channel: DeliveryChannel, config: AppConfig) -> int | None:
+    """Use the exact limit the selected transport will actually render."""
+    if channel == DeliveryChannel.WEBHOOK:
+        return webhook_item_limit(config.webhook, config.reports.max_items)
+    return config.reports.max_items
+
+
+def _send_findings(
+    channel: DeliveryChannel,
+    candidates: tuple[Candidate, ...],
+    config: AppConfig,
+    result: RunResult,
+    delivery: DeliverySummary,
+) -> None:
+    """Cross one transport boundary; its caller owns receipt persistence."""
+    selected = list(candidates)
+    if channel == DeliveryChannel.EMAIL:
+        send_email(
+            selected,
+            config.email,
+            config.acquisition.zone,
+            result.searches,
+            config.reports.order,
+            result.interest_progress,
+            result.unreviewed_wins,
+            delivery,
+        )
+        return
+    send_webhook(
+        selected,
+        config.webhook,
+        config.acquisition.zone,
+        result.interest_progress,
+        result.unreviewed_wins,
+        delivery,
+        order=config.reports.order,
+    )
+
+
+def _report_delivery_current(channel: DeliveryChannel, unchanged: int) -> None:
+    noun = "Email" if channel == DeliveryChannel.EMAIL else "Webhook"
+    detail = (
+        f" {unchanged} unchanged match(es) were already delivered."
+        if unchanged
+        else " Its outcome summary is unchanged."
+    )
+    print(f"{noun} report is up to date.{detail}")
+
+
+def _report_delivery_sent(
+    channel: DeliveryChannel, count: int, config: AppConfig
+) -> None:
+    if channel == DeliveryChannel.EMAIL:
+        # Name the variable, not the address; the ledger follows the same rule.
+        print(f"Emailed {count} match(es) to {config.email.recipient_env}.")
+    else:
+        print(f"Posted {count} match(es) to the webhook.")
+
+
+def _delivery_failure(
+    channel: DeliveryChannel,
+    accepted: bool,
+    phase: str,
+    error: BaseException,
+) -> str:
+    """Explain recovery without copying a private transport error into logs."""
+    name = channel.value
+    kind = type(error).__name__
+    if accepted:
+        return (
+            f"{name} was accepted, but its local receipt could not be saved; "
+            f"a retry may repeat it. Check the watchlist and --delivery-ledger "
+            f"paths. [{kind}]"
+        )
+    if phase == "transport":
+        settings = (
+            "SMTP settings"
+            if channel == DeliveryChannel.EMAIL
+            else "webhook settings"
+        )
+        return (
+            f"{name} delivery did not finish cleanly; no receipt was saved. "
+            "If the remote accepted it before the connection failed, a retry may "
+            f"repeat it. Check {settings} and connectivity. [{kind}]"
+        )
+    return (
+        f"{name} was not attempted because receipt planning failed; check "
+        f"--delivery-ledger. [{kind}]"
+    )
 
 
 def _report_required_edits(config: Path, env_file: Path) -> None:
@@ -370,11 +535,20 @@ def doctor(args: argparse.Namespace) -> int:
     print(f"[OK] {args.config}: discovery is configured and authorized.")
 
     requested = _doctor_destinations(config, args)
-    _preflight_reports(config, argparse.Namespace(**requested))
+    destinations = _preflight_reports(
+        config,
+        argparse.Namespace(
+            **requested,
+            repeat_delivery=False,
+            delivery_ledger=args.delivery_ledger,
+        ),
+    )
     if requested["email"]:
         print("[OK] email is enabled and all configured environment values are present.")
     if requested["webhook"]:
         print("[OK] webhook is enabled and its configured HTTPS address is present.")
+    if destinations:
+        print(f"[OK] {args.delivery_ledger}: delivery receipts are ready.")
     if not any(requested.values()):
         print("[OK] no report destinations are enabled; local output only.")
     print("[OK] no network requests were made.")
@@ -388,14 +562,25 @@ def _doctor_destinations(config: AppConfig, args: argparse.Namespace) -> dict[st
     return {"email": config.email.enabled, "webhook": config.webhook.enabled}
 
 
-def _preflight_reports(config: AppConfig, args: argparse.Namespace) -> None:
-    """Resolve requested destinations before analysis can change local history."""
-    if args.email:
-        check_email_ready(config.email)
-    if args.webhook:
-        if not config.webhook.enabled:
-            raise RuntimeError("webhook reporting is disabled in the selected configuration")
-        webhook_address(config.webhook)
+def _preflight_reports(
+    config: AppConfig, args: argparse.Namespace
+) -> dict[DeliveryChannel, str]:
+    """Resolve destinations and the private ledger before local state changes."""
+    email_requested = getattr(args, "email", False)
+    webhook_requested = getattr(args, "webhook", False)
+    if getattr(args, "repeat_delivery", False) and not (
+        email_requested or webhook_requested
+    ):
+        raise ValueError("--repeat-delivery requires --email or --webhook")
+
+    destinations = {}
+    if email_requested:
+        destinations[DeliveryChannel.EMAIL] = email_destination(config.email)
+    if webhook_requested:
+        destinations[DeliveryChannel.WEBHOOK] = webhook_destination(config.webhook)
+    if destinations:
+        DeliveryLedger(Path(args.delivery_ledger)).check_ready()
+    return destinations
 
 
 def fetch(args: argparse.Namespace) -> int:
@@ -592,6 +777,8 @@ def _watch_identity(args: argparse.Namespace) -> tuple[str, str]:
 
 def watchlist(args: argparse.Namespace) -> int:
     """Show the followed lots, keenest first."""
+    if args.repeat_delivery and not args.email:
+        raise ValueError("--repeat-delivery requires --email")
     items = WatchlistStore(Path(args.watchlist)).items()
     if args.verdict:
         items = tuple(item for item in items if item.verdict == args.verdict)
@@ -605,9 +792,62 @@ def watchlist(args: argparse.Namespace) -> int:
             print("No selected lots; no email sent.")
             return SUCCESS
         config = load_config(args.config)
-        check_email_ready(config.email)
-        send_watchlist_email(items, config.email)
-        print(f"Emailed {len(items)} selected lot(s).")
+        destinations = _preflight_reports(config, args)
+        destination = destinations[DeliveryChannel.EMAIL]
+        # A filtered watchlist is a different recurring report from the full
+        # list. Hashing the already-opaque destination with the public selector
+        # keeps those receipt streams separate without retaining either value.
+        selector = "all" if args.verdict is None else str(args.verdict)
+        route_fingerprint = destination_fingerprint(
+            f"{destination}\0watchlist-selection={selector}"
+        )
+        route = DeliveryRoute(
+            ReportKind.WATCHLIST,
+            DeliveryChannel.EMAIL,
+            route_fingerprint,
+        )
+        accepted = False
+        phase = "receipt planning"
+        try:
+            with DeliveryLedger(Path(args.delivery_ledger)).session(route) as delivery:
+                proposed = watchlist_items(items)
+                plan = plan_watchlist(
+                    items,
+                    delivery.revisions(proposed),
+                    repeat=args.repeat_delivery,
+                )
+                if not plan.items and not args.repeat_delivery:
+                    print(
+                        "Watchlist email is up to date; "
+                        f"{plan.unchanged_items} unchanged selected lot(s) were "
+                        "already delivered."
+                    )
+                    return SUCCESS
+                phase = "transport"
+                send_watchlist_email(
+                    plan.items,
+                    config.email,
+                    DeliverySummary(
+                        active=True,
+                        repeated=args.repeat_delivery,
+                        unchanged_matches=plan.unchanged_items,
+                        item_singular="selected lot",
+                        item_plural="selected lots",
+                    ),
+                )
+                accepted = True
+                phase = "local receipt"
+                delivery.accept(plan.receipts, outcome_fingerprint((), 0))
+            print(f"Emailed {len(plan.items)} selected lot(s).")
+        except (OSError, RuntimeError, ValueError) as error:
+            raise RuntimeError(
+                _delivery_failure(
+                    DeliveryChannel.EMAIL,
+                    accepted,
+                    phase,
+                    error,
+                )
+            ) from error
     return SUCCESS
 
 

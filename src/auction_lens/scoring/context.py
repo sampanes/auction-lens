@@ -29,15 +29,20 @@ class ScoringContext:
     logistics: LogisticsAssessment
     baseline_penalty: int
     ending_soon_bonus: int
-    change_bonus: int
 
     @property
     def is_ending_soon(self) -> bool:
         return self.ending_soon_bonus > 0
 
     @property
-    def bonuses(self) -> int:
-        return self.ending_soon_bonus + self.change_bonus
+    def score_bonus(self) -> int:
+        """Urgency that changes quality while the auction is actionable.
+
+        Observation novelty lives in ``Candidate.priority`` instead. Keeping
+        it out of the score ensures a failed notification remains eligible on
+        retry after the observation store has already seen the listing.
+        """
+        return self.ending_soon_bonus
 
     @property
     def retail_ratio(self) -> Decimal | None:

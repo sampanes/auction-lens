@@ -22,7 +22,7 @@ from .conditions import penalty_for
 from .context import ScoringContext
 from .cost import estimate_total_cost
 from .interests import score_interests
-from .signals import change_bonus, ending_soon_bonus
+from .signals import ending_soon_bonus
 
 FIRST_OBSERVATION = ObservationChange(is_new=True, price_changed=False)
 
@@ -79,7 +79,6 @@ def build_context(
         logistics=logistics,
         baseline_penalty=penalty_for(conditions, config.scoring.condition_penalties),
         ending_soon_bonus=ending_soon_bonus(listing, config.scoring.ending_soon_minutes, now),
-        change_bonus=change_bonus(change),
     )
 
 

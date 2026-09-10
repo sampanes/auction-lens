@@ -13,7 +13,7 @@ from auction_lens.config import (
     InterestRule,
     LocationPolicy,
 )
-from auction_lens.models import LogisticsDecision
+from auction_lens.models import LogisticsDecision, ObservationChange
 from auction_lens.scoring import estimate_total_cost, evaluate
 from support import LASER_LEVEL, SOUNDBAR, example_config, example_listings
 
@@ -144,6 +144,47 @@ class InterestScoringTests(unittest.TestCase):
         listing = replace(self.listings[SOUNDBAR], ends_at=now - timedelta(minutes=1))
         candidate = self._wanted(evaluate(listing, self.config, now=now))
         self.assertNotIn("ending soon", candidate.reasons)
+
+    def test_fresh_news_reorders_a_match_without_changing_its_quality_score(self):
+        listing = self.listings[SOUNDBAR]
+        new = self._wanted(
+            evaluate(listing, self.config, ObservationChange(True, False))
+        )
+        unchanged = self._wanted(
+            evaluate(listing, self.config, ObservationChange(False, False))
+        )
+
+        self.assertEqual(new.score, unchanged.score)
+        self.assertGreater(new.priority, unchanged.priority)
+
+    def test_freshness_alone_cannot_push_a_match_past_its_rule_bar(self):
+        listing = self.listings[SOUNDBAR]
+        ordinary = self._wanted(
+            evaluate(listing, self.config, ObservationChange(False, False))
+        )
+        rule = replace(self.config.interests[0], minimum_score=ordinary.score + 1)
+        config = replace(self.config, interests=(rule,))
+
+        matches = evaluate(listing, config, ObservationChange(True, False))
+
+        self.assertFalse(any(item.category == "wanted" for item in matches))
+
+    def test_freshness_alone_cannot_justify_a_far_trip(self):
+        listing = self.listings[SOUNDBAR]
+        ordinary = self._wanted(
+            evaluate(listing, self.config, ObservationChange(False, False))
+        )
+        config = replace(
+            self.config,
+            locations=LocationPolicy(
+                far=("example warehouse",),
+                far_minimum_score=ordinary.score + 1,
+            ),
+        )
+
+        matches = evaluate(listing, config, ObservationChange(True, False))
+
+        self.assertFalse(any(item.category == "wanted" for item in matches))
 
     def _wanted(self, candidates):
         return next(item for item in candidates if item.category == "wanted")
@@ -426,6 +467,23 @@ class AnomalyScoringTests(unittest.TestCase):
     def test_listing_without_retail_is_not_an_anomaly(self):
         listing = replace(self.listings[LASER_LEVEL], estimated_retail=None)
         self.assertEqual(evaluate(listing, self.config), [])
+
+    def test_freshness_alone_cannot_push_an_anomaly_past_the_global_bar(self):
+        listing = self.listings[LASER_LEVEL]
+        ordinary = self._anomaly(
+            evaluate(listing, self.config, ObservationChange(False, False))
+        )
+        config = replace(
+            self.config,
+            scoring=replace(
+                self.config.scoring,
+                minimum_report_score=ordinary.score + 1,
+            ),
+        )
+
+        self.assertEqual(
+            evaluate(listing, config, ObservationChange(True, False)), []
+        )
 
     def _anomaly(self, candidates):
         return next(item for item in candidates if item.category == "anomaly")

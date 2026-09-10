@@ -12,10 +12,19 @@ from inspect import signature
 from unittest.mock import patch
 
 from auction_lens.env_file import load_env_file
-from auction_lens.models import InterestProgress, InterestRef, ReadingOrder, WatchedItem
+from auction_lens.models import (
+    InterestProgress,
+    InterestRef,
+    ObservationChange,
+    ReadingOrder,
+    WatchedItem,
+)
 from auction_lens.reporting import (
+    DeliverySummary,
     build_report,
     check_email_ready,
+    destination_fingerprint,
+    email_destination,
     render_html,
     render_text,
     send_email,
@@ -64,6 +73,23 @@ class TextReportTests(unittest.TestCase):
 
     def test_empty_report_says_so_plainly(self):
         self.assertIn("no listings", render_text([], REPORT_ZONE))
+
+    def test_a_changed_price_names_what_the_destination_last_received(self):
+        candidate = evaluate(self.listings[LASER_LEVEL], self.config)[0]
+        candidate = replace(
+            candidate,
+            change=ObservationChange(
+                is_new=False,
+                price_changed=True,
+                previous_bid=Decimal("7.50"),
+            ),
+        )
+
+        plain = render_text([candidate], REPORT_ZONE)
+        markup = render_html([candidate], REPORT_ZONE)
+
+        for report in (plain, markup):
+            self.assertIn("price changed from $7.50", report.lower())
 
     def test_open_handling_question_is_shown_with_its_decision_key(self):
         listing = replace(
@@ -142,6 +168,53 @@ class OutcomeReportTests(unittest.TestCase):
         self.assertTrue(report.is_empty)
         self.assertIn("no listings", plain)
         self.assertIn("no listings", markup)
+
+
+class DeliverySummaryTests(unittest.TestCase):
+    """A filtered message says what its private receipts left out."""
+
+    def test_both_renderings_count_unchanged_and_capped_matches(self):
+        delivery = DeliverySummary(
+            active=True,
+            unchanged_matches=12,
+            held_back_matches=3,
+        )
+
+        plain = render_text([], REPORT_ZONE, delivery=delivery)
+        markup = render_html([], REPORT_ZONE, delivery=delivery)
+
+        for report in (plain, markup):
+            self.assertIn("no new or price-changed listings", report.lower())
+            self.assertIn("Only new or price-changed matches", report)
+            self.assertIn("12 unchanged matches", report)
+            self.assertIn("3 more new or changed matches", report)
+
+    def test_an_explicit_repeat_says_the_filter_was_bypassed(self):
+        delivery = DeliverySummary(active=True, repeated=True)
+
+        report = render_text([], REPORT_ZONE, delivery=delivery)
+
+        self.assertIn("filter bypassed for this requested repeat", report)
+
+    def test_invalid_counts_and_labels_are_refused_at_the_view_model_boundary(self):
+        with self.assertRaisesRegex(ValueError, "unchanged_matches"):
+            DeliverySummary(unchanged_matches=-1)
+        with self.assertRaisesRegex(ValueError, "item_plural"):
+            DeliverySummary(item_plural=" ")
+
+
+class DestinationFingerprintTests(unittest.TestCase):
+    def test_a_destination_is_stable_without_retaining_its_raw_value(self):
+        private_value = "recipient@example.invalid"
+
+        fingerprint = destination_fingerprint(f"  {private_value}  ")
+
+        self.assertEqual(len(fingerprint), 64)
+        self.assertNotIn(private_value, fingerprint)
+        self.assertEqual(fingerprint, destination_fingerprint(private_value))
+        self.assertNotEqual(
+            fingerprint, destination_fingerprint("another@example.invalid")
+        )
 
 
 class ClosingTimeTests(unittest.TestCase):
@@ -372,6 +445,20 @@ class EmailDeliveryTests(unittest.TestCase):
         smtp.assert_not_called()
         smtp_ssl.assert_not_called()
 
+    @patch("auction_lens.reporting.delivery.smtplib.SMTP")
+    @patch("auction_lens.reporting.delivery.smtplib.SMTP_SSL")
+    def test_recipient_identity_is_resolved_without_connecting(self, smtp_ssl, smtp):
+        with patch.dict("os.environ", SMTP_ENVIRONMENT, clear=False):
+            fingerprint = email_destination(self.email)
+
+        self.assertEqual(
+            fingerprint,
+            destination_fingerprint(SMTP_ENVIRONMENT["AUCTION_LENS_EMAIL_TO"]),
+        )
+        self.assertNotIn(SMTP_ENVIRONMENT["AUCTION_LENS_EMAIL_TO"], fingerprint)
+        smtp.assert_not_called()
+        smtp_ssl.assert_not_called()
+
     def test_disabled_email_is_not_ready(self):
         with self.assertRaisesRegex(RuntimeError, "email reporting is disabled"):
             check_email_ready(replace(self.email, enabled=False))
@@ -422,6 +509,27 @@ class EmailDeliveryTests(unittest.TestCase):
         markup = message.get_body(preferencelist=("html",)).get_content()
         self.assertIn("Flagged monitor", plain)
         self.assertIn("Flagged monitor", markup)
+
+    @patch("auction_lens.reporting.delivery.smtplib.SMTP_SSL")
+    def test_a_filtered_watchlist_email_explains_what_it_omitted(self, smtp_ssl):
+        items = (WatchedItem(source="nellis", listing_id="1", title="Changed monitor"),)
+        delivery = DeliverySummary(
+            active=True,
+            unchanged_matches=2,
+            item_singular="selected lot",
+            item_plural="selected lots",
+        )
+        with patch.dict("os.environ", SMTP_ENVIRONMENT, clear=False):
+            send_watchlist_email(items, self.email, delivery)
+
+        message = smtp_ssl.return_value.__enter__.return_value.send_message.call_args.args[0]
+        for body in (
+            message.get_body(preferencelist=("plain",)).get_content(),
+            message.get_body(preferencelist=("html",)).get_content(),
+        ):
+            self.assertIn("Only new or price-changed selected lots", body)
+            self.assertIn("2 unchanged selected lots", body)
+            self.assertIn("Changed monitor", body)
 
     @patch("auction_lens.reporting.delivery.smtplib.SMTP_SSL")
     def test_a_daily_email_includes_product_and_actual_lot_photos(self, smtp_ssl):

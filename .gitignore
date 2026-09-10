@@ -8,7 +8,9 @@ dist/
 build/
 *.egg-info/
 *.sqlite3
+*.sqlite3-*
 *.db
+*.db-*
 .env
 *.env*.tmp
 config/local.toml

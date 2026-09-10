@@ -303,6 +303,14 @@ version uses phone-friendly cards and includes the actual-lot photo and a direct
 link. `scripts\run-daily.cmd` runs this after refreshing prices, so the scheduled
 message reflects the newest scan.
 
+Successful watchlist email is remembered in the ignored
+`private/deliveries.sqlite3`. The same auction at the same latest bid is omitted
+next time; a changed bid or a new listing id remains eligible. Each selection is
+its own stream, so `--verdict hunting` does not mark the full watchlist or a
+different verdict selection as delivered. Use `--repeat-delivery` with
+`--email` for an intentional resend. The full retry and overlap contract is in
+[Delivery receipts](DELIVERY.md).
+
 Marking a lot `passed` is usually better than dropping it: the entry stays, so a
 later run does not silently start following it again.
 

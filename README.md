@@ -19,6 +19,8 @@ canonical JSON or CSV, live HTTP sources, or a combination of both.
 - Filters pickup locations with case-insensitive configured names.
 - Enforces configurable HTTP request limits to avoid unnecessary load.
 - Remembers observations and price changes in SQLite.
+- Remembers successful deliveries separately, so unchanged listings do not
+  repeat across overlapping runs.
 - Retires finite interests after an explicitly assigned win, and can reopen them.
 - Renders plain-text and photo-backed HTML reports and can send them over SMTP.
 
@@ -121,8 +123,12 @@ quiet day should never look alike:
 Showing the best 30; 766 more matched. Raise reports.max_items to see them.
 ```
 
-The cap is applied once, before the report is printed, emailed, posted, or
-followed in the watchlist, so all four agree on what today's report was.
+The local report applies the cap to today's ranking. Each outbound destination
+first removes unchanged listings it has already received, then applies the same
+configured limit (and any smaller transport limit). That keeps an old top result
+from occupying a slot that could carry a lower-ranked new one. The delivered
+report counts both kinds of omission; the exact rules are in
+[Delivery receipts](docs/DELIVERY.md).
 
 ## What gets read first
 
@@ -255,8 +261,10 @@ accounts normally require an app password rather than the ordinary account passw
 ```
 
 Run that command from Windows Task Scheduler, cron, or another scheduler to send
-a periodic digest. Repeated observations are retained so reports can distinguish
-new listings from changed prices.
+a periodic digest. Successful deliveries are retained separately from
+observations, so an unchanged listing is not repeated merely because two runs'
+closing windows overlap. A changed bid and a relisting under a new auction id
+remain eligible.
 
 Before scheduling, check the local prerequisites without contacting the
 provider or mail server:
@@ -328,9 +336,11 @@ a short report is never mistaken for a quiet day.
 
 That setting is the only built-in digest boundary. Schedule
 `scripts\run-daily.cmd` twice -- say 09:00 and 17:00 -- with the same
-configuration.Because two 14-hour windows overlap, a still-open lot can appear
-in both messages. Avoid overlapping windows if repeats are distracting; durable
-delivery deduplication needs a notification ledger, which is not implemented yet.
+configuration.The two 14-hour windows may overlap, but their email receipts do
+not: the later run omits a still-open lot when that recipient already accepted
+it at the same bid. A changed bid remains eligible, and unchanged lots are
+removed before the report cap so they cannot crowd out new ones. See
+[Delivery receipts](docs/DELIVERY.md) for retries and explicit resends.
 
 The report's first line names when the earliest lot closes, because that is the
 fact that decides whether the rest is worth reading now. The same fact is
@@ -363,14 +373,15 @@ justify the drive rather than merely good.
 
 Setting that number needs one piece of arithmetic, because the two scoring
 paths do not reach the same heights. An interest match starts at 80 and can add
-at most 3 for a listing seen for the first time and 7 for one closing within
-`ending_soon_minutes`, so **an interest match tops out at exactly 90**, and only
-for a lot carrying no condition penalty at all. A retail-ratio match starts from
-the discount itself -- a lot at 13% of stated retail starts at 87 -- so it clears
-a high bar easily.
+at most 7 for closing within `ending_soon_minutes`, so its **quality score tops
+out at 87**, and only for a lot carrying no condition penalty. Freshness is a
+reading-order signal instead: a new listing can add 3 to unweighted priority,
+bringing the maximum to 90, but it cannot make a lot clear a quality bar. A
+retail-ratio match starts from the discount itself -- a lot at 13% of stated
+retail starts at 87 -- so it clears a high bar easily.
 
-A `far_minimum_score` of 90 or more therefore means "at far branches, show me deep
-discounts but never the things I actually asked for", which is usually the
+A `far_minimum_score` of 88 or more therefore means "at far branches, show me
+deep discounts but never the things I actually asked for", which is usually the
 opposite of what the interest weights are for. Somewhere in the low 80s lets a
 wanted thing through while still asking a discount to be remarkable.
 
@@ -631,7 +642,10 @@ Email only the lots you explicitly flagged as `hunting`:
 ```
 
 The email is a compact set of phone-friendly cards with price, headroom,
-condition concerns, the actual-lot photo, and a direct listing link.
+condition concerns, the actual-lot photo, and a direct listing link. Successful
+delivery is remembered per selection, so an unchanged `hunting` list does not
+produce the same mail again. Add `--repeat-delivery` for an intentional resend;
+see [Delivery receipts](docs/DELIVERY.md).
 
 ## Provider policy
 

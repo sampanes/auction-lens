@@ -14,14 +14,23 @@ from __future__ import annotations
 
 import json
 import os
+from collections.abc import Callable
 from typing import Any
-from urllib.request import Request, urlopen
+from urllib.request import Request
 from zoneinfo import ZoneInfo
 
 from ..config import WebhookConfig
 from ..grading import Tag
-from ..models import Candidate, InterestProgress, Listing
-from .findings import OutcomeSummary, build_outcome_summary, closing_time
+from ..http_safety import public_https_opener, require_public_https
+from ..models import Candidate, InterestProgress, Listing, ReadingOrder, ranked
+from .destinations import destination_fingerprint
+from .findings import (
+    NO_DELIVERY_FILTER,
+    DeliverySummary,
+    OutcomeSummary,
+    build_outcome_summary,
+    closing_time,
+)
 
 WEBHOOK_TIMEOUT_SECONDS = 15
 
@@ -42,15 +51,21 @@ def send_webhook(
     zone: ZoneInfo,
     interest_progress: tuple[InterestProgress, ...] = (),
     unreviewed_wins: int = 0,
+    delivery: DeliverySummary = NO_DELIVERY_FILTER,
+    order: ReadingOrder = ReadingOrder.PRIORITY,
+    *,
+    opener: Callable[..., Any] | None = None,
 ) -> None:
     """Post the best candidates to the configured chat webhook."""
-    address = webhook_address(config)
+    address = _ready_address(config)
     payload = build_message(
         candidates,
         config,
         zone,
         interest_progress,
         unreviewed_wins,
+        delivery,
+        order,
     )
     request = Request(
         address,
@@ -58,7 +73,8 @@ def send_webhook(
         headers={"Content-Type": "application/json"},
         method="POST",
     )
-    with urlopen(request, timeout=WEBHOOK_TIMEOUT_SECONDS) as response:
+    open_request = public_https_opener() if opener is None else opener
+    with open_request(request, timeout=WEBHOOK_TIMEOUT_SECONDS) as response:
         response.read()
 
 
@@ -67,9 +83,32 @@ def webhook_address(config: WebhookConfig) -> str:
     address = os.getenv(config.url_env, "").strip()
     if not address:
         raise RuntimeError(f"{config.url_env} must contain the webhook address")
-    if not address.startswith("https://"):
-        raise ValueError("the webhook address must be HTTPS")
+    require_public_https(address)
     return address
+
+
+def webhook_destination(config: WebhookConfig) -> str:
+    """An opaque identity for the resolved webhook this run would contact."""
+    return destination_fingerprint(_ready_address(config))
+
+
+def check_webhook_ready(config: WebhookConfig) -> None:
+    """Validate local webhook settings without connecting or posting anything."""
+    _ready_address(config)
+
+
+def _ready_address(config: WebhookConfig) -> str:
+    if not config.enabled:
+        raise RuntimeError("webhook reporting is disabled in the selected configuration")
+    return webhook_address(config)
+
+
+def webhook_item_limit(config: WebhookConfig, report_limit: int | None) -> int:
+    """The exact number of cards the transport can accept from one report."""
+    limits = [config.max_items, HIGHEST_EMBED_COUNT]
+    if report_limit is not None:
+        limits.append(report_limit)
+    return min(limits)
 
 
 def build_message(
@@ -78,23 +117,32 @@ def build_message(
     zone: ZoneInfo,
     interest_progress: tuple[InterestProgress, ...] = (),
     unreviewed_wins: int = 0,
+    delivery: DeliverySummary = NO_DELIVERY_FILTER,
+    order: ReadingOrder = ReadingOrder.PRIORITY,
 ) -> dict[str, Any]:
     """One message: a line saying how many, then a card for each of the best.
 
     Public because it is worth testing without posting anything anywhere.
     """
-    shown = candidates[: min(config.max_items, HIGHEST_EMBED_COUNT)]
+    selected = ranked(candidates, limit=webhook_item_limit(config, None))
+    shown = ranked(selected, order=order)
     outcomes = build_outcome_summary(interest_progress, unreviewed_wins)
     return {
         "username": config.username,
-        "content": _content(len(candidates), len(shown), outcomes),
+        "content": _content(len(candidates), len(shown), outcomes, delivery),
         "embeds": [_card(candidate, zone) for candidate in shown],
     }
 
 
-def _content(found: int, shown: int, outcomes: OutcomeSummary) -> str:
+def _content(
+    found: int,
+    shown: int,
+    outcomes: OutcomeSummary,
+    delivery: DeliverySummary,
+) -> str:
     """Add outcome context without letting Discord reject an oversized post."""
-    lines = [_headline(found, shown)]
+    lines = [_headline(found, shown, delivery)]
+    lines.extend(delivery.lines)
     if outcomes.warning:
         lines.append(outcomes.warning)
     if outcomes.progress:
@@ -105,8 +153,10 @@ def _content(found: int, shown: int, outcomes: OutcomeSummary) -> str:
     return content[: HIGHEST_CONTENT_LENGTH - 3].rstrip() + "..."
 
 
-def _headline(found: int, shown: int) -> str:
+def _headline(found: int, shown: int, delivery: DeliverySummary) -> str:
     if not found:
+        if delivery.active and not delivery.repeated:
+            return "No new or price-changed matches for this destination."
         return "Nothing matched this run."
     if shown < found:
         return f"{found} matches; the best {shown} follow."
