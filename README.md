@@ -313,7 +313,7 @@ not on the same terms:
 [locations]
 allowed = ["phoenix", "mesa"]
 far = ["phoenix"]
-far_minimum_score = 90
+far_minimum_score = 85
 ```
 
 Everything at a near branch is reported as usual. A lot at a far branch is
@@ -328,7 +328,7 @@ for a lot carrying no condition penalty at all. A retail-ratio match starts from
 the discount itself -- a lot at 13% of stated retail starts at 87 -- so it clears
 a high bar easily.
 
-A `far_minimum_score` near 90 therefore means "at far branches, show me deep
+A `far_minimum_score` of 90 or more therefore means "at far branches, show me deep
 discounts but never the things I actually asked for", which is usually the
 opposite of what the interest weights are for. Somewhere in the low 80s lets a
 wanted thing through while still asking a discount to be remarkable.

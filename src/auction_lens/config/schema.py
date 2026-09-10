@@ -412,6 +412,13 @@ class ReportsConfig:
             require_at_least(self.max_items, 1, field_name="max_items")
 
 
+# An interest match tops out at 90 (80 base, 3 for new, 7 for ending soon), so
+# a bar at 90 or above hides far branches rather than being choosier about
+# them. This sits just under the ceiling: a wanted thing still gets through,
+# and a plain one no longer justifies the drive.
+DEFAULT_FAR_MINIMUM_SCORE = 85
+
+
 @dataclass(frozen=True)
 class LocationPolicy:
     """Which pickup locations are worth collecting from, and which must earn it.
@@ -424,7 +431,7 @@ class LocationPolicy:
 
     allowed: tuple[str, ...] = ()
     far: tuple[str, ...] = ()
-    far_minimum_score: int = 90
+    far_minimum_score: int = DEFAULT_FAR_MINIMUM_SCORE
 
     def __post_init__(self) -> None:
         require_within(
