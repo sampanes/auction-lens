@@ -67,7 +67,8 @@ from ..storage import (
     WatchlistStore,
 )
 from ..valuation import ValuationEngine
-from .parser import CLEAR, DEFAULT_INBOX, DROP, EXAMPLE_CONFIG, PROGRAM
+from .parser import CLEAR, DEFAULT_CONFIG, DEFAULT_INBOX, DROP, EXAMPLE_CONFIG, PROGRAM
+from .profile_wizard import edit_profile, restore_profile
 
 # The host most people setting this up are reaching for; compatible hosts are accepted.
 DEFAULT_SMTP_HOST = "smtp.gmail.com"
@@ -108,9 +109,13 @@ def setup(args: argparse.Namespace) -> int:
     print(_created(config, Path(EXAMPLE_CONFIG).read_text(encoding="utf-8")))
     print(_created(env_file, ENV_TEMPLATE))
     _report_required_edits(config, env_file)
+    print()
+    if config.suffix == ".toml":
+        print(f"Review or change practical limits: {_profile_editor_command(config)}")
+    else:
+        print("Guided profile editing requires a configuration ending in .toml.")
     if args.email:
         return _ask_for_mail_settings(config, env_file)
-    print()
     print(f"Then: {PROGRAM} daily")
     print(f"To be emailed the report: {PROGRAM} setup --email")
     return SUCCESS
@@ -118,8 +123,20 @@ def setup(args: argparse.Namespace) -> int:
 
 def profile(args: argparse.Namespace) -> int:
     """Explain the stable operator choices without consulting any runtime state."""
+    if args.edit:
+        edit_profile(args.config)
+        return SUCCESS
+    if args.restore:
+        restore_profile(args.config)
+        return SUCCESS
     print(render_profile(load_config(args.config)), end="")
     return SUCCESS
+
+
+def _profile_editor_command(config: Path) -> str:
+    if config == Path(DEFAULT_CONFIG):
+        return f"{PROGRAM} profile --edit"
+    return f'{PROGRAM} profile --config "{config}" --edit'
 
 
 def _ask_for_mail_settings(config: Path, env_file: Path) -> int:

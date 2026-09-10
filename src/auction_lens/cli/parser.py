@@ -84,9 +84,20 @@ def _add_setup(subparsers) -> None:
 def _add_profile(subparsers) -> None:
     """Read back what the stable, human-owned configuration means."""
     profile = subparsers.add_parser(
-        PROFILE, help="explain the configured interests and practical limits"
+        PROFILE, help="read interests and safely edit practical limits"
     )
     profile.add_argument("--config", default=DEFAULT_CONFIG)
+    action = profile.add_mutually_exclusive_group()
+    action.add_argument(
+        "--edit",
+        action="store_true",
+        help="interactively update the practical large-item limits",
+    )
+    action.add_argument(
+        "--restore",
+        action="store_true",
+        help="preview and restore the configuration saved before the last edit",
+    )
 
 
 def _add_doctor(subparsers) -> None:

@@ -2,16 +2,18 @@
 
 ## Profile wizard and scenario planner
 
-Status: read-only profile explanation implemented; guided editing remains
-planned after reliable provider normalization.
+Status: readback and the focused large-item handling editor are implemented;
+broader editing remains planned only where repeated use justifies it.
 
-`auction-lens profile` is the first, deliberately read-only slice. It renders
+`auction-lens profile` is the deliberately read-only view. It renders
 the effective configuration in plain language without reading credentials or
-runtime data. A future editor should reuse that explanation as its confirmation
-screen rather than inventing a second representation of the rules.
+runtime data. `profile --edit` reuses that exact explanation as its confirmation
+screen, shows a zero-context TOML diff, requires confirmation, writes atomically,
+and retains an ignored rollback snapshot. `profile --restore` previews the same
+way before exchanging the current file with that snapshot.
 
-The underlying TOML remains the source of truth, but routine configuration should
-not require hand-editing it. A future guided editor should:
+The underlying TOML remains the source of truth. The first questionnaire edits
+only the three stable decisions behind large-item handling. Any extension should:
 
 1. Ask only questions relevant to current listings or an explicit setup task.
 2. Distinguish stable preferences from temporary circumstances.
@@ -20,8 +22,9 @@ not require hand-editing it. A future guided editor should:
 5. Convert repeated per-listing decisions into a proposed general rule only after
    asking the operator.
 
-The wizard must remain an editor for the existing profile, not a second rules
-engine. Personal answers stay in ignored local configuration.
+The wizard remains an editor for the existing profile, not a second rules
+engine. It records what action to take, not a biography about trucks, trailers,
+or available friends. Personal answers stay in ignored local configuration.
 
 ## Feedback-assisted tuning
 

@@ -38,6 +38,7 @@ keeps `scoring` readable without `valuation` open beside it.
 | `models` | What is a listing, a candidate, a valuation? |
 | `config/` | What did the operator's TOML file ask for? |
 | `config/profile` | What do those stable operator choices mean in plain language? |
+| `config/editor` | How can a small profile change preserve the original TOML and be reversed? |
 | `ingest/canonical` | How do canonical JSON and CSV files become listings? |
 | `ingest/nellis` | How does one saved provider page become a canonical row? |
 | `ingest/turbo_stream` | How is a streamed page payload decoded? |
