@@ -11,7 +11,7 @@ from collections.abc import Iterable
 from html import escape
 from zoneinfo import ZoneInfo
 
-from ..models import Candidate
+from ..models import Candidate, ReadingOrder
 from .findings import Fact, Finding, Handling, Photo, Report, Valuation, build_report
 from .searches import SearchHint
 
@@ -36,9 +36,10 @@ def render_html(
     candidates: list[Candidate],
     zone: ZoneInfo,
     searches: tuple[SearchHint, ...] = (),
+    order: ReadingOrder = ReadingOrder.PRIORITY,
 ) -> str:
     """Render every candidate as a card, strongest first."""
-    return _as_html(build_report(candidates, zone, searches))
+    return _as_html(build_report(candidates, zone, searches, order))
 
 
 def _as_html(report: Report) -> str:

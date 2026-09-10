@@ -16,7 +16,14 @@ from dataclasses import dataclass
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from ..models import Candidate, LogisticsStatus, ValuationBand, ValuationSummary, ranked
+from ..models import (
+    Candidate,
+    LogisticsStatus,
+    ReadingOrder,
+    ValuationBand,
+    ValuationSummary,
+    ranked,
+)
 from .searches import SearchHint
 
 EMPTY_REPORT = "Auction Lens found no listings meeting the configured criteria."
@@ -127,6 +134,7 @@ def build_report(
     candidates: list[Candidate],
     zone: ZoneInfo,
     searches: tuple[SearchHint, ...] = (),
+    order: ReadingOrder = ReadingOrder.PRIORITY,
 ) -> Report:
     """Turn scored candidates into everything a report has to say about them.
 
@@ -143,7 +151,7 @@ def build_report(
                 title=category,
                 findings=tuple(_finding(item, zone) for item in items),
             )
-            for category, items in _by_category(candidates).items()
+            for category, items in _by_category(candidates, order).items()
         ),
     )
 
@@ -166,10 +174,17 @@ def readable(identifier: str) -> str:
     return identifier.replace("_", " ").title()
 
 
-def _by_category(candidates: list[Candidate]) -> dict[str, list[Candidate]]:
-    """Group findings, ordering both the groups and their contents by score."""
+def _by_category(
+    candidates: list[Candidate], order: ReadingOrder
+) -> dict[str, list[Candidate]]:
+    """Group findings, ordering both the groups and their contents to read.
+
+    Ordering only, never selection: which lots are worth reporting was
+    already decided against the bars, and a reader preferring to see the
+    dearest thing first must not quietly change what reached the page.
+    """
     grouped: dict[str, list[Candidate]] = defaultdict(list)
-    for candidate in ranked(candidates):
+    for candidate in ranked(candidates, order=order):
         grouped[str(candidate.category)].append(candidate)
     return grouped
 

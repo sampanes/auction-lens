@@ -10,7 +10,7 @@ from __future__ import annotations
 from collections.abc import Iterator
 from zoneinfo import ZoneInfo
 
-from ..models import Candidate
+from ..models import Candidate, ReadingOrder
 from .findings import Fact, Finding, Handling, Report, Valuation, build_report
 from .searches import SearchHint
 
@@ -27,9 +27,10 @@ def render_text(
     candidates: list[Candidate],
     zone: ZoneInfo,
     searches: tuple[SearchHint, ...] = (),
+    order: ReadingOrder = ReadingOrder.PRIORITY,
 ) -> str:
     """Render every candidate, grouped by category and ordered by score."""
-    return _as_text(build_report(candidates, zone, searches))
+    return _as_text(build_report(candidates, zone, searches, order))
 
 
 def _as_text(report: Report) -> str:

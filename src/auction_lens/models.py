@@ -326,7 +326,26 @@ class Candidate:
         return self.score * self.weight
 
 
-def ranked(candidates: list[Candidate], limit: int | None = None) -> list[Candidate]:
+class ReadingOrder(StrEnum):
+    """What "first" means in a report.
+
+    Priority is the default and the one every bar is tuned against: how good a
+    lot is, scaled by how much this operator wanted it.
+
+    Retail answers a different question -- what is the most valuable thing here
+    -- which is the one somebody asks when they are about to go and collect,
+    and it deliberately ignores how well the lot scored.
+    """
+
+    PRIORITY = "priority"
+    RETAIL = "retail"
+
+
+def ranked(
+    candidates: list[Candidate],
+    limit: int | None = None,
+    order: ReadingOrder = ReadingOrder.PRIORITY,
+) -> list[Candidate]:
     """Best first, and optionally only the best few.
 
     One authority for reading order, because a cap means "the best" only if
@@ -336,8 +355,20 @@ def ranked(candidates: list[Candidate], limit: int | None = None) -> list[Candid
     bar of its own: the weights decide what is worth reading, and this only
     decides how long a report a person will actually finish.
     """
-    best = sorted(candidates, key=lambda item: item.priority, reverse=True)
+    best = sorted(candidates, key=_reading_key(order), reverse=True)
     return best if limit is None else best[:limit]
+
+
+def _reading_key(order: ReadingOrder):
+    """The one value each ordering sorts on.
+
+    A lot with no stated retail sorts last rather than first, because an
+    unknown value is not a large one. Priority breaks ties either way, so two
+    lots of the same worth still arrive in a sensible order.
+    """
+    if order == ReadingOrder.RETAIL:
+        return lambda item: (item.listing.estimated_retail or Decimal(0), item.priority)
+    return lambda item: (item.priority,)
 
 
 @dataclass(frozen=True)

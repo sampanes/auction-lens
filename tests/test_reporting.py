@@ -11,7 +11,7 @@ from inspect import signature
 from unittest.mock import patch
 
 from auction_lens.env_file import load_env_file
-from auction_lens.models import WatchedItem
+from auction_lens.models import ReadingOrder, WatchedItem
 from auction_lens.reporting import (
     build_report,
     check_email_ready,
@@ -104,6 +104,65 @@ class ClosingTimeTests(unittest.TestCase):
         report = render_text(evaluate(self.listings[LASER_LEVEL], self.config), REPORT_ZONE)
         self.assertIn("Example Laser Level Kit", report)
         self.assertNotIn("Closes", report)
+
+
+class ReadingOrderTests(unittest.TestCase):
+    """What "first" means, which is a reader's question and not a scorer's."""
+
+    def setUp(self):
+        self.config = example_config()
+        self.template = example_listings()[SOUNDBAR]
+
+    def _candidates(self, priced):
+        """One wanted candidate per (id, retail), scored however they score."""
+        found = []
+        for index, retail in enumerate(priced):
+            listing = replace(
+                self.template,
+                listing_id=f"lot-{index}",
+                title=f"Example Sound Bar {index}",
+                estimated_retail=retail,
+            )
+            found.extend(
+                item
+                for item in evaluate(listing, self.config)
+                if item.category == "wanted"
+            )
+        return found
+
+    def test_retail_order_reads_dearest_first(self):
+        found = self._candidates([Decimal("120"), Decimal("900"), Decimal("300")])
+        report = build_report(found, REPORT_ZONE, (), ReadingOrder.RETAIL)
+        shown = [
+            fact.value
+            for group in report.groups
+            for finding in group.findings
+            for fact in finding.facts
+            if fact.label == "Retail"
+        ]
+        self.assertEqual(shown, ["$900", "$300", "$120"])
+
+    def test_a_lot_with_no_stated_retail_reads_last(self):
+        # An unknown value is not a large one, so it does not lead the report.
+        found = self._candidates([None, Decimal("500")])
+        report = build_report(found, REPORT_ZONE, (), ReadingOrder.RETAIL)
+        titles = [
+            finding.title for group in report.groups for finding in group.findings
+        ]
+        self.assertEqual(titles[-1], "Example Sound Bar 0")
+
+    def test_ordering_never_changes_which_lots_are_reported(self):
+        # The bars decide what is worth reporting; this decides only what is
+        # read first. Both orders must show the same lots.
+        found = self._candidates([Decimal("120"), Decimal("900"), None])
+        def titles(order):
+            report = build_report(found, REPORT_ZONE, (), order)
+            return {
+                finding.title
+                for group in report.groups
+                for finding in group.findings
+            }
+        self.assertEqual(titles(ReadingOrder.PRIORITY), titles(ReadingOrder.RETAIL))
 
 
 class HtmlReportTests(unittest.TestCase):

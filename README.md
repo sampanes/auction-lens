@@ -122,6 +122,23 @@ Showing the best 30; 766 more matched. Raise reports.max_items to see them.
 The cap is applied once, before the report is printed, emailed, posted, or
 followed in the watchlist, so all four agree on what today's report was.
 
+## What gets read first
+
+```toml
+[reports]
+order = "retail"
+```
+
+`priority` is the default: how good a lot is, scaled by how much you said you
+wanted it. `retail` answers the other question -- what is the most valuable
+thing here -- which is the one you ask when you are about to drive out and
+collect, and it ignores how well the lot scored.
+
+Reading order only. Which lots are worth reporting was already settled by the
+scoring bars, and preferring to see the dearest thing first must not quietly
+change what reached the page. A lot with no stated retail reads last, because
+an unknown value is not a large one.
+
 ## When a lot closes
 
 Every report line says when bidding on that lot ends:

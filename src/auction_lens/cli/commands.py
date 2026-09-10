@@ -279,13 +279,14 @@ def run(args: argparse.Namespace) -> int:
     )
     zone = config.acquisition.zone
     searches = result.searches
-    print(render_text(result.candidates, zone, searches), end="")
+    order = config.reports.order
+    print(render_text(result.candidates, zone, searches, order), end="")
     _report_skipped(result.listings_from_other_providers, config.provider.provider_id)
     _report_capped(result.matches_not_shown, len(result.candidates))
     _report_followed(result.lots_followed, args.watchlist)
 
     if args.email:
-        send_email(result.candidates, config.email, zone, searches)
+        send_email(result.candidates, config.email, zone, searches, order)
     if args.webhook:
         send_webhook(result.candidates, config.webhook, zone)
         print(f"Posted {len(result.candidates)} match(es) to the webhook.")
