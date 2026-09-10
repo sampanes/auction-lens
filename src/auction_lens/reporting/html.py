@@ -11,8 +11,17 @@ from collections.abc import Iterable
 from html import escape
 from zoneinfo import ZoneInfo
 
-from ..models import Candidate, ReadingOrder
-from .findings import Fact, Finding, Handling, Photo, Report, Valuation, build_report
+from ..models import Candidate, InterestProgress, ReadingOrder
+from .findings import (
+    Fact,
+    Finding,
+    Handling,
+    OutcomeSummary,
+    Photo,
+    Report,
+    Valuation,
+    build_report,
+)
 from .searches import SearchHint
 
 CARD_STYLE = "border:1px solid #ddd;border-radius:8px;padding:14px;margin:12px 0"
@@ -30,6 +39,9 @@ SEPARATOR = " &middot; "
 SEARCH_HEADING = "Paste into the site search to see a whole category:"
 SEARCH_RULE_STYLE = "margin:12px 0 4px 0;font-weight:bold"
 SEARCH_NOTE_STYLE = "color:#666;font-size:12px"
+OUTCOME_WARNING_STYLE = (
+    "border-left:4px solid #c62828;background:#fff4f4;padding:10px;margin:12px 0"
+)
 
 
 def render_html(
@@ -37,20 +49,49 @@ def render_html(
     zone: ZoneInfo,
     searches: tuple[SearchHint, ...] = (),
     order: ReadingOrder = ReadingOrder.PRIORITY,
+    interest_progress: tuple[InterestProgress, ...] = (),
+    unreviewed_wins: int = 0,
 ) -> str:
     """Render every candidate as a card, strongest first."""
-    return _as_html(build_report(candidates, zone, searches, order))
+    return _as_html(
+        build_report(
+            candidates,
+            zone,
+            searches,
+            order,
+            interest_progress,
+            unreviewed_wins,
+        )
+    )
 
 
 def _as_html(report: Report) -> str:
     if report.is_empty:
-        return f"<p>{escape(report.headline)}</p>"
-    sections = [f"<h2>{escape(report.headline)}</h2>"]
+        sections = [f"<p>{escape(report.headline)}</p>"]
+    else:
+        sections = [f"<h2>{escape(report.headline)}</h2>"]
+    sections.append(_outcomes(report.outcomes))
     for group in report.groups:
         sections.append(f"<h3>{escape(group.title.title())}</h3>")
         sections.extend(_card(finding) for finding in group.findings)
     sections.append(_searches(report))
     return "".join(sections)
+
+
+def _outcomes(outcomes: OutcomeSummary) -> str:
+    """Render the shared wording, emphasizing bookkeeping that needs a person."""
+    if outcomes.is_silent:
+        return ""
+    parts = []
+    if outcomes.warning:
+        parts.append(
+            f"<p style='{OUTCOME_WARNING_STYLE}'><strong>"
+            f"{escape(outcomes.warning)}</strong></p>"
+        )
+    if outcomes.progress:
+        parts.append("<h3>Interest progress</h3>")
+        parts.append(_list_items(escape(status) for status in outcomes.progress))
+    return "".join(parts)
 
 
 def _searches(report: Report) -> str:

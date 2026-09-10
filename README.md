@@ -19,6 +19,7 @@ canonical JSON or CSV, live HTTP sources, or a combination of both.
 - Filters pickup locations with case-insensitive configured names.
 - Enforces configurable HTTP request limits to avoid unnecessary load.
 - Remembers observations and price changes in SQLite.
+- Retires finite interests after an explicitly assigned win, and can reopen them.
 - Renders plain-text and photo-backed HTML reports and can send them over SMTP.
 
 ## Start here
@@ -89,9 +90,10 @@ code. One command translates its stable operator choices into plain language:
 .venv\Scripts\auction-lens.exe profile
 ```
 
-It explains each interest and its effective condition rules, the general
-bargain rule, locations, large-item handling, report length, and whether
-valuation is active. Empty settings are stated rather than skipped. The command
+It explains each interest, whether it is ongoing or finite, its effective
+condition rules, the general bargain rule, locations, large-item handling,
+report length, and whether valuation is active. Empty settings are stated rather
+than skipped. The command
 does not read credentials, listings, history, or the network, and it never
 writes the configuration.
 
@@ -287,7 +289,9 @@ One command asks the provider's search and writes listings ready to score:
 A search page carries the complete data for every lot it lists, so one request
 describes a whole page of them rather than one. Terms come from `--search`, or
 from `[provider.acquisition] searches`, or failing both from the `any_terms` of
-your `[[interests]]` -- so what you want is written down once.
+your `[[interests]]` -- so what you want is written down once. In the one-door
+`daily` flow, that fallback omits finite interests already satisfied by recorded
+fulfillments. Explicit search lists remain explicit and are never silently pruned.
 
 A term only finds what you can name. `[provider.acquisition] categories` sweeps
 the provider's own categories as well, which is how a misspelled listing or a
@@ -322,11 +326,11 @@ the setting out entirely to report everything still open, however distant.
 Whatever the window sets aside is counted out loud, with the setting named, so
 a short report is never mistaken for a quiet day.
 
-That setting is also the whole of the split digest. Schedule
-`scriptsun-daily.cmd` twice -- say 09:00 and 17:00 -- and the evening mail
-carries only what the morning's lots left behind, because the rest have closed
-in between. There is no second script, no second configuration, and nothing in
-the tool that knows what a schedule is.
+That setting is the only built-in digest boundary. Schedule
+`scripts\run-daily.cmd` twice -- say 09:00 and 17:00 -- with the same
+configuration.Because two 14-hour windows overlap, a still-open lot can appear
+in both messages. Avoid overlapping windows if repeats are distracting; durable
+delivery deduplication needs a notification ledger, which is not implemented yet.
 
 The report's first line names when the earliest lot closes, because that is the
 fact that decides whether the rest is worth reading now. The same fact is
@@ -442,6 +446,31 @@ condition policy, allowing one known-broken listing to fail a `purpose = "use"`
 rule while matching a carefully constrained `purpose = "salvage"` rule. Broad
 anomaly discovery has a separate condition policy as well.
 
+Some wants end. A positive `wanted` count says how many confirmed purchases
+satisfy a rule before it stops matching:
+
+```toml
+[[interests]]
+name = "metal shed"
+id = "yard-shed"
+wanted = 1
+any_terms = ["metal shed"]
+```
+
+Omit `wanted` for an ongoing interest. Auction Lens never decrements the file or
+writes a hidden retired switch; it derives progress from explicit fulfillments
+on won lots in the ignored watchlist. Raising `wanted`, changing a verdict away
+from `won`, or clearing its allocations makes the rule active again on the next
+run. Clearing also records that you reviewed the purchase and it fulfilled none,
+so the report does not keep asking the same question.
+If every fallback interest is satisfied and no explicit search or category sweep
+is configured, `daily` makes no provider request and sends the quiet progress
+report instead of failing for lack of terms.
+
+Finite interests require a stable `id`, so improving a display name later
+cannot detach it from recorded fulfillments. Ongoing interests may omit it and
+use the rule name as their identity.
+
 Each rule also has a `minimum_retail`, the floor that separates a thing from its
 accessories: a guitar cable says "guitar" as loudly as a guitar does, and only
 the stated value tells them apart. It pairs with `max_total_cost` -- what a lot
@@ -552,19 +581,40 @@ rest, each red, amber, or green), its own 1-5 quality rating, and the photo
 gallery -- whose last image is the photograph of the actual lot rather than the
 manufacturer's stock shot.
 
-On top of that you record what *you* think: your own estimate, a verdict, and a
-note. A run never overwrites any of it.
+On top of that you record what *you* think: your own estimate, a verdict, a
+note, which interest a won lot actually fulfilled, and whether you reviewed
+that question. A run never overwrites any of it. Match provenance and
+fulfillment are separate, so one purchase never silently satisfies every rule
+it happened to match.
+
+Every report shows a copyable `Watch key` such as `nellis/synthetic-001`.
+Pass that one value back with `watch --key`; the older `--source` plus
+`--listing-id` spelling remains available for scripts.
 
 ```cmd
 .venv\Scripts\auction-lens.exe watch ^
-  --source nellis ^
-  --listing-id synthetic-001 ^
+  --key nellis/synthetic-001 ^
   --verdict hunting ^
   --estimate 60 ^
   --note "worth it under 40 all in"
 
 .venv\Scripts\auction-lens.exe watchlist
 ```
+
+Assign a win to a finite want explicitly:
+
+```cmd
+.venv\Scripts\auction-lens.exe watch ^
+  --key nellis/synthetic-001 ^
+  --verdict won ^
+  --fulfills soundbar
+```
+
+The next run reports `1/1 fulfilled; retired` and stops applying that interest.
+A won multi-match lot accepts repeated `--fulfills`; supplying the flags
+replaces the saved allocation with exactly what you name. If the purchase
+fulfilled none of its matches, `--clear-fulfillments` clears any old allocation,
+reopens those finite interests, and records that you reviewed the question.
 
 The list prints keenest first, with headroom -- your estimate minus the latest
 total -- so a lot that has already cost more than you said it was worth says so.

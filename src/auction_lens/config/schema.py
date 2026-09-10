@@ -191,6 +191,10 @@ class InterestRule:
     """One reason a listing would be useful, with the conditions that use allows."""
 
     name: str
+    # A stable machine-facing identity lets the display name improve without
+    # severing outcomes already recorded against the rule. Existing configs
+    # need no migration: an omitted id settles to the original name.
+    interest_id: str = ""
     purpose: str = "use"
     any_terms: tuple[str, ...] = ()
     all_terms: tuple[str, ...] = ()
@@ -203,6 +207,9 @@ class InterestRule:
     # says "guitar" as loudly as a guitar does, and only the value tells them
     # apart. Paired with max_total_cost: what it is worth, what it may cost.
     minimum_retail: Decimal | None = None
+    # None is an ongoing interest. A positive count plus an explicit stable id
+    # lets recorded wins retire it without making the matching rule stateful.
+    wanted: int | None = None
     minimum_score: int = 0
     # How much this interest matters next to the others. It ranks matches
     # rather than admitting them, so raising it can never smuggle a lot past
@@ -212,6 +219,14 @@ class InterestRule:
     condition: ConditionPolicy = field(default_factory=ConditionPolicy)
 
     def __post_init__(self) -> None:
+        if self.wanted is not None:
+            if isinstance(self.wanted, bool) or not isinstance(self.wanted, int):
+                raise ValueError("wanted must be a whole number")
+            require_at_least(self.wanted, 1, field_name="wanted")
+            if not self.interest_id.strip():
+                raise ValueError("finite interests require an explicit stable id")
+        effective_id = self.interest_id.strip() or self.name
+        object.__setattr__(self, "interest_id", effective_id)
         require_within(
             self.minimum_score,
             low=LOWEST_SCORE,

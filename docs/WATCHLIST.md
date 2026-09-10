@@ -14,14 +14,15 @@ lot collects an hourly trail; scan once and it collects a single point. That
 trail is the point of the file: it is how you see that a lot sat at $18 all
 morning and then moved four times in the last twenty minutes.
 
-Two blocks make up an entry.
+Three blocks make up an entry.
 
 | Block | Written by | Fields |
 |---|---|---|
 | What the provider said | every run | `title`, `url`, `photo_urls`, `estimated_retail`, `conditions`, `quality_rating`, `readings` |
-| What you think | only you | `my_estimate`, `verdict`, `note` |
+| Why it was followed | scoring, merged across runs | `matched_interests` |
+| What you think | only you | `my_estimate`, `verdict`, `note`, `fulfilled_interests`, `fulfillment_reviewed` |
 
-**A run never touches the second block.** Adding a note next week cannot erase
+**A run never touches the third block.** Adding a note next week cannot erase
 the estimate you wrote today, and re-reading the same input file does not double
 the trail: a reading is keyed by the instant it was scanned.
 
@@ -99,6 +100,54 @@ SQLite is unaffected and stays keyed on the auction, which is what keeps
 
 The list prints them in that order, so what you are chasing is read first.
 
+## Finite interests and explicit fulfillment
+
+An interest with `wanted = 1` stops matching after one confirmed purchase. A
+finite interest also requires a stable `id`, so renaming it later cannot detach
+the purchase from its target. Three facts are deliberately kept apart:
+
+- `matched_interests` records which configured rules surfaced the lot.
+- `fulfilled_interests` records which of those wants you say a won lot satisfied.
+- `fulfillment_reviewed` records that you answered that question, even when the
+  answer was "none."
+
+Auction Lens never assumes that winning a multi-match lot fulfills every match.
+Assign it explicitly, repeating `--fulfills` when one purchase genuinely answers
+more than one want:
+
+```cmd
+.venv\Scripts\auction-lens.exe watch ^
+  --key nellis/synthetic-001 ^
+  --verdict won ^
+  --fulfills soundbar
+```
+
+Supplying `--fulfills` replaces the prior allocation with exactly the values on
+that command and marks the question reviewed. Use `--clear-fulfillments` when
+the purchase fulfilled none: it removes any prior allocation, reopens those
+finite interests, and records the reviewed-none answer so reports do not keep
+asking. A fulfillment counts only while the verdict is `won`, so correcting
+that verdict immediately reopens the interest while retaining an auditable
+record of the earlier answer.
+
+Dropping forgets an item's whole trail, so Auction Lens refuses to drop an item
+that has fulfillment allocations. First clear them (which reopens the interest),
+then run the drop command:
+
+```cmd
+.venv\Scripts\auction-lens.exe watch --key PROVIDER/LISTING-ID --clear-fulfillments
+.venv\Scripts\auction-lens.exe watch --key PROVIDER/LISTING-ID --verdict drop
+```
+
+The value may be the display name or stable `id` from the interest. A lot may
+only fulfill a rule recorded in its own `matched_interests`; typos and unrelated
+rules are rejected with the available choices. Old version-1 watchlists carry
+none of these fields and continue to load. Their wins retire nothing: Auction
+Lens has no honest way to infer which current interest an old purchase
+satisfied. Existing version-2 allocations written before
+`fulfillment_reviewed` are treated as reviewed; an entry without an allocation
+or the flag remains unreviewed.
+
 ## Photos
 
 `photo_urls` is the provider's gallery, in the order it sent them. That order
@@ -111,7 +160,7 @@ The list shows the last one for that reason, and the accessors are named
 
 ```json
 {
-  "version": 1,
+  "version": 2,
   "items": [
     {
       "uid": "nellis:INV-77",
@@ -137,6 +186,11 @@ The list shows the last one for that reason, and the accessors are named
       "my_estimate": "60",
       "verdict": "hunting",
       "note": "worth it under 40 all in",
+      "matched_interests": [
+        { "id": "soundbar", "name": "soundbar" }
+      ],
+      "fulfilled_interests": [],
+      "fulfillment_reviewed": false,
       "readings": [
         {
           "scanned_at": "2026-09-04T18:00:00+00:00",
@@ -155,6 +209,12 @@ Money is written as text, so a rounded float can never become the record.
 `total_cost` is the bid plus buyer premium, tax, processing fee, and any saved
 logistics cost -- the number you actually pay, not the number on the screen.
 
+An absent file means an empty watchlist. An existing file with an unreadable
+top level, a malformed `items` collection, or a newer format version is refused
+before any write. Auction Lens 0.4 and later refuse versions newer than they
+understand; do not edit a version-2 watchlist with Auction Lens 0.3, which
+predates that protection.
+
 `uid` is written for you to read and search; it is derived from `source` plus
 `inventory_id` (or `listing_id` when the provider gives no item id), so editing
 it in place changes nothing. A hand edit that is not
@@ -165,10 +225,12 @@ readable is reported against the entry it broke, as in
 
 Say what you think of a lot. Only the flags you pass are changed:
 
+Every daily finding includes a copyable `Watch key`. It combines the provider
+and listing id into the one argument the command needs:
+
 ```cmd
 .venv\Scripts\auction-lens.exe watch ^
-  --source nellis ^
-  --listing-id synthetic-001 ^
+  --key nellis/synthetic-001 ^
   --verdict hunting ^
   --estimate 60 ^
   --note "worth it under 40 all in"
@@ -189,7 +251,9 @@ skimmed, never the only place the news is.
 Following 2 lot(s) at private\watchlist.json.
 
 [HUNTING] ***..  Example 2.1 Channel Sound Bar with ARC
-  nellis:synthetic-001
+  Watch key: nellis/synthetic-001
+  Matches: soundbar [soundbar]
+  Fulfills: none
   [RED] Used
   [AMBER] Missing Parts Unknown
   Retail $129.00 | My estimate $60.00 | Headroom $39.30
@@ -199,6 +263,18 @@ Following 2 lot(s) at private\watchlist.json.
   Photo of this lot: https://example.invalid/photo/synthetic-001-shelf.jpg
 ```
 
+A won match whose fulfillment has not been reviewed prints the complete
+correction skeleton with that same current listing key:
+
+```text
+Fulfillment unreviewed; fix with auction-lens watch --key nellis/synthetic-001
+  --verdict won --fulfills INTEREST
+```
+
+Use `--clear-fulfillments` instead when you reviewed the purchase and it
+fulfilled none of the matched interests. A reviewed-none win remains visible as
+`Fulfillment reviewed: fulfills none`, but no longer produces an action warning.
+
 Headroom is your estimate minus the latest total. It goes negative once a lot
 has cost more than you said it was worth, which is the number worth seeing
 before bidding again.
@@ -206,7 +282,7 @@ before bidding again.
 Stop following a lot entirely, forgetting its trail:
 
 ```cmd
-.venv\Scripts\auction-lens.exe watch --source nellis --listing-id synthetic-001 --verdict drop
+.venv\Scripts\auction-lens.exe watch --key nellis/synthetic-001 --verdict drop
 ```
 
 ## Emailing your flags

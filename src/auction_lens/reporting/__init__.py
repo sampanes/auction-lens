@@ -1,7 +1,7 @@
 """Deciding what a report says, rendering it, and delivering it."""
 
 from .delivery import check_email_ready, send_email, send_watchlist_email
-from .findings import Report, build_report
+from .findings import OutcomeSummary, Report, build_outcome_summary, build_report
 from .html import render_html
 from .searches import SearchHint, search_hints
 from .text import render_text
@@ -10,6 +10,8 @@ from .webhook import send_webhook
 
 __all__ = [
     "Report",
+    "OutcomeSummary",
+    "build_outcome_summary",
     "build_report",
     "SearchHint",
     "search_hints",

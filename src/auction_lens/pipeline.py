@@ -8,13 +8,26 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
-from decimal import Decimal
 
 from .config import AppConfig
-from .models import Candidate, Listing, ranked, uid_of
+from .models import (
+    Candidate,
+    CandidateCategory,
+    InterestProgress,
+    InterestRef,
+    Listing,
+    ranked,
+    uid_of,
+)
+from .outcomes import plan_interests
 from .reporting.searches import SearchHint, search_hints
 from .scoring import evaluate
-from .storage import LogisticsDecisionStore, ObservationStore, WatchlistStore
+from .storage import (
+    FollowedListing,
+    LogisticsDecisionStore,
+    ObservationStore,
+    WatchlistStore,
+)
 from .valuation import ValuationEngine
 
 
@@ -35,6 +48,11 @@ class RunResult:
     # that matched rather than from the part that fitted, because reaching
     # what the cap held back is the whole reason to offer a phrase.
     searches: tuple[SearchHint, ...] = ()
+    # Finite wants are derived from explicit fulfillments on every run. Carrying the
+    # explanation beside the candidates lets even an empty report say why a
+    # configured interest was intentionally silent.
+    interest_progress: tuple[InterestProgress, ...] = ()
+    unreviewed_wins: int = 0
 
     @property
     def listings_from_other_providers(self) -> int:
@@ -70,20 +88,27 @@ def analyze_listings(
     # One clock for the whole run. Resolving it per listing would let the
     # window a lot is measured against move while the run is under way.
     now = now or datetime.now(UTC)
+    watched = () if watchlist is None else watchlist.items()
+    plan = plan_interests(config.interests, watched)
+    active_config = replace(config, interests=plan.active_rules)
     candidates: list[Candidate] = []
     scored = 0
     skipped = 0
     for listing in listings:
         if listing.source != config.provider.provider_id:
             continue
+        # Observation history answers whether the provider has shown us this
+        # auction before. A reporting window decides when to mention it, not
+        # whether that historical fact occurred.
+        change = observations.observe(listing)
         if not still_worth_reading(listing, now, config.reports.closing_within_hours):
             skipped += 1
             continue
         scored += 1
         matches = evaluate(
             listing,
-            config,
-            observations.observe(listing),
+            active_config,
+            change,
             logistics_decision=decisions.get(listing.source, listing.listing_id),
             now=now,
         )
@@ -95,12 +120,14 @@ def analyze_listings(
     reportable = ranked(candidates, config.reports.max_items)
     return RunResult(
         candidates=reportable,
-        searches=search_hints(candidates, listings, config.interests),
+        searches=search_hints(candidates, listings, plan.active_rules),
         listings_read=len(listings),
         listings_scored=scored,
         matches_found=len(candidates),
-        lots_followed=_follow(reportable, watchlist),
+        lots_followed=_follow(reportable, candidates, watchlist),
         lots_outside_the_window=skipped,
+        interest_progress=plan.progress,
+        unreviewed_wins=plan.unreviewed_wins,
     )
 
 
@@ -141,22 +168,44 @@ def _with_valuation(
     return [replace(candidate, valuation=valuation) for candidate in matches]
 
 
-def _follow(candidates: list[Candidate], watchlist: WatchlistStore | None) -> int:
+def _follow(
+    reportable: list[Candidate],
+    all_matches: list[Candidate],
+    watchlist: WatchlistStore | None,
+) -> int:
     """Add one price reading per reported lot to the person's own file."""
     if watchlist is None:
         return 0
-    return watchlist.record(_one_entry_per_lot(candidates))
+    return watchlist.record(_one_entry_per_lot(reportable, all_matches))
 
 
-def _one_entry_per_lot(candidates: list[Candidate]) -> list[tuple[Listing, Decimal]]:
+def _one_entry_per_lot(
+    reportable: list[Candidate], all_matches: list[Candidate]
+) -> list[FollowedListing]:
     """Collapse a lot that matched several rules down to a single reading.
 
     Total cost is a property of the lot and the configured fees, not of the rule
     that noticed it, so the first match speaks for all of them.
     """
-    seen: dict[str, tuple[Listing, Decimal]] = {}
-    for candidate in candidates:
+    interests: dict[str, dict[str, InterestRef]] = {}
+    for candidate in all_matches:
+        if candidate.category != CandidateCategory.WANTED:
+            continue
+        uid = uid_of(candidate.listing.source, candidate.listing.lot_key)
+        interests.setdefault(uid, {})[candidate.rule_id.casefold()] = InterestRef(
+            candidate.rule_id, candidate.rule_name
+        )
+
+    seen: dict[str, FollowedListing] = {}
+    for candidate in reportable:
         listing = candidate.listing
-        uid = uid_of(listing.source, listing.listing_id)
-        seen.setdefault(uid, (listing, candidate.total_cost))
+        uid = uid_of(listing.source, listing.lot_key)
+        seen.setdefault(
+            uid,
+            FollowedListing(
+                listing=listing,
+                total_cost=candidate.total_cost,
+                matched_interests=tuple(interests.get(uid, {}).values()),
+            ),
+        )
     return list(seen.values())

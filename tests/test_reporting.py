@@ -12,7 +12,7 @@ from inspect import signature
 from unittest.mock import patch
 
 from auction_lens.env_file import load_env_file
-from auction_lens.models import ReadingOrder, WatchedItem
+from auction_lens.models import InterestProgress, InterestRef, ReadingOrder, WatchedItem
 from auction_lens.reporting import (
     build_report,
     check_email_ready,
@@ -41,6 +41,16 @@ SMTP_ENVIRONMENT = {
 }
 
 
+def _progress(
+    name: str, wanted: int | None, fulfilled: int = 0, *, interest_id: str = "example"
+) -> InterestProgress:
+    return InterestProgress(
+        interest=InterestRef(interest_id=interest_id, name=name),
+        wanted=wanted,
+        fulfilled=fulfilled,
+    )
+
+
 class TextReportTests(unittest.TestCase):
     def setUp(self):
         self.config = example_config()
@@ -50,6 +60,7 @@ class TextReportTests(unittest.TestCase):
         report = render_text(evaluate(self.listings[LASER_LEVEL], self.config), REPORT_ZONE)
         self.assertIn("Estimated total: $12.65", report)
         self.assertIn("Example Laser Level Kit", report)
+        self.assertIn("Watch key: nellis/synthetic-002", report)
 
     def test_empty_report_says_so_plainly(self):
         self.assertIn("no listings", render_text([], REPORT_ZONE))
@@ -67,6 +78,70 @@ class TextReportTests(unittest.TestCase):
         report = render_text([candidate], REPORT_ZONE)
         self.assertIn("LOGISTICS CHECK", report)
         self.assertIn("Decision key: nellis/synthetic-001", report)
+
+
+class OutcomeReportTests(unittest.TestCase):
+    """A quiet candidate list still explains finite wants and fulfillments."""
+
+    def test_empty_report_shows_active_and_retired_finite_interests(self):
+        progress = (
+            _progress("soundbar", 2, 1, interest_id="audio"),
+            _progress("cargo bike", 1, 1, interest_id="bike"),
+            _progress("useful materials", None, 7, interest_id="salvage"),
+        )
+
+        plain = render_text([], REPORT_ZONE, interest_progress=progress)
+        markup = render_html([], REPORT_ZONE, interest_progress=progress)
+
+        expected = (
+            "soundbar: 1/2 fulfilled; 1 remaining",
+            "cargo bike: 1/1 fulfilled; retired",
+        )
+        for status in expected:
+            self.assertIn(status, plain)
+            self.assertIn(status, markup)
+        self.assertNotIn("useful materials", plain)
+        self.assertNotIn("useful materials", markup)
+
+    def test_unreviewed_win_is_a_prominent_action_in_both_renderings(self):
+        progress = (_progress("soundbar", 1),)
+        plain = render_text(
+            [], REPORT_ZONE, interest_progress=progress, unreviewed_wins=1
+        )
+        markup = render_html(
+            [], REPORT_ZONE, interest_progress=progress, unreviewed_wins=1
+        )
+
+        warning = (
+            "Action needed: 1 won lot has an unreviewed finite-interest match; "
+            "review it with watchlist --verdict won, then use watch --fulfills "
+            "or watch --clear-fulfillments."
+        )
+        self.assertIn(warning, plain)
+        self.assertIn(warning, markup)
+        self.assertLess(plain.index(warning), plain.find("INTEREST PROGRESS"))
+        self.assertIn("border-left", markup)
+
+    def test_interest_name_is_escaped_in_html(self):
+        progress = (_progress("<audio & video>", 1),)
+
+        markup = render_html([], REPORT_ZONE, interest_progress=progress)
+
+        self.assertNotIn("<audio & video>", markup)
+        self.assertIn(
+            "&lt;audio &amp; video&gt;: 0/1 fulfilled; 1 remaining", markup
+        )
+
+    def test_existing_positional_report_calls_keep_their_meaning(self):
+        # Outcome arguments were added at the end, so integrations using the
+        # original four positions still select their reading order.
+        report = build_report([], REPORT_ZONE, (), ReadingOrder.RETAIL)
+        plain = render_text([], REPORT_ZONE, (), ReadingOrder.RETAIL)
+        markup = render_html([], REPORT_ZONE, (), ReadingOrder.RETAIL)
+
+        self.assertTrue(report.is_empty)
+        self.assertIn("no listings", plain)
+        self.assertIn("no listings", markup)
 
 
 class ClosingTimeTests(unittest.TestCase):
@@ -357,6 +432,28 @@ class EmailDeliveryTests(unittest.TestCase):
         markup = message.get_body(preferencelist=("html",)).get_content()
         self.assertIn("synthetic-002-shelf.jpg", markup)
         self.assertIn("synthetic-002-stock.jpg", markup)
+
+    @patch("auction_lens.reporting.delivery.smtplib.SMTP_SSL")
+    def test_a_daily_email_carries_outcomes_in_both_mime_alternatives(self, smtp_ssl):
+        progress = (_progress("soundbar", 2, 1, interest_id="audio"),)
+        with patch.dict("os.environ", SMTP_ENVIRONMENT, clear=False):
+            send_email(
+                [],
+                self.email,
+                REPORT_ZONE,
+                interest_progress=progress,
+                unreviewed_wins=2,
+            )
+
+        message = smtp_ssl.return_value.__enter__.return_value.send_message.call_args.args[0]
+        plain = message.get_body(preferencelist=("plain",)).get_content()
+        markup = message.get_body(preferencelist=("html",)).get_content()
+        for body in (plain, markup):
+            self.assertIn("soundbar: 1/2 fulfilled; 1 remaining", body)
+            self.assertIn(
+                "2 won lots have an unreviewed finite-interest match", body
+            )
+            self.assertIn("watchlist --verdict won", body)
 
     @patch("auction_lens.reporting.delivery.smtplib.SMTP_SSL")
     def test_a_watchlist_email_does_not_expose_its_local_file_path(self, smtp_ssl):

@@ -15,12 +15,20 @@ from ..acquisition import (
     discover_searches,
     fetch_authorized_page,
 )
-from ..config import AppConfig, EmailConfig, RunMode, load_config, render_profile
+from ..config import (
+    AppConfig,
+    EmailConfig,
+    InterestRule,
+    RunMode,
+    load_config,
+    render_profile,
+)
 from ..env_file import write_settings
 from ..fields import parse_money
 from ..file_io import read_json, write_json_atomically
 from ..ingest import load_listings, read_saved_page, read_search_page, unique_lots
-from ..models import LogisticsDecision, LogisticsStatus, WatchedItem
+from ..models import InterestRef, LogisticsDecision, LogisticsStatus, Verdict, WatchedItem
+from ..outcomes import plan_interests
 from ..pipeline import analyze_listings
 from ..reporting import (
     check_email_ready,
@@ -245,8 +253,20 @@ def daily(args: argparse.Namespace) -> int:
     """
     config = _with_todays_trips(load_config(args.config), args.visiting)
     _preflight_reports(config, args)
-    discover(args)
-    return run(argparse.Namespace(**{**vars(args), "input": args.output}))
+    watchlist = WatchlistStore(Path(args.watchlist))
+    plan = plan_interests(config.interests, watchlist.items())
+    terms = _daily_search_terms(config, args.search, plan.active_rules)
+    if (
+        not terms
+        and not config.acquisition.categories
+        and config.interests
+        and not plan.active_rules
+    ):
+        _write_satisfied_discovery(args.output)
+    else:
+        _discover(args, config, terms)
+    run_args = argparse.Namespace(**{**vars(args), "input": args.output})
+    return _run(run_args, config, watchlist)
 
 
 def _with_todays_trips(config: AppConfig, visiting: list[str]) -> AppConfig:
@@ -265,6 +285,11 @@ def run(args: argparse.Namespace) -> int:
     """Score a listing file and print, and optionally email, the report."""
     config = _with_todays_trips(load_config(args.config), args.visiting)
     _preflight_reports(config, args)
+    return _run(args, config, WatchlistStore(Path(args.watchlist)))
+
+
+def _run(args: argparse.Namespace, config: AppConfig, watchlist: WatchlistStore) -> int:
+    """Execute an already-loaded run, so ``daily`` need not load its inputs twice."""
     listings = load_listings(args.input)
     database = Database.at(args.database)
     database.initialize()
@@ -274,13 +299,23 @@ def run(args: argparse.Namespace) -> int:
         config,
         observations=ObservationStore(database),
         decisions=LogisticsDecisionStore(database),
-        watchlist=WatchlistStore(Path(args.watchlist)),
+        watchlist=watchlist,
         valuation_engine=_valuation_engine(config),
     )
     zone = config.acquisition.zone
     searches = result.searches
     order = config.reports.order
-    print(render_text(result.candidates, zone, searches, order), end="")
+    print(
+        render_text(
+            result.candidates,
+            zone,
+            searches,
+            order,
+            result.interest_progress,
+            result.unreviewed_wins,
+        ),
+        end="",
+    )
     _report_skipped(result.listings_from_other_providers, config.provider.provider_id)
     _report_outside_window(
         result.lots_outside_the_window, config.reports.closing_within_hours
@@ -289,12 +324,26 @@ def run(args: argparse.Namespace) -> int:
     _report_followed(result.lots_followed, args.watchlist)
 
     if args.email:
-        send_email(result.candidates, config.email, zone, searches, order)
+        send_email(
+            result.candidates,
+            config.email,
+            zone,
+            searches,
+            order,
+            result.interest_progress,
+            result.unreviewed_wins,
+        )
         # Name the variable, not the address: the same reason the webhook line
         # says "the webhook" rather than printing the URL it posted to.
         print(f"Emailed {len(result.candidates)} match(es) to {config.email.recipient_env}.")
     if args.webhook:
-        send_webhook(result.candidates, config.webhook, zone)
+        send_webhook(
+            result.candidates,
+            config.webhook,
+            zone,
+            result.interest_progress,
+            result.unreviewed_wins,
+        )
         print(f"Posted {len(result.candidates)} match(es) to the webhook.")
     return SUCCESS
 
@@ -366,9 +415,12 @@ def fetch(args: argparse.Namespace) -> int:
 def discover(args: argparse.Namespace) -> int:
     """Ask the provider's search for lots, and write what it lists."""
     config = load_config(args.config)
-    captures = discover_searches(
-        config.provider, config.acquisition, _search_terms(config, args.search)
-    )
+    return _discover(args, config, _search_terms(config, args.search))
+
+
+def _discover(args: argparse.Namespace, config: AppConfig, terms: list[str]) -> int:
+    """Execute discovery with terms chosen by the calling workflow."""
+    captures = discover_searches(config.provider, config.acquisition, terms)
 
     found = []
     for capture in captures:
@@ -398,7 +450,34 @@ def _search_terms(config: AppConfig, requested: list[str]) -> list[str]:
         return requested
     if config.acquisition.searches:
         return list(config.acquisition.searches)
-    return [term for rule in config.interests for term in rule.any_terms]
+    return _interest_search_terms(config.interests)
+
+
+def _daily_search_terms(
+    config: AppConfig,
+    requested: list[str],
+    active_interests: tuple[InterestRule, ...],
+) -> list[str]:
+    """Choose daily fallbacks from wants that recorded outcomes have not filled.
+
+    Direct command-line and configured searches are deliberate acquisition
+    instructions, so neither is filtered through the outcome history. Only the
+    convenience fallback follows finite-interest retirement.
+    """
+    if requested or config.acquisition.searches:
+        return _search_terms(config, requested)
+    return _interest_search_terms(active_interests)
+
+
+def _write_satisfied_discovery(output: str) -> None:
+    """Complete a quiet daily run when every configured want is already filled."""
+    write_json_atomically(Path(output), {LISTINGS_KEY: []})
+    print("All finite interests are satisfied; no provider request was needed.")
+
+
+def _interest_search_terms(interests: tuple[InterestRule, ...]) -> list[str]:
+    """Flatten configured phrases in rule order; discovery owns deduping and caps."""
+    return [term for rule in interests for term in rule.any_terms]
 
 
 def pull(args: argparse.Namespace) -> int:
@@ -453,19 +532,62 @@ def logistics(args: argparse.Namespace) -> int:
 
 def watch(args: argparse.Namespace) -> int:
     """Record what a person thinks of one lot, or stop following it."""
+    source, listing_id = _watch_identity(args)
     store = WatchlistStore(Path(args.watchlist))
     if args.verdict == DROP:
-        removed = store.drop(args.source, args.listing_id)
+        if args.fulfills is not None or args.clear_fulfillments:
+            raise ValueError("drop cannot be combined with fulfillment changes")
+        followed = store.get(source, listing_id)
+        if followed is not None and followed.fulfilled_interests:
+            names = ", ".join(
+                reference.name for reference in followed.fulfilled_interests
+            )
+            raise ValueError(
+                f"cannot drop {followed.uid} while it fulfills: {names}; "
+                "first run watch with --clear-fulfillments (this reopens the "
+                "interest), then run watch with --verdict drop"
+            )
+        removed = store.drop(source, listing_id)
         print("Stopped following." if removed else "That lot was not being followed.")
         return SUCCESS
 
-    followed = store.get(args.source, args.listing_id) or WatchedItem(
-        source=args.source, listing_id=args.listing_id
+    followed = store.get(source, listing_id) or WatchedItem(
+        source=source, listing_id=listing_id
     )
-    updated = replace(followed, **_stated_opinions(args))
+    changes = _stated_opinions(args)
+    resulting_verdict = Verdict(changes.get("verdict", followed.verdict))
+    if args.fulfills is not None:
+        if resulting_verdict != Verdict.WON:
+            raise ValueError(
+                "--fulfills requires the resulting verdict to be won; "
+                "add --verdict won"
+            )
+        changes["fulfilled_interests"] = _resolve_fulfillments(
+            args.fulfills, followed.matched_interests
+        )
+        changes["fulfillment_reviewed"] = True
+    elif args.clear_fulfillments:
+        changes["fulfilled_interests"] = ()
+        changes["fulfillment_reviewed"] = True
+
+    updated = replace(followed, **changes)
     store.save(updated)
-    print(f"{updated.uid}: {updated.verdict}.")
+    print(_watch_confirmation(updated))
     return SUCCESS
+
+
+def _watch_identity(args: argparse.Namespace) -> tuple[str, str]:
+    """Read either the report's copyable key or the older two-flag spelling."""
+    if args.key:
+        if args.source or args.listing_id:
+            raise ValueError("--key cannot be combined with --source or --listing-id")
+        source, separator, listing_id = args.key.strip().partition("/")
+        if not separator or not source or not listing_id:
+            raise ValueError("--key must be the SOURCE/LISTING-ID shown in the report")
+        return source, listing_id
+    if not args.source or not args.listing_id:
+        raise ValueError("use --key SOURCE/LISTING-ID, or both --source and --listing-id")
+    return args.source, args.listing_id
 
 
 def watchlist(args: argparse.Namespace) -> int:
@@ -503,6 +625,71 @@ def _stated_opinions(args: argparse.Namespace) -> dict:
     if args.note is not None:
         changes["note"] = args.note.strip()
     return changes
+
+
+def _resolve_fulfillments(
+    requested: list[str], recorded: tuple[InterestRef, ...]
+) -> tuple[InterestRef, ...]:
+    """Resolve human-friendly names without making renamed config a dependency.
+
+    The recorded matches are the authority for this historical lot. Stable ids
+    win over names so an unfortunate display-name collision can never make an
+    id unusable; display names must identify exactly one recorded match.
+    """
+    resolved = []
+    for entered in requested:
+        key = entered.strip().casefold()
+        id_match = next(
+            (ref for ref in recorded if ref.interest_id.casefold() == key), None
+        )
+        if id_match is not None:
+            chosen = id_match
+        else:
+            name_matches = [ref for ref in recorded if ref.name.casefold() == key]
+            if len(name_matches) != 1:
+                problem = "is ambiguous" if name_matches else "is not a recorded match"
+                raise ValueError(
+                    f"cannot use {entered!r} for --fulfills: it {problem}. "
+                    f"Recorded matches: {_recorded_matches(recorded)}"
+                )
+            chosen = name_matches[0]
+        if all(
+            existing.interest_id.casefold() != chosen.interest_id.casefold()
+            for existing in resolved
+        ):
+            resolved.append(chosen)
+    return tuple(resolved)
+
+
+def _recorded_matches(references: tuple[InterestRef, ...]) -> str:
+    """A copyable list for a correction after an unknown or ambiguous name."""
+    if not references:
+        return "none (run this listing through Auction Lens before assigning it)"
+    return ", ".join(
+        f"{reference.interest_id} ({reference.name})" for reference in references
+    )
+
+
+def _watch_confirmation(item: WatchedItem) -> str:
+    """Confirm whether a saved allocation currently counts toward a want."""
+    opening = f"{item.uid}: {item.verdict}."
+    if item.verdict == Verdict.WON:
+        if item.fulfilled_interests:
+            names = ", ".join(ref.name for ref in item.fulfilled_interests)
+            return f"{opening} Fulfills: {names}."
+        if item.fulfillment_reviewed:
+            return f"{opening} Fulfillment reviewed: fulfills none."
+        if item.matched_interests:
+            return (
+                f"{opening} Fulfillment unreviewed; use --fulfills INTEREST "
+                "to assign it, or --clear-fulfillments if it fulfilled none."
+            )
+        return f"{opening} Fulfillment unreviewed; no matches were recorded."
+    if item.fulfilled_interests:
+        return f"{opening} Saved fulfillment is inactive until the verdict is won."
+    if item.fulfillment_reviewed:
+        return f"{opening} Fulfillment reviewed: fulfills none."
+    return opening
 
 
 def _saved_page_url(page: Path) -> str:
@@ -568,6 +755,6 @@ def _report_capped(hidden: int, shown: int) -> None:
 
 
 def _report_followed(count: int, path: str) -> None:
-    """Say where the price readings went, so the file is never a surprise."""
+    """Say where followed-lot history changed, so the file is never a surprise."""
     if count:
-        print(f"Recorded a price reading for {count} lot(s) in {path}.")
+        print(f"Updated {count} followed lot(s) in {path}.")

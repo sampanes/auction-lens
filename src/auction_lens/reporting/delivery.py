@@ -14,7 +14,7 @@ from email.message import EmailMessage
 from zoneinfo import ZoneInfo
 
 from ..config import EmailConfig, EmailSecurity
-from ..models import Candidate, ReadingOrder, WatchedItem
+from ..models import Candidate, InterestProgress, ReadingOrder, WatchedItem
 from .findings import closing_time, soonest_close
 from .html import render_html
 from .searches import SearchHint
@@ -59,10 +59,21 @@ def send_email(
     zone: ZoneInfo,
     searches: tuple[SearchHint, ...] = (),
     order: ReadingOrder = ReadingOrder.PRIORITY,
+    interest_progress: tuple[InterestProgress, ...] = (),
+    unreviewed_wins: int = 0,
 ) -> None:
     """Send one report as a text message with an HTML alternative."""
     account = _ready_account(config)
-    message = _build_message(candidates, config, account, zone, searches, order)
+    message = _build_message(
+        candidates,
+        config,
+        account,
+        zone,
+        searches,
+        order,
+        interest_progress,
+        unreviewed_wins,
+    )
 
     _deliver(message, config, account)
 
@@ -145,13 +156,32 @@ def _build_message(
     zone: ZoneInfo,
     searches: tuple[SearchHint, ...],
     order: ReadingOrder,
+    interest_progress: tuple[InterestProgress, ...] = (),
+    unreviewed_wins: int = 0,
 ) -> EmailMessage:
     message = EmailMessage()
     message["Subject"] = _subject(config.subject, candidates, zone)
     message["From"] = account.sender
     message["To"] = account.recipient
-    message.set_content(render_text(candidates, zone, searches, order))
+    message.set_content(
+        render_text(
+            candidates,
+            zone,
+            searches,
+            order,
+            interest_progress,
+            unreviewed_wins,
+        )
+    )
     message.add_alternative(
-        render_html(candidates, zone, searches, order), subtype="html"
+        render_html(
+            candidates,
+            zone,
+            searches,
+            order,
+            interest_progress,
+            unreviewed_wins,
+        ),
+        subtype="html",
     )
     return message

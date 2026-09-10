@@ -49,6 +49,7 @@ class ScoringContext:
         self,
         *,
         category: CandidateCategory,
+        rule_id: str,
         rule_name: str,
         score: int,
         reasons: Sequence[str],
@@ -58,6 +59,7 @@ class ScoringContext:
         return Candidate(
             listing=self.listing,
             category=category,
+            rule_id=rule_id,
             rule_name=rule_name,
             score=score,
             total_cost=self.total_cost,

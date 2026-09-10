@@ -9,11 +9,12 @@ be able to open it.
 from .database import Database
 from .logistics import LogisticsDecisionStore
 from .observations import ObservationStore
-from .watchlist import DEFAULT_WATCHLIST_FILE, WatchlistStore
+from .watchlist import DEFAULT_WATCHLIST_FILE, FollowedListing, WatchlistStore
 
 __all__ = [
     "DEFAULT_WATCHLIST_FILE",
     "Database",
+    "FollowedListing",
     "LogisticsDecisionStore",
     "ObservationStore",
     "WatchlistStore",

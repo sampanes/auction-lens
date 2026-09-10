@@ -6,9 +6,9 @@ read, and edit by hand: what they think a lot is worth, how badly they want it,
 and every price it has stood at since they started watching.
 
 That is why it is JSON and not another SQLite table. The fields a person fills
-in -- estimate, verdict, note -- are never overwritten by a run. A run only
-ever appends one reading per lot it saw, so scanning hourly leaves an hourly
-trail and scanning once leaves a single point.
+in -- estimate, verdict, note, fulfillment review -- are never overwritten by a
+run. A run refreshes provider facts and matched-interest provenance, then appends
+at most one reading per lot it saw.
 """
 
 from __future__ import annotations
@@ -27,14 +27,28 @@ from ..fields import (
 )
 from ..file_io import read_json, write_json_atomically
 from ..grading import ConditionTag, Tag
-from ..models import Listing, PriceReading, Verdict, WatchedItem, uid_of
+from ..models import InterestRef, Listing, PriceReading, Verdict, WatchedItem, uid_of
 
 DEFAULT_WATCHLIST_FILE = "private/watchlist.json"
 
-# Bumped only when an old file can no longer be read as it stands.
-FILE_VERSION = 1
+# The shape written today. Reading remains backward-compatible with version 1.
+FILE_VERSION = 2
 
 ITEMS_KEY = "items"
+
+
+@dataclass(frozen=True)
+class FollowedListing:
+    """One reportable lot and the interests that caused it to be followed.
+
+    This small named record keeps the storage boundary readable. A bare tuple
+    made it too easy for the pipeline and the watchlist to disagree as the
+    information remembered about a match grew.
+    """
+
+    listing: Listing
+    total_cost: Decimal
+    matched_interests: tuple[InterestRef, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -45,9 +59,25 @@ class WatchlistStore:
 
     def items(self) -> tuple[WatchedItem, ...]:
         """Every followed lot, in the order the file lists them."""
-        document = read_json(self.path, default={})
-        rows = document.get(ITEMS_KEY, []) if isinstance(document, dict) else []
-        return tuple(self._read(row) for row in rows)
+        if not self.path.exists():
+            return ()
+        document = read_json(self.path, default=None)
+        if not isinstance(document, dict):
+            raise ValueError(f"{self.path}: watchlist must be an object")
+        version = document.get("version")
+        if isinstance(version, bool) or not isinstance(version, int):
+            raise ValueError(f"{self.path}: version must be 1 or {FILE_VERSION}")
+        if version not in (1, FILE_VERSION):
+            raise ValueError(
+                f"{self.path}: unsupported watchlist version {version}; "
+                "upgrade Auction Lens before writing this file"
+            )
+        rows = document.get(ITEMS_KEY)
+        if not isinstance(rows, list):
+            raise ValueError(f"{self.path}: items must be a list")
+        items = tuple(self._read(row) for row in rows)
+        _require_unambiguous_items(items, path=self.path)
+        return items
 
     def get(self, source: str, identifier: str) -> WatchedItem | None:
         """One followed lot, found by either the item id or an auction id."""
@@ -69,17 +99,24 @@ class WatchlistStore:
         self._write(kept)
         return True
 
-    def record(self, seen: Iterable[tuple[Listing, Decimal]]) -> int:
-        """Append one reading per lot seen, and say how many lots were touched.
+    def record(self, seen: Iterable[FollowedListing]) -> int:
+        """Refresh followed lots and say how many entries actually changed.
 
         The whole run is written once. A lot seen twice at the same instant --
-        the same input file read twice, say -- leaves one reading, not two.
+        the same input file read twice, say -- leaves one reading, not two, but
+        newly learned match provenance can still update that entry.
         """
         stored = {item.uid: item for item in self.items()}
         touched = 0
-        for listing, total_cost in seen:
+        for followed in seen:
+            listing = followed.listing
             item = stored.get(uid_of(listing.source, listing.lot_key))
-            updated = _observed(item, listing, total_cost)
+            updated = _observed(
+                item,
+                listing,
+                followed.total_cost,
+                followed.matched_interests,
+            )
             if updated is not None:
                 stored[updated.uid] = updated
                 touched += 1
@@ -103,7 +140,10 @@ class WatchlistStore:
 
 
 def _observed(
-    item: WatchedItem | None, listing: Listing, total_cost: Decimal
+    item: WatchedItem | None,
+    listing: Listing,
+    total_cost: Decimal,
+    matched_interests: tuple[InterestRef, ...],
 ) -> WatchedItem | None:
     """Refresh what the provider said, and append this look at the price.
 
@@ -118,9 +158,9 @@ def _observed(
         listing_id=listing.listing_id,
     )
     readings = () if item is None else item.readings
-    if any(stored.scanned_at == reading.scanned_at for stored in readings):
-        return None
-    return WatchedItem(
+    if not any(stored.scanned_at == reading.scanned_at for stored in readings):
+        readings = (*readings, reading)
+    refreshed = WatchedItem(
         source=listing.source,
         listing_id=listing.listing_id,
         inventory_id=listing.inventory_id,
@@ -133,8 +173,62 @@ def _observed(
         my_estimate=None if item is None else item.my_estimate,
         verdict=Verdict.WATCHING if item is None else item.verdict,
         note="" if item is None else item.note,
-        readings=(*readings, reading),
+        matched_interests=_merge_interest_refs(
+            () if item is None else item.matched_interests,
+            matched_interests,
+        ),
+        fulfilled_interests=() if item is None else item.fulfilled_interests,
+        fulfillment_reviewed=False if item is None else item.fulfillment_reviewed,
+        readings=readings,
     )
+    return None if refreshed == item else refreshed
+
+
+def _merge_interest_refs(
+    stored: tuple[InterestRef, ...],
+    observed: tuple[InterestRef, ...],
+) -> tuple[InterestRef, ...]:
+    """Keep stable order and identity, while refreshing display names."""
+    merged = {ref.interest_id.casefold(): ref for ref in stored}
+    for ref in observed:
+        merged[ref.interest_id.casefold()] = ref
+    return tuple(merged.values())
+
+
+def _require_unambiguous_items(
+    items: tuple[WatchedItem, ...], *, path: Path
+) -> None:
+    """Refuse identities that a read-modify-write could silently collapse.
+
+    A hand-edited file may accidentally repeat one physical item, or give two
+    items the same auction id. In either case ``get``, ``save``, and ``drop``
+    could disagree about which row a command means. Failing at the read
+    boundary keeps the original bytes intact until a person merges the rows.
+    """
+    uids: set[str] = set()
+    lookup_keys: dict[tuple[str, str], str] = {}
+    for item in items:
+        if item.uid in uids:
+            raise ValueError(
+                f"{path}: duplicate watchlist identity {item.uid}; "
+                "merge the duplicate entries before continuing"
+            )
+        uids.add(item.uid)
+        identifiers = {
+            item.inventory_id,
+            item.listing_id,
+            *(reading.listing_id for reading in item.readings),
+        }
+        for identifier in identifiers - {""}:
+            key = (item.source, identifier)
+            prior_uid = lookup_keys.get(key)
+            if prior_uid is not None and prior_uid != item.uid:
+                raise ValueError(
+                    f"{path}: watch key {item.source}/{identifier} refers to "
+                    f"both {prior_uid} and {item.uid}; merge those entries "
+                    "before continuing"
+                )
+            lookup_keys[key] = item.uid
 
 
 def _as_json(item: WatchedItem) -> dict[str, Any]:
@@ -157,6 +251,13 @@ def _as_json(item: WatchedItem) -> dict[str, Any]:
         "my_estimate": _money(item.my_estimate),
         "verdict": str(item.verdict),
         "note": item.note,
+        "matched_interests": [
+            _interest_ref_as_json(ref) for ref in item.matched_interests
+        ],
+        "fulfilled_interests": [
+            _interest_ref_as_json(ref) for ref in item.fulfilled_interests
+        ],
+        "fulfillment_reviewed": item.fulfillment_reviewed,
         "readings": [_reading_as_json(reading) for reading in item.readings],
     }
 
@@ -173,6 +274,9 @@ def _reading_as_json(reading: PriceReading) -> dict[str, Any]:
 
 def _from_json(row: dict[str, Any]) -> WatchedItem:
     """Hold a hand-edited file to the same standard as any other input."""
+    fulfilled_interests = _interest_refs_from_json(
+        row.get("fulfilled_interests", []), field_name="fulfilled_interests"
+    )
     return WatchedItem(
         source=str(row["source"]),
         listing_id=str(row["listing_id"]),
@@ -188,6 +292,13 @@ def _from_json(row: dict[str, Any]) -> WatchedItem:
         quality_rating=_optional_rating(row.get("quality_rating")),
         verdict=row.get("verdict", Verdict.WATCHING),
         note=str(row.get("note", "")),
+        matched_interests=_interest_refs_from_json(
+            row.get("matched_interests", []), field_name="matched_interests"
+        ),
+        fulfilled_interests=fulfilled_interests,
+        fulfillment_reviewed=_fulfillment_reviewed_from_json(
+            row, fulfilled_interests
+        ),
         readings=tuple(_reading_from_json(entry) for entry in row.get("readings", [])),
     )
 
@@ -203,6 +314,45 @@ def _reading_from_json(entry: dict[str, Any]) -> PriceReading:
         bid_count=parse_whole_number(entry.get("bid_count"), field_name="bid_count"),
         listing_id=str(entry.get("listing_id", "")),
     )
+
+
+def _interest_ref_as_json(ref: InterestRef) -> dict[str, str]:
+    return {"id": ref.interest_id, "name": ref.name}
+
+
+def _interest_refs_from_json(value: Any, *, field_name: str) -> tuple[InterestRef, ...]:
+    """Read the human-editable collection with errors that point to one field."""
+    if not isinstance(value, list):
+        raise ValueError(f"{field_name} must be a list")
+    refs: list[InterestRef] = []
+    for index, entry in enumerate(value):
+        if not isinstance(entry, dict):
+            raise ValueError(f"{field_name}[{index}] must be an object")
+        if "id" not in entry:
+            raise ValueError(f"{field_name}[{index}].id is required")
+        if "name" not in entry:
+            raise ValueError(f"{field_name}[{index}].name is required")
+        if not isinstance(entry["id"], str):
+            raise ValueError(f"{field_name}[{index}].id must be text")
+        if not isinstance(entry["name"], str):
+            raise ValueError(f"{field_name}[{index}].name must be text")
+        try:
+            refs.append(InterestRef(interest_id=entry["id"], name=entry["name"]))
+        except ValueError as error:
+            raise ValueError(f"{field_name}[{index}]: {error}") from error
+    return tuple(refs)
+
+
+def _fulfillment_reviewed_from_json(
+    row: dict[str, Any], fulfilled_interests: tuple[InterestRef, ...]
+) -> bool:
+    """Read the explicit answer while understanding older allocated entries."""
+    if "fulfillment_reviewed" not in row:
+        return bool(fulfilled_interests)
+    reviewed = row["fulfillment_reviewed"]
+    if not isinstance(reviewed, bool):
+        raise ValueError("fulfillment_reviewed must be true or false")
+    return reviewed or bool(fulfilled_interests)
 
 
 def _money(value: Decimal | None) -> str | None:

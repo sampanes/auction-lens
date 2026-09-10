@@ -40,6 +40,7 @@ def score_retail_anomaly(context: ScoringContext, scoring: ScoringConfig) -> Can
         reasons.append("ending soon")
     return context.candidate(
         category=CandidateCategory.ANOMALY,
+        rule_id=RULE_NAME,
         rule_name=RULE_NAME,
         score=score,
         reasons=reasons,

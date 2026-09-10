@@ -18,6 +18,7 @@ from zoneinfo import ZoneInfo
 
 from ..models import (
     Candidate,
+    InterestProgress,
     LogisticsStatus,
     ReadingOrder,
     ValuationBand,
@@ -38,6 +39,12 @@ SEEN_LABEL = "Seen"
 
 NO_LOCATION = "unknown"
 NO_CONDITIONS = "none listed"
+
+UNREVIEWED_WIN = (
+    "Action needed: {count} won {lots} {have} an unreviewed finite-interest "
+    "match; review {them} with watchlist --verdict won, then use watch "
+    "--fulfills or watch --clear-fulfillments."
+)
 
 
 @dataclass(frozen=True)
@@ -116,6 +123,23 @@ class Group:
 
 
 @dataclass(frozen=True)
+class OutcomeSummary:
+    """Finite wants and any outcome bookkeeping that still needs attention.
+
+    These are complete reader-facing sentences so every delivery channel says
+    the same thing. Renderers decide only whether a sentence is plain text or
+    escaped markup.
+    """
+
+    progress: tuple[str, ...] = ()
+    warning: str = ""
+
+    @property
+    def is_silent(self) -> bool:
+        return not self.progress and not self.warning
+
+
+@dataclass(frozen=True)
 class Report:
     """One rendering-independent report."""
 
@@ -124,6 +148,7 @@ class Report:
     # Ways to reach the same lots at the provider's end, for the categories
     # the report found too many of to click through one at a time.
     searches: tuple[SearchHint, ...] = ()
+    outcomes: OutcomeSummary = OutcomeSummary()
 
     @property
     def is_empty(self) -> bool:
@@ -135,17 +160,21 @@ def build_report(
     zone: ZoneInfo,
     searches: tuple[SearchHint, ...] = (),
     order: ReadingOrder = ReadingOrder.PRIORITY,
+    interest_progress: tuple[InterestProgress, ...] = (),
+    unreviewed_wins: int = 0,
 ) -> Report:
     """Turn scored candidates into everything a report has to say about them.
 
     The zone is the provider's, because a closing time is a fact about the
     auction rather than about whoever opens the mail.
     """
+    outcomes = build_outcome_summary(interest_progress, unreviewed_wins)
     if not candidates:
-        return Report(headline=EMPTY_REPORT)
+        return Report(headline=EMPTY_REPORT, outcomes=outcomes)
     return Report(
         headline=_headline(candidates, zone),
         searches=searches,
+        outcomes=outcomes,
         groups=tuple(
             Group(
                 title=category,
@@ -153,6 +182,43 @@ def build_report(
             )
             for category, items in _by_category(candidates, order).items()
         ),
+    )
+
+
+def build_outcome_summary(
+    progress: tuple[InterestProgress, ...], unreviewed_wins: int
+) -> OutcomeSummary:
+    """Say only what outcomes can establish without guessing intent.
+
+    An unlimited interest has no finish line and therefore no useful progress
+    fraction. A finite match is also never allocated implicitly: the warning
+    asks the person who knows which want the purchase actually fulfilled.
+    """
+    finite = tuple(_progress_line(item) for item in progress if item.is_limited)
+    warning = ""
+    if unreviewed_wins:
+        singular = unreviewed_wins == 1
+        warning = UNREVIEWED_WIN.format(
+            count=unreviewed_wins,
+            lots="lot" if singular else "lots",
+            have="has" if singular else "have",
+            them="it" if singular else "them",
+        )
+    return OutcomeSummary(progress=finite, warning=warning)
+
+
+def _progress_line(progress: InterestProgress) -> str:
+    """A compact status for one finite want, using its remembered display name.
+
+    The numerator counts explicit allocations on lots whose verdict is WON. It
+    does not count every win, so name the human decision rather than the verdict.
+    """
+    wanted = progress.wanted
+    if wanted is None:  # Kept total even if called independently in a future refactor.
+        return ""
+    state = "retired" if progress.is_retired else f"{progress.remaining} remaining"
+    return (
+        f"{progress.interest.name}: {progress.fulfilled}/{wanted} fulfilled; {state}"
     )
 
 
@@ -272,6 +338,7 @@ def _facts(candidate: Candidate, zone: ZoneInfo) -> tuple[Fact, ...]:
         facts.append(Fact("Closes", closes))
     facts.append(Fact("Location", listing.location or NO_LOCATION))
     facts.append(Fact("Conditions", ", ".join(listing.conditions) or NO_CONDITIONS))
+    facts.append(Fact("Watch key", _decision_key(candidate)))
     return tuple(facts)
 
 

@@ -8,13 +8,15 @@ import os
 import unittest
 import warnings
 from contextlib import redirect_stderr, redirect_stdout
+from dataclasses import replace
+from decimal import Decimal
 from getpass import GetPassWarning
 from unittest.mock import patch
 
 from auction_lens.cli import build_parser, console, main
 from auction_lens.config import load_config
 from auction_lens.env_file import load_env_file
-from auction_lens.models import WatchedItem
+from auction_lens.models import InterestRef, Verdict, WatchedItem
 from auction_lens.storage import WatchlistStore
 from support import EXAMPLE_CONFIG, ROOT, SYNTHETIC_LISTINGS, temporary_directory
 
@@ -125,6 +127,51 @@ class RunCommandTests(unittest.TestCase):
         self.assertIn("listing 1 must be an object", errors.getvalue())
         self.assertNotIn("Traceback", errors.getvalue())
 
+    def test_a_finite_interest_retires_and_reopens_through_the_real_commands(self):
+        with temporary_directory() as directory:
+            database = directory / "observations.sqlite3"
+            watchlist = directory / "watchlist.json"
+            argv = self._run_argv(directory, database)
+
+            first = run_cli(argv)
+            self.assertIn("matches use interest 'soundbar'", first)
+
+            assigned = run_cli(
+                [
+                    "watch",
+                    "--watchlist",
+                    str(watchlist),
+                    "--key",
+                    "nellis/synthetic-001",
+                    "--verdict",
+                    "won",
+                    "--fulfills",
+                    "soundbar",
+                ]
+            )
+            retired = run_cli(argv)
+
+            self.assertIn("Fulfills: soundbar", assigned)
+            self.assertIn("soundbar: 1/1 fulfilled; retired", retired)
+            self.assertNotIn("matches use interest 'soundbar'", retired)
+
+            run_cli(
+                [
+                    "watch",
+                    "--watchlist",
+                    str(watchlist),
+                    "--key",
+                    "nellis/synthetic-001",
+                    "--verdict",
+                    "passed",
+                    "--clear-fulfillments",
+                ]
+            )
+            reopened = run_cli(argv)
+
+        self.assertIn("soundbar: 0/1 fulfilled; 1 remaining", reopened)
+        self.assertIn("matches use interest 'soundbar'", reopened)
+
     def _run_argv(self, directory, database) -> list[str]:
         return [
             "run",
@@ -134,8 +181,326 @@ class RunCommandTests(unittest.TestCase):
             str(EXAMPLE_CONFIG),
             "--database",
             str(database),
+            "--watchlist",
+            str(directory / "watchlist.json"),
             "--env-file",
             str(directory / "absent.env"),
+        ]
+
+
+class WatchCommandTests(unittest.TestCase):
+    def test_the_report_s_watch_key_identifies_a_lot_in_one_argument(self):
+        audio = InterestRef("audio", "Home audio")
+        with temporary_directory() as directory:
+            store, path = self._store(directory)
+            store.save(self._matched(audio))
+
+            run_cli(
+                [
+                    "watch",
+                    "--watchlist",
+                    str(path),
+                    "--key",
+                    "synthetic/one",
+                    "--verdict",
+                    "won",
+                    "--fulfills",
+                    "audio",
+                ]
+            )
+            self.assertEqual(store.get("synthetic", "one").verdict, Verdict.WON)
+
+    def test_a_watch_key_cannot_be_mixed_with_the_two_part_spelling(self):
+        with self.assertRaisesRegex(ValueError, "cannot be combined"):
+            run_cli(
+                [
+                    "watch",
+                    "--key",
+                    "synthetic/one",
+                    "--source",
+                    "synthetic",
+                ]
+            )
+
+    def test_an_incomplete_watch_identity_says_both_valid_spellings(self):
+        with self.assertRaisesRegex(ValueError, r"--key SOURCE/LISTING-ID"):
+            run_cli(["watch", "--source", "synthetic"])
+
+    def test_fulfillment_flags_default_to_no_change_and_repeat(self):
+        parser = build_parser()
+        base = ["watch", "--source", "synthetic", "--listing-id", "one"]
+
+        untouched = parser.parse_args(base)
+        assigned = parser.parse_args(
+            [*base, "--fulfills", "audio", "--fulfills", "DIY stock"]
+        )
+
+        self.assertIsNone(untouched.fulfills)
+        self.assertFalse(untouched.clear_fulfillments)
+        self.assertEqual(assigned.fulfills, ["audio", "DIY stock"])
+        with redirect_stderr(io.StringIO()):
+            with self.assertRaises(SystemExit):
+                parser.parse_args(
+                    [
+                        *base,
+                        "--fulfills",
+                        "audio",
+                        "--clear-fulfillments",
+                    ]
+                )
+
+    def test_a_fulfillment_replaces_the_old_allocation(self):
+        audio = InterestRef("audio", "Home audio")
+        diy = InterestRef("diy", "DIY stock")
+        with temporary_directory() as directory:
+            store, path = self._store(directory)
+            store.save(
+                replace(
+                    self._matched(audio, diy),
+                    verdict=Verdict.WON,
+                    fulfilled_interests=(audio,),
+                )
+            )
+
+            message = run_cli(
+                self._argv(path, "--fulfills", "DIY stock")
+            )
+            item = store.get("synthetic", "one")
+
+        self.assertEqual(item.fulfilled_interests, (diy,))
+        self.assertIn("Fulfills: DIY stock", message)
+
+    def test_multiple_fulfillments_accept_names_and_stable_ids(self):
+        audio = InterestRef("audio", "Home audio")
+        diy = InterestRef("diy", "DIY stock")
+        with temporary_directory() as directory:
+            store, path = self._store(directory)
+            store.save(self._matched(audio, diy))
+
+            run_cli(
+                self._argv(
+                    path,
+                    "--verdict",
+                    "won",
+                    "--fulfills",
+                    "HOME AUDIO",
+                    "--fulfills",
+                    "DiY",
+                )
+            )
+            item = store.get("synthetic", "one")
+
+        self.assertEqual(item.verdict, Verdict.WON)
+        self.assertEqual(item.fulfilled_interests, (audio, diy))
+        self.assertTrue(item.fulfillment_reviewed)
+
+    def test_clear_removes_the_allocation_without_changing_other_answers(self):
+        audio = InterestRef("audio", "Home audio")
+        with temporary_directory() as directory:
+            store, path = self._store(directory)
+            store.save(
+                replace(
+                    self._matched(audio),
+                    verdict=Verdict.WON,
+                    fulfilled_interests=(audio,),
+                    my_estimate=Decimal("80"),
+                    note="bring a friend",
+                )
+            )
+
+            message = run_cli(self._argv(path, "--clear-fulfillments"))
+            item = store.get("synthetic", "one")
+
+        self.assertEqual(item.fulfilled_interests, ())
+        self.assertTrue(item.fulfillment_reviewed)
+        self.assertEqual(item.verdict, Verdict.WON)
+        self.assertEqual(item.my_estimate, Decimal("80"))
+        self.assertEqual(item.note, "bring a friend")
+        self.assertIn("Fulfillment reviewed: fulfills none", message)
+
+    def test_an_unknown_fulfillment_lists_the_recorded_choices(self):
+        audio = InterestRef("audio", "Home audio")
+        with temporary_directory() as directory:
+            store, path = self._store(directory)
+            store.save(replace(self._matched(audio), verdict=Verdict.WON))
+
+            with self.assertRaisesRegex(
+                ValueError,
+                r"not a recorded match.*audio \(Home audio\)",
+            ):
+                run_cli(self._argv(path, "--fulfills", "bicycles"))
+
+    def test_an_ambiguous_display_name_lists_the_stable_ids(self):
+        speakers = InterestRef("speakers", "Audio")
+        receivers = InterestRef("receivers", "Audio")
+        with temporary_directory() as directory:
+            store, path = self._store(directory)
+            store.save(
+                replace(self._matched(speakers, receivers), verdict=Verdict.WON)
+            )
+
+            with self.assertRaisesRegex(
+                ValueError,
+                r"ambiguous.*speakers \(Audio\), receivers \(Audio\)",
+            ):
+                run_cli(self._argv(path, "--fulfills", "audio"))
+
+            run_cli(self._argv(path, "--fulfills", "receivers"))
+            item = store.get("synthetic", "one")
+
+        self.assertEqual(item.fulfilled_interests, (receivers,))
+
+    def test_assigning_a_fulfillment_requires_a_won_verdict(self):
+        audio = InterestRef("audio", "Home audio")
+        with temporary_directory() as directory:
+            store, path = self._store(directory)
+            store.save(self._matched(audio))
+
+            with self.assertRaisesRegex(ValueError, r"add --verdict won"):
+                run_cli(self._argv(path, "--fulfills", "audio"))
+
+            self.assertEqual(store.get("synthetic", "one").verdict, Verdict.WATCHING)
+
+    def test_a_non_won_verdict_keeps_the_allocation_as_inactive_history(self):
+        audio = InterestRef("audio", "Home audio")
+        with temporary_directory() as directory:
+            store, path = self._store(directory)
+            store.save(
+                replace(
+                    self._matched(audio),
+                    verdict=Verdict.WON,
+                    fulfilled_interests=(audio,),
+                )
+            )
+
+            message = run_cli(self._argv(path, "--verdict", "passed"))
+            item = store.get("synthetic", "one")
+
+        self.assertEqual(item.verdict, Verdict.PASSED)
+        self.assertEqual(item.fulfilled_interests, (audio,))
+        self.assertIn("inactive until the verdict is won", message)
+
+    def test_only_fields_named_on_the_command_line_change(self):
+        audio = InterestRef("audio", "Home audio")
+        with temporary_directory() as directory:
+            store, path = self._store(directory)
+            original = replace(
+                self._matched(audio),
+                verdict=Verdict.WON,
+                fulfilled_interests=(audio,),
+                my_estimate=Decimal("80"),
+                note="old note",
+            )
+            store.save(original)
+
+            run_cli(self._argv(path, "--note", "new note"))
+            updated = store.get("synthetic", "one")
+
+        self.assertEqual(updated, replace(original, note="new note"))
+
+    def test_a_won_match_without_an_allocation_is_confirmed_as_unreviewed(self):
+        audio = InterestRef("audio", "Home audio")
+        with temporary_directory() as directory:
+            store, path = self._store(directory)
+            store.save(self._matched(audio))
+
+            message = run_cli(self._argv(path, "--verdict", "won"))
+
+        self.assertIn("Fulfillment unreviewed", message)
+        self.assertIn("--fulfills INTEREST", message)
+        self.assertIn("--clear-fulfillments", message)
+
+    def test_drop_refuses_fulfillment_flags_instead_of_silently_ignoring_them(self):
+        with self.assertRaisesRegex(ValueError, "drop cannot be combined"):
+            run_cli(
+                [
+                    "watch",
+                    "--key",
+                    "synthetic/one",
+                    "--verdict",
+                    "drop",
+                    "--clear-fulfillments",
+                ]
+            )
+
+    def test_drop_preserves_a_lot_that_has_a_fulfillment(self):
+        audio = InterestRef("audio", "Home audio")
+        with temporary_directory() as directory:
+            store, path = self._store(directory)
+            original = replace(
+                self._matched(audio),
+                verdict=Verdict.WON,
+                fulfilled_interests=(audio,),
+            )
+            store.save(original)
+            before = path.read_bytes()
+
+            with self.assertRaisesRegex(
+                ValueError,
+                r"--clear-fulfillments.*reopens the interest.*--verdict drop",
+            ):
+                run_cli(self._argv(path, "--verdict", "drop"))
+
+            self.assertEqual(path.read_bytes(), before)
+            self.assertEqual(store.get("synthetic", "one"), original)
+
+    def test_clearing_a_fulfillment_allows_an_explicit_followup_drop(self):
+        audio = InterestRef("audio", "Home audio")
+        with temporary_directory() as directory:
+            store, path = self._store(directory)
+            store.save(
+                replace(
+                    self._matched(audio),
+                    verdict=Verdict.WON,
+                    fulfilled_interests=(audio,),
+                )
+            )
+
+            clear_message = run_cli(self._argv(path, "--clear-fulfillments"))
+            drop_message = run_cli(self._argv(path, "--verdict", "drop"))
+
+            self.assertIn("Fulfillment reviewed: fulfills none", clear_message)
+            self.assertEqual(drop_message, "Stopped following.\n")
+            self.assertIsNone(store.get("synthetic", "one"))
+
+    def test_drop_keeps_the_existing_behavior_for_safe_and_absent_lots(self):
+        with temporary_directory() as directory:
+            store, path = self._store(directory)
+
+            absent_message = run_cli(self._argv(path, "--verdict", "drop"))
+            self.assertEqual(absent_message, "That lot was not being followed.\n")
+            self.assertFalse(path.exists())
+
+            store.save(self._matched())
+            safe_message = run_cli(self._argv(path, "--verdict", "drop"))
+            self.assertEqual(safe_message, "Stopped following.\n")
+            self.assertIsNone(store.get("synthetic", "one"))
+
+    @staticmethod
+    def _matched(*references: InterestRef) -> WatchedItem:
+        return WatchedItem(
+            source="synthetic",
+            listing_id="one",
+            title="Example lot",
+            matched_interests=tuple(references),
+        )
+
+    @staticmethod
+    def _store(directory):
+        path = directory / "watchlist.json"
+        return WatchlistStore(path), path
+
+    @staticmethod
+    def _argv(path, *changes: str) -> list[str]:
+        return [
+            "watch",
+            "--watchlist",
+            str(path),
+            "--source",
+            "synthetic",
+            "--listing-id",
+            "one",
+            *changes,
         ]
 
 
@@ -493,7 +858,7 @@ class MailSetupTests(unittest.TestCase):
 
 
 class DailyCommandTests(unittest.TestCase):
-    @patch("auction_lens.cli.commands.discover")
+    @patch("auction_lens.cli.commands._discover")
     def test_report_preflight_happens_before_discovery(self, discover):
         with temporary_directory() as directory:
             output = directory / "listings.json"
@@ -512,6 +877,152 @@ class DailyCommandTests(unittest.TestCase):
                 )
         discover.assert_not_called()
         self.assertFalse(output.exists())
+
+    @patch("auction_lens.cli.commands._run", return_value=0)
+    def test_a_retired_fallback_cannot_use_the_search_cap_before_an_active_one(
+        self, _run
+    ):
+        with temporary_directory() as directory:
+            config = self._daily_config(directory)
+            watchlist = directory / "watchlist.json"
+            WatchlistStore(watchlist).save(self._won_soundbar())
+            asked = self._daily_searches(directory, config, watchlist)
+
+        # Soundbar is the first configured interest and has two phrases, but
+        # its one wanted item is already won. With a cap of one, the active
+        # monitor interest must receive the request.
+        self.assertEqual(asked, ["monitor"])
+        _run.assert_called_once()
+
+    @patch("auction_lens.cli.commands._run", return_value=0)
+    def test_configured_searches_remain_an_operator_override(self, _run):
+        with temporary_directory() as directory:
+            config = self._daily_config(directory, searches=("operator phrase",))
+            watchlist = directory / "watchlist.json"
+            WatchlistStore(watchlist).save(self._won_soundbar())
+            asked = self._daily_searches(directory, config, watchlist)
+
+        self.assertEqual(asked, ["operator phrase"])
+        _run.assert_called_once()
+
+    @patch("auction_lens.cli.commands._run", return_value=0)
+    def test_command_line_searches_remain_an_operator_override(self, _run):
+        with temporary_directory() as directory:
+            config = self._daily_config(directory, searches=("configured phrase",))
+            watchlist = directory / "watchlist.json"
+            WatchlistStore(watchlist).save(self._won_soundbar())
+            asked = self._daily_searches(
+                directory,
+                config,
+                watchlist,
+                requested=("one-off phrase",),
+            )
+
+        self.assertEqual(asked, ["one-off phrase"])
+        _run.assert_called_once()
+
+    @patch("auction_lens.cli.commands.discover_searches")
+    def test_all_satisfied_interests_make_a_quiet_report_without_a_request(
+        self, discover_searches
+    ):
+        with temporary_directory() as directory:
+            config = self._daily_config(directory)
+            text = config.read_text(encoding="utf-8").replace(
+                'name = "monitor"\n',
+                'name = "monitor"\nid = "monitor"\nwanted = 1\n',
+            )
+            config.write_text(text, encoding="utf-8")
+            watchlist = directory / "watchlist.json"
+            store = WatchlistStore(watchlist)
+            store.save(self._won_interest("soundbar"))
+            store.save(self._won_interest("monitor"))
+
+            message = run_cli(
+                [
+                    "daily",
+                    "--config",
+                    str(config),
+                    "--output",
+                    str(directory / "listings.json"),
+                    "--database",
+                    str(directory / "observations.sqlite3"),
+                    "--watchlist",
+                    str(watchlist),
+                    "--env-file",
+                    str(directory / "absent.env"),
+                ]
+            )
+            payload = json.loads((directory / "listings.json").read_text("utf-8"))
+
+        discover_searches.assert_not_called()
+        self.assertEqual(payload, {"listings": []})
+        self.assertIn("no provider request was needed", message)
+        self.assertIn("soundbar: 1/1 fulfilled; retired", message)
+        self.assertIn("monitor: 1/1 fulfilled; retired", message)
+
+    @staticmethod
+    def _daily_config(directory, *, searches: tuple[str, ...] = ()):
+        config = _config_copy(directory)
+        acquisition = "max_searches_per_run = 1\n"
+        if searches:
+            values = ", ".join(json.dumps(term) for term in searches)
+            acquisition += f"searches = [{values}]\n"
+        text = config.read_text(encoding="utf-8").replace(
+            "[provider.acquisition]\n",
+            f"[provider.acquisition]\n{acquisition}",
+            1,
+        )
+        config.write_text(text, encoding="utf-8")
+        return config
+
+    @staticmethod
+    def _won_soundbar() -> WatchedItem:
+        return DailyCommandTests._won_interest("soundbar")
+
+    @staticmethod
+    def _won_interest(name: str) -> WatchedItem:
+        interest = InterestRef(name, name)
+        return WatchedItem(
+            source="nellis",
+            listing_id=f"synthetic-{name}-win",
+            title=f"Synthetic {name}",
+            matched_interests=(interest,),
+            fulfilled_interests=(interest,),
+            verdict=Verdict.WON,
+        )
+
+    @staticmethod
+    def _daily_searches(
+        directory,
+        config,
+        watchlist,
+        *,
+        requested: tuple[str, ...] = (),
+    ) -> list[str]:
+        asked: list[str] = []
+
+        def fake_discovery(_provider, acquisition, terms):
+            asked.extend(list(terms)[: acquisition.max_searches_per_run])
+            return ()
+
+        argv = [
+            "daily",
+            "--config",
+            str(config),
+            "--output",
+            str(directory / "listings.json"),
+            "--database",
+            str(directory / "observations.sqlite3"),
+            "--watchlist",
+            str(watchlist),
+            "--env-file",
+            str(directory / "absent.env"),
+        ]
+        for term in requested:
+            argv.extend(("--search", term))
+        with patch("auction_lens.cli.commands.discover_searches", fake_discovery):
+            run_cli(argv)
+        return asked
 
 
 class DoctorCommandTests(unittest.TestCase):
