@@ -228,6 +228,9 @@ def _reports(section: Section) -> ReportsConfig:
         return ReportsConfig(
             max_items=section.optional_positive_integer("max_items"),
             order=section.text("order", ReadingOrder.PRIORITY),
+            closing_within_hours=section.optional_positive_integer(
+                "closing_within_hours"
+            ),
         )
 
 

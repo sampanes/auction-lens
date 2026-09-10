@@ -303,6 +303,43 @@ rather than by URL, so `[provider.acquisition] session_url` and `session_fields`
 say which branch a run is shopping. Without it the site serves its default city,
 and the results look perfectly real while being hundreds of miles away.
 
+### The closing window, and a digest in two parts
+
+A report is a list of things you can still bid on. A lot that has already
+closed never reaches scoring, however well it would have scored, because it is
+no longer a bargain -- it is history.
+
+How far the other way to reach is your choice:
+
+```toml
+[reports]
+closing_within_hours = 14
+```
+
+A lot closing tomorrow evening cannot be acted on tonight, and reading about it
+now only to read about it again later is how a digest stops being read. Leave
+the setting out entirely to report everything still open, however distant.
+Whatever the window sets aside is counted out loud, with the setting named, so
+a short report is never mistaken for a quiet day.
+
+That setting is also the whole of the split digest. Schedule
+`scriptsun-daily.cmd` twice -- say 09:00 and 17:00 -- and the evening mail
+carries only what the morning's lots left behind, because the rest have closed
+in between. There is no second script, no second configuration, and nothing in
+the tool that knows what a schedule is.
+
+The report's first line names when the earliest lot closes, because that is the
+fact that decides whether the rest is worth reading now. The same fact is
+offered to the subject line as `{{ first_close }}`, alongside
+`{{ match_count }}`:
+
+```toml
+subject = "Auction Lens: {{ match_count }} lots, first closes {{ first_close }}"
+```
+
+Naming the close there keeps two digests on the same day from sharing a
+subject, which is what makes a mail client thread one into the other.
+
 ### Near and far branches
 
 Distance is a fact about you, not about a lot, so it is not scored. A branch you

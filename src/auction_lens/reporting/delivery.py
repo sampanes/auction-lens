@@ -15,6 +15,7 @@ from zoneinfo import ZoneInfo
 
 from ..config import EmailConfig, EmailSecurity
 from ..models import Candidate, ReadingOrder, WatchedItem
+from .findings import closing_time, soonest_close
 from .html import render_html
 from .searches import SearchHint
 from .text import render_text
@@ -22,6 +23,9 @@ from .watchlist import render_watchlist, render_watchlist_html
 
 SMTP_TIMEOUT_SECONDS = 30
 MATCH_COUNT_PLACEHOLDER = "{{ match_count }}"
+# Two digests a day carrying the same count would otherwise share a
+# subject, and a mail client threads those into one another.
+FIRST_CLOSE_PLACEHOLDER = "{{ first_close }}"
 WATCHLIST_SUBJECT = "Auction Lens watchlist: {selection}"
 
 
@@ -126,6 +130,14 @@ def _account_from_environment(config: EmailConfig) -> MailAccount:
     return MailAccount(**values)
 
 
+def _subject(template: str, candidates: list[Candidate], zone: ZoneInfo) -> str:
+    """Fill the operator's subject line, leaving anything it did not ask for."""
+    soonest = soonest_close(candidates)
+    return template.replace(MATCH_COUNT_PLACEHOLDER, str(len(candidates))).replace(
+        FIRST_CLOSE_PLACEHOLDER, closing_time(soonest, zone) if soonest else "no close"
+    )
+
+
 def _build_message(
     candidates: list[Candidate],
     config: EmailConfig,
@@ -135,7 +147,7 @@ def _build_message(
     order: ReadingOrder,
 ) -> EmailMessage:
     message = EmailMessage()
-    message["Subject"] = config.subject.replace(MATCH_COUNT_PLACEHOLDER, str(len(candidates)))
+    message["Subject"] = _subject(config.subject, candidates, zone)
     message["From"] = account.sender
     message["To"] = account.recipient
     message.set_content(render_text(candidates, zone, searches, order))

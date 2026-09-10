@@ -6,6 +6,7 @@ import os
 import ssl
 import unittest
 from dataclasses import replace
+from datetime import UTC, datetime
 from decimal import Decimal
 from inspect import signature
 from unittest.mock import patch
@@ -20,6 +21,7 @@ from auction_lens.reporting import (
     send_email,
     send_watchlist_email,
 )
+from auction_lens.reporting.delivery import _subject
 from auction_lens.scoring import evaluate
 from support import (
     LASER_LEVEL,
@@ -449,3 +451,82 @@ class EnvironmentFileTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DeadlineHeadlineTests(unittest.TestCase):
+    """The first line answers "how long have I got", not just "how many".
+
+    A digest is read on a phone between other things, so the fact that decides
+    whether to keep reading now belongs before anything else.
+    """
+
+    def setUp(self):
+        self.config = example_config()
+        self.listings = example_listings()
+
+    def _wanted(self, index):
+        return [
+            item
+            for item in evaluate(self.listings[index], self.config)
+            if item.category == "wanted"
+        ]
+
+    def test_the_headline_names_when_the_first_lot_closes(self):
+        report = render_text(self._wanted(SOUNDBAR), REPORT_ZONE)
+        self.assertIn("the first closes Mon 19:30 MST", report.splitlines()[0])
+
+    def test_the_headline_says_only_the_count_when_nothing_states_a_close(self):
+        silent = [
+            replace(item, listing=replace(item.listing, ends_at=None))
+            for item in self._wanted(SOUNDBAR)
+        ]
+        headline = render_text(silent, REPORT_ZONE).splitlines()[0]
+        self.assertIn("match(es).", headline)
+        self.assertNotIn("closes", headline)
+
+    def test_the_earliest_close_wins_not_the_first_one_listed(self):
+        first, second = self._wanted(SOUNDBAR)[0], self._wanted(SOUNDBAR)[0]
+        later = replace(
+            first,
+            listing=replace(
+                # A year past the fixture's own close, so picking the first
+                # in the list rather than the earliest would show up here.
+                first.listing, ends_at=datetime(2031, 1, 15, 2, 30, tzinfo=UTC)
+            ),
+        )
+        headline = render_text([later, second], REPORT_ZONE).splitlines()[0]
+        self.assertIn("Mon 19:30 MST", headline)
+
+
+class SubjectPlaceholderTests(unittest.TestCase):
+    """The subject line is the operator's to word, with facts offered to it."""
+
+    def setUp(self):
+        self.config = example_config()
+        self.listings = example_listings()
+        self.candidates = [
+            item
+            for item in evaluate(self.listings[SOUNDBAR], self.config)
+            if item.category == "wanted"
+        ]
+
+    def test_both_placeholders_are_filled(self):
+        subject = _subject(
+            "{{ match_count }} lots, first closes {{ first_close }}",
+            self.candidates,
+            REPORT_ZONE,
+        )
+        self.assertEqual(
+            subject, f"{len(self.candidates)} lots, first closes Mon 19:30 MST"
+        )
+
+    def test_a_subject_asking_for_neither_is_left_exactly_as_written(self):
+        self.assertEqual(_subject("Auction Lens", self.candidates, REPORT_ZONE), "Auction Lens")
+
+    def test_a_close_nobody_stated_does_not_leave_the_placeholder_showing(self):
+        silent = [
+            replace(item, listing=replace(item.listing, ends_at=None))
+            for item in self.candidates
+        ]
+        subject = _subject("first closes {{ first_close }}", silent, REPORT_ZONE)
+        self.assertNotIn("{{", subject)
