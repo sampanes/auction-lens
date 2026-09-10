@@ -62,6 +62,7 @@ def _score_rule(
         reasons.append("ending soon")
     return context.candidate(
         category=CandidateCategory.WANTED,
+        rule_id=rule.interest_id,
         rule_name=rule.name,
         score=score,
         reasons=reasons,

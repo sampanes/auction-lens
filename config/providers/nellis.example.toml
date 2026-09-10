@@ -117,9 +117,13 @@ accessory_nouns = ["stand", "case", "cover", "mount", "bracket", "holder", "arm"
 
 [[interests]]
 name = "soundbar"
+id = "soundbar"
 purpose = "use"
 condition_profile = "ready_to_use"
 any_terms = ["soundbar", "sound bar"]
+# Omit wanted for an ongoing interest. A finite interest also needs a stable id
+# so improving its display name later cannot detach it from recorded wins.
+wanted = 1
 max_total_cost = 50
 minimum_score = 70
 

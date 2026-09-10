@@ -21,7 +21,7 @@ This is not a description. It is checked on every run by
 | 1 | `grading` | layer 0 |
 | 2 | `env_file`, `file_io`, `http_safety`, `models`, `text_match`, `throttle` | layers 0-1 |
 | 3 | `config` | layers 0-2 |
-| 4 | `logistics` | layers 0-3 |
+| 4 | `logistics`, `outcomes` | layers 0-3 |
 | 5 | `acquisition`, `ingest`, `reporting`, `scoring`, `storage`, `valuation` | layers 0-4 |
 | 6 | `pipeline` | layers 0-5 |
 | 7 | `cli` | everything |
@@ -45,6 +45,7 @@ keeps `scoring` readable without `valuation` open beside it.
 | `acquisition/discover` | Which lots exist, asked once per search term? |
 | `scoring/` | Is this listing worth reporting, and why? |
 | `logistics` | Is getting this item home still an open question? |
+| `outcomes` | Which finite interests remain active, and which wins still need fulfillment review? |
 | `valuation/` | What is it actually worth, according to whom? |
 | `valuation/settings` | What may one source's adapter settings say? |
 | `storage/` | What did we see last time? |

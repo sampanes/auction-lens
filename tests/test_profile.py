@@ -18,11 +18,25 @@ class ProfileRenderingTests(unittest.TestCase):
         rendered = render_profile(self.config)
 
         self.assertIn("1. soundbar - purpose: use", rendered)
+        self.assertIn("Wanted: 1; retire after 1 explicitly assigned win", rendered)
+        self.assertIn("Wanted: ongoing; keep matching after wins", rendered)
         self.assertIn('Match any: "soundbar", "sound bar"', rendered)
         self.assertIn("Maximum total cost: $50.00", rendered)
         self.assertIn("Conditions (ready_to_use): unknown accepted", rendered)
         self.assertIn('reject "not functional", "parts only"', rendered)
         self.assertIn("missing parts (-45)", rendered)
+
+    def test_it_shows_a_custom_identifier_but_not_a_repeated_default(self):
+        soundbar, monitor = self.config.interests
+        config = replace(
+            self.config,
+            interests=(replace(soundbar, interest_id="audio-one"), monitor),
+        )
+
+        rendered = render_profile(config)
+
+        self.assertIn("Identifier: audio-one", rendered)
+        self.assertNotIn("Identifier: monitor", rendered)
 
     def test_it_states_the_effective_general_location_and_handling_rules(self):
         rendered = render_profile(self.config)

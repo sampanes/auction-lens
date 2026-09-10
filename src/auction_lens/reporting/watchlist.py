@@ -12,7 +12,7 @@ from decimal import Decimal
 from html import escape
 
 from ..grading import HIGHEST_RATING, ConditionTag, Tag
-from ..models import Verdict, WatchedItem
+from ..models import InterestRef, Verdict, WatchedItem
 
 SEPARATOR = " | "
 
@@ -95,6 +95,7 @@ def render_watchlist_html(items: tuple[WatchedItem, ...], *, path: str = "") -> 
 
 def _html_card(item: WatchedItem) -> str:
     concerns = _html_conditions(item.conditions)
+    interests = _html_interests(item)
     facts = (*_value_facts(item), *_price_facts(item))
     details = "".join(f"<span style='{FACT_STYLE}'>{escape(fact)}</span>" for fact in facts)
     note = f"<p><strong>Note:</strong> {escape(item.note)}</p>" if item.note else ""
@@ -118,6 +119,9 @@ def _html_card(item: WatchedItem) -> str:
             f"<p style='margin:0 0 14px;color:#1967d2;font-weight:bold'>"
             f"{escape(str(item.verdict).upper())} &nbsp; "
             f"{escape(stars_of(item.quality_rating))}</p>",
+            f"<p><strong>Watch key:</strong> "
+            f"<code>{escape(_watch_key(item))}</code>{escape(_relisting(item))}</p>",
+            interests,
             concerns,
             photo,
             f"<div>{details}</div>" if details else "",
@@ -145,7 +149,8 @@ def _keenness(item: WatchedItem) -> tuple:
 def _item_lines(item: WatchedItem, *, colour: bool) -> Iterator[str]:
     yield ""
     yield f"[{item.verdict.upper()}] {stars_of(item.quality_rating)}  {item.title}"
-    yield f"  {item.uid}{_relisting(item)}"
+    yield f"  Watch key: {_watch_key(item)}{_relisting(item)}"
+    yield from _interest_lines(item)
     yield from _condition_lines(item.conditions, colour=colour)
     yield from _indented(_value_facts(item))
     yield from _indented(_price_facts(item))
@@ -155,6 +160,71 @@ def _item_lines(item: WatchedItem, *, colour: bool) -> Iterator[str]:
         yield f"  {item.url}"
     if item.condition_photo_url:
         yield f"  Photo of this lot: {item.condition_photo_url}"
+
+
+def _interest_lines(item: WatchedItem) -> Iterator[str]:
+    """Distinguish why a lot appeared from what a purchase actually filled."""
+    if not item.matched_interests:
+        return
+    yield f"  Matches: {_interest_list(item.matched_interests)}"
+    if item.fulfilled_interests:
+        status = "" if item.verdict == Verdict.WON else " (inactive until verdict is WON)"
+        yield f"  Fulfills{status}: {_interest_list(item.fulfilled_interests)}"
+    elif item.fulfillment_reviewed:
+        yield "  Fulfillment reviewed: fulfills none"
+    elif item.verdict == Verdict.WON:
+        yield f"  Fulfillment unreviewed; fix with {_fulfillment_command(item)}"
+    else:
+        yield "  Fulfills: none"
+
+
+def _html_interests(item: WatchedItem) -> str:
+    """HTML counterpart to ``_interest_lines``, escaping every stored label."""
+    if not item.matched_interests:
+        return ""
+    matches = escape(_interest_list(item.matched_interests))
+    if item.fulfilled_interests:
+        status = "" if item.verdict == Verdict.WON else " (inactive until verdict is WON)"
+        fulfillment = escape(_interest_list(item.fulfilled_interests))
+        fulfills = f"<strong>Fulfills{status}:</strong> {fulfillment}"
+    elif item.fulfillment_reviewed:
+        fulfills = "<strong>Fulfillment reviewed:</strong> fulfills none"
+    elif item.verdict == Verdict.WON:
+        command = escape(_fulfillment_command(item))
+        fulfills = (
+            "<strong>Fulfillment:</strong> unreviewed; fix with "
+            f"<code>{command}</code>"
+        )
+    else:
+        fulfills = "<strong>Fulfills:</strong> none"
+    return (
+        f"<p><strong>Matches:</strong> {matches}<br>"
+        f"{fulfills}</p>"
+    )
+
+
+def _interest_list(references: tuple[InterestRef, ...]) -> str:
+    """Names remain readable while ids remain copyable into the command line."""
+    return SEPARATOR.join(
+        f"{reference.name} [{reference.interest_id}]" for reference in references
+    )
+
+
+def _watch_key(item: WatchedItem) -> str:
+    """The current listing key accepted by ``watch --key``.
+
+    ``uid`` can instead contain a provider inventory id so that relistings share
+    one history. Operator commands need today's listing id, exactly as reports do.
+    """
+    return f"{item.source}/{item.listing_id}"
+
+
+def _fulfillment_command(item: WatchedItem) -> str:
+    """A copyable skeleton for assigning an explicit fulfillment."""
+    return (
+        f"auction-lens watch --key {_watch_key(item)} --verdict won "
+        "--fulfills INTEREST"
+    )
 
 
 def stars_of(rating: int | None) -> str:

@@ -46,16 +46,34 @@ def _interests(config: AppConfig) -> list[str]:
 def _interest(number: int, rule: InterestRule, global_minimum_score: int) -> list[str]:
     threshold = max(rule.minimum_score, global_minimum_score)
     policy_name = f" ({rule.condition_profile})" if rule.condition_profile else ""
-    return [
+    lines = [
         f"{number}. {rule.name} - purpose: {rule.purpose}",
-        f"   Match any: {_terms(rule.any_terms, empty='not required')}",
-        f"   Match all: {_terms(rule.all_terms, empty='not required')}",
-        f"   Exclude: {_terms(rule.exclude_terms, empty=NONE)}",
-        f"   Maximum total cost: {_optional_money(rule.max_total_cost, empty=NO_LIMIT)}",
-        f"   Minimum stated retail: {_optional_money(rule.minimum_retail, empty=NONE)}",
-        f"   Minimum score: {threshold}; relative importance: {_number(rule.weight)}",
-        f"   Conditions{policy_name}: {_condition(rule.condition)}",
     ]
+    if rule.interest_id != rule.name:
+        lines.append(f"   Identifier: {rule.interest_id}")
+    lines.extend(
+        [
+            f"   Wanted: {_wanted_quantity(rule.wanted)}",
+            f"   Match any: {_terms(rule.any_terms, empty='not required')}",
+            f"   Match all: {_terms(rule.all_terms, empty='not required')}",
+            f"   Exclude: {_terms(rule.exclude_terms, empty=NONE)}",
+            f"   Maximum total cost: "
+            f"{_optional_money(rule.max_total_cost, empty=NO_LIMIT)}",
+            f"   Minimum stated retail: "
+            f"{_optional_money(rule.minimum_retail, empty=NONE)}",
+            f"   Minimum score: {threshold}; relative importance: "
+            f"{_number(rule.weight)}",
+            f"   Conditions{policy_name}: {_condition(rule.condition)}",
+        ]
+    )
+    return lines
+
+
+def _wanted_quantity(wanted: int | None) -> str:
+    if wanted is None:
+        return "ongoing; keep matching after wins"
+    noun = "win" if wanted == 1 else "wins"
+    return f"{wanted}; retire after {wanted} explicitly assigned {noun}"
 
 
 def _general_discovery(config: AppConfig) -> list[str]:

@@ -25,6 +25,9 @@ engine. Personal answers stay in ignored local configuration.
 
 ## Feedback-assisted tuning
 
+Status: reliable match provenance and explicit outcome allocation implemented;
+compact yes/maybe/no feedback and rule proposals remain planned.
+
 Reports should eventually accept compact feedback such as `yes`, `maybe`, `no`,
 `wrong model`, `too expensive`, and `logistics impossible`. Feedback remains an
 observation until a repeated pattern supports a proposed, reviewable config
@@ -32,38 +35,50 @@ change. Auction Lens should never silently rewrite preferences.
 
 ## Interests that retire themselves
 
-Status: not started. Less of it is missing than it first appears.
+Status: implemented.
 
 Some wants are for exactly one thing. There is no second metal shed, no second
 two-person kayak, and no reason to keep reading about them after one is won.
-Today every interest reports forever, so a satisfied want becomes noise that
-the operator has to remember to delete by hand.
-
-An interest should be able to say how many it wants:
+An interest can say how many wins satisfy it:
 
 ```toml
 [[interests]]
 name = "metal shed"
+id = "yard-shed"
 wanted = 1
 ```
 
-and stop matching once that many have been won. Most of the storage already
-exists: the watchlist carries a verdict per lot and `Verdict.WON` is one of
-them, so "this one was bought" is already recordable and already sortable.
+The watchlist stores stable, readable references to every interest that surfaced
+a followed lot. A `won` verdict alone retires nothing: the operator explicitly
+assigns which matching interests that purchase fulfilled. Report progress calls
+these confirmed fulfillments, not wins. This avoids the
+dangerous shortcut where one multi-match lot satisfies every want.
 
-The gap is narrower than that. The watchlist stores lots, not the interest that
-matched them, so nothing today can answer "has a metal shed been won" -- only
-"has lot 127449824 been won". Closing that means either recording the matching
-rule alongside the verdict, or re-matching a won lot against the rules when the
-count is needed. The first is a storage change and a migration; the second is
-free but re-reads the rules to answer a question about the past, which is the
-kind of thing that quietly disagrees with itself after a rule is edited.
+Retirement is derived, never stored. The TOML remains a preference and the
+watchlist remains purchase history. Correcting the verdict, clearing its
+allocations, or increasing `wanted` reopens the rule without config surgery.
+Clearing an allocation also records the legitimate reviewed-none outcome, so a
+reopened rule does not come with a misleading reminder about that old purchase.
 
-That choice is the work. The matching change itself is one gate.
+Legacy watchlists remain readable, but old wins retire nothing rather than being
+guessed into a current interest. Finite rules require a stable id; match and
+fulfillment references keep that id plus the display name seen at the time, so
+a renamed rule remains continuous.
 
-The rule must stay a preference rather than a purchase record. An interest that
-retires itself should be easy to un-retire, and the configuration should still
-read as a description of what the operator wants, not as inventory.
+## Delivery deduplication
+
+Status: planned as the next stateful milestone.
+
+Observation history and delivery history answer different questions. The
+database may know that a lot was seen before without knowing whether one email,
+webhook, or failed retry actually delivered it. Today, overlapping closing
+windows can therefore repeat a still-open lot.
+
+A future private delivery ledger should record success per destination only
+after that destination accepts a report. It should make retries idempotent,
+treat a relisting as a new auction event, retain changed-price context, and
+offer an explicit way to repeat a report. It must not overload the observation
+database or silently suppress a lot merely because another channel succeeded.
 
 ## Open questions
 

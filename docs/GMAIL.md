@@ -94,8 +94,7 @@ photo and link. Mark it `hunting` if needed:
 
 ```cmd
 .venv\Scripts\auction-lens.exe watch ^
-  --source PROVIDER_NAME ^
-  --listing-id LISTING_ID ^
+  --key PROVIDER/LISTING-ID ^
   --verdict hunting
 ```
 

@@ -10,8 +10,16 @@ from __future__ import annotations
 from collections.abc import Iterator
 from zoneinfo import ZoneInfo
 
-from ..models import Candidate, ReadingOrder
-from .findings import Fact, Finding, Handling, Report, Valuation, build_report
+from ..models import Candidate, InterestProgress, ReadingOrder
+from .findings import (
+    Fact,
+    Finding,
+    Handling,
+    OutcomeSummary,
+    Report,
+    Valuation,
+    build_report,
+)
 from .searches import SearchHint
 
 SEPARATOR = " | "
@@ -21,6 +29,7 @@ FACTS_PER_LINE = 3
 
 # Worded as an instruction rather than as another heading, because it is one.
 SEARCH_HEADING = "Paste into the site search to see a whole category:"
+OUTCOME_HEADING = "INTEREST PROGRESS"
 
 
 def render_text(
@@ -28,21 +37,43 @@ def render_text(
     zone: ZoneInfo,
     searches: tuple[SearchHint, ...] = (),
     order: ReadingOrder = ReadingOrder.PRIORITY,
+    interest_progress: tuple[InterestProgress, ...] = (),
+    unreviewed_wins: int = 0,
 ) -> str:
     """Render every candidate, grouped by category and ordered by score."""
-    return _as_text(build_report(candidates, zone, searches, order))
+    return _as_text(
+        build_report(
+            candidates,
+            zone,
+            searches,
+            order,
+            interest_progress,
+            unreviewed_wins,
+        )
+    )
 
 
 def _as_text(report: Report) -> str:
-    if report.is_empty:
-        return report.headline + "\n"
     lines = [report.headline]
+    lines.extend(_outcome_lines(report.outcomes))
     for group in report.groups:
         lines.extend(("", group.title.upper()))
         for finding in group.findings:
             lines.extend(_finding_lines(finding))
     lines.extend(_search_lines(report))
     return "\n".join(lines).rstrip() + "\n"
+
+
+def _outcome_lines(outcomes: OutcomeSummary) -> Iterator[str]:
+    """Put unresolved accounting before progress, close to the headline."""
+    if outcomes.warning:
+        yield ""
+        yield outcomes.warning
+    if outcomes.progress:
+        yield ""
+        yield OUTCOME_HEADING
+        for status in outcomes.progress:
+            yield f"  {status}"
 
 
 def _search_lines(report: Report) -> Iterator[str]:

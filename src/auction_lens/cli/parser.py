@@ -120,7 +120,10 @@ def _add_daily(subparsers) -> None:
     daily.add_argument("--env-file", default=DEFAULT_ENV_FILE)
     daily.add_argument(
         "--search", action="append", default=[], metavar="TERM",
-        help="search term; repeatable. Defaults to the configured or wanted terms",
+        help=(
+            "search term; repeatable. Defaults to configured searches or active "
+            "interest terms"
+        ),
     )
     _add_visiting(daily)
     daily.add_argument("--email", action="store_true", help="send the report as well")
@@ -187,7 +190,7 @@ def _add_discover(subparsers) -> None:
         action="append",
         default=[],
         metavar="TERM",
-        help="search term; repeatable. Defaults to the configured or wanted terms",
+        help="search term; repeatable. Defaults to configured searches or interest terms",
     )
     discover.add_argument(
         "--env-file", default=DEFAULT_ENV_FILE, help="optional local KEY=VALUE settings file"
@@ -224,11 +227,30 @@ def _add_watch(subparsers) -> None:
         WATCH, help="say what you think of one lot, or stop following it"
     )
     watch.add_argument("--watchlist", default=DEFAULT_WATCHLIST_FILE)
-    watch.add_argument("--source", required=True)
-    watch.add_argument("--listing-id", required=True)
+    watch.add_argument(
+        "--key",
+        help="copyable SOURCE/LISTING-ID shown as Watch key in a report",
+    )
+    watch.add_argument("--source", help="provider id; use with --listing-id")
+    watch.add_argument("--listing-id", help="provider listing id; use with --source")
     watch.add_argument("--verdict", choices=WATCH_ACTIONS)
     watch.add_argument("--estimate", help="what the lot is worth to you, all in")
     watch.add_argument("--note", help="anything the other fields cannot say")
+    fulfillments = watch.add_mutually_exclusive_group()
+    fulfillments.add_argument(
+        "--fulfills",
+        action="append",
+        metavar="INTEREST",
+        help="when won, assign this lot to a recorded interest; repeatable",
+    )
+    fulfillments.add_argument(
+        "--clear-fulfillments",
+        action="store_true",
+        help=(
+            "record that this lot fulfilled none; reopens any saved "
+            "interest allocation"
+        ),
+    )
 
 
 def _add_watchlist(subparsers) -> None:

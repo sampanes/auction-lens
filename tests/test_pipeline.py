@@ -7,6 +7,7 @@ from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+from auction_lens.models import CandidateCategory, InterestRef, Verdict, WatchedItem
 from auction_lens.pipeline import analyze_listings
 from auction_lens.storage import LogisticsDecisionStore, ObservationStore, WatchlistStore
 from auction_lens.valuation import ValuationEngine
@@ -178,16 +179,162 @@ class ClosingWindowTests(unittest.TestCase):
         self.assertEqual(result.lots_outside_the_window, 1)
         self.assertEqual(result.listings_from_other_providers, 1)
 
+    def test_a_future_lot_is_observed_before_its_reporting_window_opens(self):
+        later = replace(
+            self.listings[SOUNDBAR], ends_at=self.now + timedelta(hours=20)
+        )
+        with temporary_database() as database:
+            first = self._run_with_database(database, [later], within_hours=6)
+            inside = replace(later, ends_at=self.now + timedelta(hours=4))
+            second = self._run_with_database(database, [inside], within_hours=6)
+
+        self.assertEqual(first.listings_scored, 0)
+        self.assertTrue(second.candidates)
+        self.assertFalse(any(candidate.change.is_new for candidate in second.candidates))
+
     def _run(self, listings, within_hours=None):
+        with temporary_database() as database:
+            return self._run_with_database(database, listings, within_hours)
+
+    def _run_with_database(self, database, listings, within_hours=None):
         config = replace(
             self.config,
             reports=replace(self.config.reports, closing_within_hours=within_hours),
         )
+        return analyze_listings(
+            listings,
+            config,
+            observations=ObservationStore(database),
+            decisions=LogisticsDecisionStore(database),
+            now=self.now,
+        )
+
+
+class OutcomeAwareInterestTests(unittest.TestCase):
+    """A confirmed purchase retires only the finite want it satisfies."""
+
+    def setUp(self):
+        self.config = example_config()
+        self.listing = example_listings()[SOUNDBAR]
+        self.soundbar = next(
+            rule for rule in self.config.interests if rule.name == "soundbar"
+        )
+        self.reference = InterestRef(
+            self.soundbar.interest_id, self.soundbar.name
+        )
+
+    def test_a_confirmed_win_retires_the_interest_but_not_general_discovery(self):
         with temporary_database() as database:
-            return analyze_listings(
-                listings,
-                config,
-                observations=ObservationStore(database),
-                decisions=LogisticsDecisionStore(database),
-                now=self.now,
+            store = self._watchlist(database)
+            store.save(self._won())
+
+            result = self._run(database, store)
+
+        self.assertFalse(
+            any(
+                candidate.category == CandidateCategory.WANTED
+                and candidate.rule_id == self.soundbar.interest_id
+                for candidate in result.candidates
             )
+        )
+        self.assertTrue(
+            any(
+                candidate.category == CandidateCategory.ANOMALY
+                for candidate in result.candidates
+            )
+        )
+        status = next(
+            item
+            for item in result.interest_progress
+            if item.interest.interest_id == self.soundbar.interest_id
+        )
+        self.assertTrue(status.is_retired)
+
+    def test_a_win_without_an_explicit_allocation_keeps_the_interest_active(self):
+        with temporary_database() as database:
+            store = self._watchlist(database)
+            store.save(
+                replace(
+                    self._won(),
+                    fulfilled_interests=(),
+                    fulfillment_reviewed=False,
+                )
+            )
+
+            result = self._run(database, store)
+
+        self.assertTrue(
+            any(
+                candidate.rule_id == self.soundbar.interest_id
+                for candidate in result.candidates
+            )
+        )
+        self.assertEqual(result.unreviewed_wins, 1)
+
+    def test_a_reported_lot_remembers_every_interest_match_not_the_anomaly(self):
+        second = replace(
+            self.soundbar,
+            interest_id="home-audio",
+            name="home audio",
+        )
+        config = replace(self.config, interests=(self.soundbar, second))
+        with temporary_database() as database:
+            store = self._watchlist(database)
+            self._run(database, store, config=config)
+            followed = store.get(self.listing.source, self.listing.listing_id)
+
+        self.assertEqual(
+            {reference.interest_id for reference in followed.matched_interests},
+            {self.soundbar.interest_id, second.interest_id},
+        )
+        self.assertNotIn("retail-ratio", {
+            reference.interest_id for reference in followed.matched_interests
+        })
+
+    def test_increasing_wanted_reactivates_the_rule_on_the_next_run(self):
+        config = replace(
+            self.config,
+            interests=tuple(
+                replace(rule, wanted=2) if rule == self.soundbar else rule
+                for rule in self.config.interests
+            ),
+        )
+        with temporary_database() as database:
+            store = self._watchlist(database)
+            store.save(self._won())
+
+            result = self._run(database, store, config=config)
+
+        self.assertTrue(
+            any(
+                candidate.rule_id == self.soundbar.interest_id
+                for candidate in result.candidates
+            )
+        )
+        status = next(
+            item
+            for item in result.interest_progress
+            if item.interest.interest_id == self.soundbar.interest_id
+        )
+        self.assertEqual(status.remaining, 1)
+
+    def _won(self) -> WatchedItem:
+        return WatchedItem(
+            source=self.listing.source,
+            listing_id="won-lot",
+            matched_interests=(self.reference,),
+            fulfilled_interests=(self.reference,),
+            verdict=Verdict.WON,
+        )
+
+    def _watchlist(self, database) -> WatchlistStore:
+        return WatchlistStore(Path(database.path).parent / "watchlist.json")
+
+    def _run(self, database, store, *, config=None):
+        return analyze_listings(
+            [self.listing],
+            config or self.config,
+            observations=ObservationStore(database),
+            decisions=LogisticsDecisionStore(database),
+            watchlist=store,
+        )

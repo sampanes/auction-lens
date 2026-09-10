@@ -146,10 +146,30 @@ def _interests(root: Section, profiles: Section) -> tuple[InterestRule, ...]:
     finished rule and nothing has to remember to consult the defaults too.
     """
     defaults = _interest_defaults(root.table("interest_defaults"))
-    return tuple(
+    interests = tuple(
         defaults.applied_to(_interest(item, profiles))
         for item in root.tables("interests")
     )
+    _require_unique_interests(interests)
+    return interests
+
+
+def _require_unique_interests(interests: tuple[InterestRule, ...]) -> None:
+    """Keep every id-or-name spelling resolvable to exactly one interest."""
+    first_by_alias: dict[str, tuple[int, str]] = {}
+    for index, interest in enumerate(interests):
+        for attribute, key in (("name", "name"), ("interest_id", "id")):
+            alias = getattr(interest, attribute).casefold()
+            previous = first_by_alias.get(alias)
+            if previous is not None and previous[0] != index:
+                first, first_key = previous
+                raise ValueError(
+                    f"interests[{index}].{key} conflicts with "
+                    f"interests[{first}].{first_key}; names and ids must identify "
+                    "one interest ignoring case"
+                )
+            if previous is None:
+                first_by_alias[alias] = (index, key)
 
 
 def _interest_defaults(section: Section) -> InterestDefaults:
@@ -162,14 +182,22 @@ def _interest_defaults(section: Section) -> InterestDefaults:
 
 def _interest(item: Section, profiles: Section) -> InterestRule:
     with in_section(item):
+        wanted = item.optional_positive_integer("wanted")
+        if wanted is not None and not item.contains("id"):
+            raise ValueError(
+                f"{item.label('id')} is required when wanted is set; "
+                "finite interests need a stable identity"
+            )
         return InterestRule(
             name=item.required_text("name"),
+            interest_id=item.required_text("id") if item.contains("id") else "",
             purpose=item.text("purpose", "use"),
             any_terms=item.lowercase_texts("any_terms"),
             all_terms=item.lowercase_texts("all_terms"),
             exclude_terms=item.lowercase_texts("exclude_terms"),
             max_total_cost=item.optional_decimal("max_total_cost"),
             minimum_retail=item.optional_decimal("minimum_retail"),
+            wanted=wanted,
             minimum_score=item.integer("minimum_score", 0),
             weight=item.decimal("weight", "1"),
             condition_profile=item.text("condition_profile"),

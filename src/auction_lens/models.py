@@ -84,6 +84,56 @@ class Verdict(StrEnum):
 
 
 @dataclass(frozen=True)
+class InterestRef:
+    """A stable interest identity with the name a person saw at the time.
+
+    The id answers which configured want this was. The name is kept beside it
+    because an old decision should remain readable after that want is renamed.
+    """
+
+    interest_id: str
+    name: str
+
+    def __post_init__(self) -> None:
+        interest_id = self.interest_id.strip()
+        name = self.name.strip()
+        if not interest_id:
+            raise ValueError("interest id must be non-empty text")
+        if not name:
+            raise ValueError("interest name must be non-empty text")
+        object.__setattr__(self, "interest_id", interest_id)
+        object.__setattr__(self, "name", name)
+
+
+@dataclass(frozen=True)
+class InterestProgress:
+    """How a configured want stands against its explicit fulfillments."""
+
+    interest: InterestRef
+    wanted: int | None
+    fulfilled: int = 0
+
+    def __post_init__(self) -> None:
+        if self.wanted is not None:
+            require_at_least(self.wanted, 1, field_name="wanted")
+        require_not_negative(self.fulfilled, field_name="fulfilled")
+
+    @property
+    def is_limited(self) -> bool:
+        return self.wanted is not None
+
+    @property
+    def is_retired(self) -> bool:
+        return self.wanted is not None and self.fulfilled >= self.wanted
+
+    @property
+    def remaining(self) -> int | None:
+        if self.wanted is None:
+            return None
+        return max(self.wanted - self.fulfilled, 0)
+
+
+@dataclass(frozen=True)
 class Listing:
     """One auction lot as the provider described it at one moment in time."""
 
@@ -304,6 +354,7 @@ class Candidate:
 
     listing: Listing
     category: CandidateCategory
+    rule_id: str
     rule_name: str
     score: int
     total_cost: Decimal
@@ -400,7 +451,8 @@ class WatchedItem:
     """One lot a person is following, and every look they have taken at it.
 
     The first block is what the provider said, refreshed on every run. The
-    second block is what the person thinks, which no run may overwrite.
+    second is automatic match provenance. The third is what the person thinks,
+    which no run may overwrite.
     """
 
     source: str
@@ -412,15 +464,55 @@ class WatchedItem:
     estimated_retail: Decimal | None = None
     conditions: tuple[ConditionTag, ...] = ()
     quality_rating: int | None = None
+    # What the scorer said when this lot entered the watchlist. These are
+    # automatic provenance and may be refreshed as current rules are renamed.
+    matched_interests: tuple[InterestRef, ...] = ()
 
     my_estimate: Decimal | None = None
     verdict: Verdict = Verdict.WATCHING
     note: str = ""
+    # Which wants the person says this purchase actually satisfied. Winning a
+    # multi-match lot never fills every want by accident.
+    fulfilled_interests: tuple[InterestRef, ...] = ()
+    # Whether a person has answered the fulfillment question, including the
+    # valid answer "this purchase fulfilled none of them".
+    fulfillment_reviewed: bool = False
 
     readings: tuple[PriceReading, ...] = ()
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "verdict", _verdict(self.verdict))
+        object.__setattr__(
+            self,
+            "matched_interests",
+            _unique_interest_refs(self.matched_interests, field_name="matched_interests"),
+        )
+        object.__setattr__(
+            self,
+            "fulfilled_interests",
+            _unique_interest_refs(
+                self.fulfilled_interests, field_name="fulfilled_interests"
+            ),
+        )
+        if not isinstance(self.fulfillment_reviewed, bool):
+            raise ValueError("fulfillment_reviewed must be true or false")
+        # Version-2 files written before this flag existed already used a
+        # nonempty allocation as proof that a person answered the question.
+        if self.fulfilled_interests and not self.fulfillment_reviewed:
+            object.__setattr__(self, "fulfillment_reviewed", True)
+        matched_ids = {
+            reference.interest_id.casefold()
+            for reference in self.matched_interests
+        }
+        unrecognized = [
+            reference.name
+            for reference in self.fulfilled_interests
+            if reference.interest_id.casefold() not in matched_ids
+        ]
+        if unrecognized:
+            raise ValueError(
+                "fulfilled interests must be recorded matches: " + ", ".join(unrecognized)
+            )
         if self.estimated_retail is not None:
             require_not_negative(self.estimated_retail, field_name="estimated_retail")
         if self.my_estimate is not None:
@@ -497,6 +589,23 @@ def _verdict(verdict: Any) -> Verdict:
             return allowed
     choices = ", ".join(Verdict)
     raise ValueError(f"verdict must be one of: {choices}")
+
+
+def _unique_interest_refs(
+    references: tuple[InterestRef, ...], *, field_name: str
+) -> tuple[InterestRef, ...]:
+    """Keep one reference per stable id and reject ambiguous direct callers."""
+    unique = []
+    seen = set()
+    for reference in references:
+        if not isinstance(reference, InterestRef):
+            raise ValueError(f"{field_name} must contain interest references")
+        key = reference.interest_id.casefold()
+        if key in seen:
+            raise ValueError(f"{field_name} contains duplicate id: {reference.interest_id}")
+        seen.add(key)
+        unique.append(reference)
+    return tuple(unique)
 
 
 def _photos(data: dict[str, Any]) -> tuple[str, ...]:

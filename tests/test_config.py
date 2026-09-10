@@ -5,7 +5,7 @@ from __future__ import annotations
 import unittest
 from decimal import Decimal
 
-from auction_lens.config import load_config
+from auction_lens.config import InterestRule, load_config
 from support import EXAMPLE_CONFIG, example_config, temporary_directory
 
 
@@ -25,6 +25,8 @@ class ExampleConfigTests(unittest.TestCase):
 
     def test_reusable_condition_profile_is_loaded(self):
         soundbar = next(rule for rule in self.config.interests if rule.name == "soundbar")
+        self.assertEqual(soundbar.interest_id, "soundbar")
+        self.assertEqual(soundbar.wanted, 1)
         self.assertEqual(soundbar.condition_profile, "ready_to_use")
         self.assertIn("not functional", soundbar.condition.reject)
         self.assertEqual(soundbar.condition.penalties["untested"], 22)
@@ -37,9 +39,63 @@ class ExampleConfigTests(unittest.TestCase):
         monitor = next(rule for rule in self.config.interests if rule.name == "monitor")
         self.assertIn("compatible with", monitor.exclude_terms)
         self.assertIn("mount", monitor.accessory_nouns)
+        self.assertIsNone(monitor.wanted)
 
 
 class ConfigValidationTests(unittest.TestCase):
+    def test_programmatic_finite_interest_also_requires_a_stable_id(self):
+        with self.assertRaisesRegex(ValueError, "explicit stable id"):
+            InterestRule(name="one-off item", wanted=1)
+
+    def test_an_explicit_interest_id_is_loaded(self):
+        config = self._load_variant(
+            'id = "soundbar"',
+            'id = "living-room-audio"',
+        )
+
+        self.assertEqual(config.interests[0].interest_id, "living-room-audio")
+
+    def test_zero_wanted_quantity_is_rejected_by_key(self):
+        with self.assertRaisesRegex(
+            ValueError, r"interests\[0\]\.wanted must be at least 1"
+        ):
+            self._load_variant("wanted = 1", "wanted = 0")
+
+    def test_a_finite_interest_requires_an_explicit_stable_id(self):
+        with self.assertRaisesRegex(
+            ValueError,
+            r"interests\[0\]\.id is required when wanted is set",
+        ):
+            self._load_variant('id = "soundbar"\n', "")
+
+    def test_negative_wanted_quantity_is_rejected_by_key(self):
+        with self.assertRaisesRegex(
+            ValueError, r"interests\[0\]\.wanted must be at least 1"
+        ):
+            self._load_variant("wanted = 1", "wanted = -1")
+
+    def test_wanted_quantity_must_be_a_whole_number(self):
+        with self.assertRaisesRegex(
+            ValueError, r"interests\[0\]\.wanted must be a whole number"
+        ):
+            self._load_variant("wanted = 1", 'wanted = "one"')
+
+    def test_interest_names_are_unique_ignoring_case(self):
+        with self.assertRaisesRegex(
+            ValueError, r"interests\[1\]\.name conflicts with interests\[0\]\.name"
+        ):
+            self._load_variant('name = "monitor"', 'name = "SOUNDBAR"')
+
+    def test_interest_ids_are_unique_ignoring_case(self):
+        with self.assertRaisesRegex(
+            ValueError, r"interests\[1\]\.id conflicts with interests\[0\]\.id"
+        ):
+            self._load_variant(
+                'id = "soundbar"',
+                'id = "same"',
+                ('name = "monitor"', 'name = "monitor"\nid = "SAME"'),
+            )
+
     def test_invalid_email_security_is_rejected_at_load_time(self):
         with self.assertRaisesRegex(ValueError, "security must be one of: ssl, starttls"):
             self._load_variant('security = "ssl"', 'security = "starttlz"')
@@ -49,6 +105,16 @@ class ConfigValidationTests(unittest.TestCase):
             self._load_variant(
                 'condition_profile = "ready_to_use"',
                 'condition_profile = "typo"',
+            )
+
+    def test_an_interest_id_cannot_collide_with_another_interest_name(self):
+        with self.assertRaisesRegex(
+            ValueError, r"interests\[1\]\.name conflicts with interests\[0\]\.id"
+        ):
+            self._load_variant(
+                'id = "soundbar"',
+                'id = "audio"',
+                ('name = "monitor"', 'name = "AUDIO"'),
             )
 
     def test_duplicate_valuation_source_ids_are_rejected(self):
@@ -180,13 +246,20 @@ class ConfigValidationTests(unittest.TestCase):
                 'mode = "authorized_http"\nrun_mode = "staging"',
             )
 
-    def _load_variant(self, original: str, replacement: str):
+    def _load_variant(
+        self,
+        original: str,
+        replacement: str,
+        *other_replacements: tuple[str, str],
+    ):
         """Load the example configuration with one setting changed."""
         source = EXAMPLE_CONFIG.read_text(encoding="utf-8")
-        self.assertIn(original, source)
+        for old, new in ((original, replacement), *other_replacements):
+            self.assertIn(old, source)
+            source = source.replace(old, new)
         with temporary_directory() as directory:
             variant = directory / "variant.toml"
-            variant.write_text(source.replace(original, replacement), encoding="utf-8")
+            variant.write_text(source, encoding="utf-8")
             return load_config(variant)
 
 

@@ -134,7 +134,12 @@ Search terms come from the first of these that says anything: `--search` (which
 is repeatable), `[provider.acquisition] searches`, or the `any_terms` of every
 `[[interests]]` rule. That last fallback means the terms are written down once:
 a configuration that already says it wants a soundbar does not have to say so
-again in a second list.
+again in a second list. `daily` derives that fallback from active interests, so
+a finite want already filled by an explicit win cannot consume a request slot.
+Standalone `discover`, command-line terms, configured searches, and category
+sweeps remain history-free operator instructions. When every fallback interest
+is satisfied and no category sweep exists, `daily` makes no request, writes an
+empty canonical input, and continues to the progress report normally.
 
 **Nellis scopes its catalogue to one branch, and chooses it by session.** An
 unconfigured client silently gets the site's default city, Las Vegas -- which is
