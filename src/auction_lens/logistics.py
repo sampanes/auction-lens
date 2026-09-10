@@ -15,6 +15,7 @@ from __future__ import annotations
 
 from .config import LargeItemPolicy, LogisticsConfig
 from .models import Listing, LogisticsAssessment, LogisticsDecision, LogisticsStatus
+from .text_match import mentions
 
 # How dimensions are written back out to a person. Reading them apart is a
 # different job, and lives in fields.DIMENSION_SEPARATOR.
@@ -73,7 +74,7 @@ def _declares_oversized(listing: Listing, config: LogisticsConfig) -> bool:
     rather than built in, because each provider says it differently.
     """
     searchable = listing.searchable_text
-    return any(term in searchable for term in config.oversized_terms)
+    return any(mentions(searchable, term) for term in config.oversized_terms)
 
 
 def _transport_question(listing: Listing) -> str:

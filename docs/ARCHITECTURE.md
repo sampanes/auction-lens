@@ -19,7 +19,7 @@ This is not a description. It is checked on every run by
 |---|---|---|
 | 0 | `fields` | nothing in the project |
 | 1 | `grading` | layer 0 |
-| 2 | `env_file`, `file_io`, `http_safety`, `models`, `throttle` | layers 0-1 |
+| 2 | `env_file`, `file_io`, `http_safety`, `models`, `text_match`, `throttle` | layers 0-1 |
 | 3 | `config` | layers 0-2 |
 | 4 | `logistics` | layers 0-3 |
 | 5 | `acquisition`, `ingest`, `reporting`, `scoring`, `storage`, `valuation` | layers 0-4 |
