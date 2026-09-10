@@ -164,6 +164,16 @@ url_template = "https://example.invalid/music-price-guide?q={query}"
 # short report is never mistaken for a quiet day.
 max_items = 30
 
+# How far ahead a closing time is still worth reading about. A lot closing
+# tomorrow evening cannot be bid on tonight, and reading about it twice is how
+# a digest stops being read. Leave it out entirely to report everything still
+# open, however distant.
+#
+# This is also all there is to a split digest: schedule the run twice, and the
+# second one carries only what the first one's lots left behind, because the
+# rest have closed. Nothing in the tool knows about schedules.
+#   closing_within_hours = 14
+
 # A webhook is the errand email is not: somebody ran the command and wants the
 # answer on their phone now. The address is a secret, so only the name of the
 # variable holding it appears here.
@@ -175,7 +185,10 @@ username = "Auction Lens"
 
 [reports.email]
 enabled = false
-subject = "Auction Lens: {{ match_count }} promising listings"
+# {{ match_count }} and {{ first_close }} are filled in; anything else is left
+# as written. Naming the close keeps two digests on the same day from sharing a
+# subject, which is what makes a mail client thread them into one another.
+subject = "Auction Lens: {{ match_count }} lots, first closes {{ first_close }}"
 host_env = "AUCTION_LENS_SMTP_HOST"
 port = 465
 security = "ssl"

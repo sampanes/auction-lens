@@ -4,6 +4,12 @@ REM
 REM Every path this needs -- the config, the inbox, the database, the watchlist,
 REM the .env -- is already a CLI default, so nothing is repeated here. What is
 REM spelled out is only what this run decides: email it, and chase hunting lots.
+REM
+REM For a split digest, schedule this same file twice -- say 09:00 and 17:00 --
+REM with reports.closing_within_hours set in the configuration. There is no
+REM second script and no second setting: a lot that closed before the later run
+REM is dropped by then, so the evening mail carries only what is left. Two
+REM scheduled tasks is the whole mechanism.
 setlocal
 
 set "ROOT=%~dp0.."

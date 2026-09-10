@@ -144,7 +144,7 @@ def build_report(
     if not candidates:
         return Report(headline=EMPTY_REPORT)
     return Report(
-        headline=f"Auction Lens found {len(candidates)} match(es).",
+        headline=_headline(candidates, zone),
         searches=searches,
         groups=tuple(
             Group(
@@ -154,6 +154,31 @@ def build_report(
             for category, items in _by_category(candidates, order).items()
         ),
     )
+
+
+def _headline(candidates: list[Candidate], zone: ZoneInfo) -> str:
+    """How many, and how long there is before the first one is gone.
+
+    The deadline belongs in the first line because it is the only fact that
+    decides whether the rest is worth reading now or after dinner.
+    """
+    soonest = soonest_close(candidates)
+    if soonest is None:
+        return f"Auction Lens found {len(candidates)} match(es)."
+    return (
+        f"Auction Lens found {len(candidates)} match(es); "
+        f"the first closes {closing_time(soonest, zone)}."
+    )
+
+
+def soonest_close(candidates: list[Candidate]) -> datetime | None:
+    """When the earliest-closing reported lot goes, or None if none says."""
+    times = [
+        candidate.listing.ends_at
+        for candidate in candidates
+        if candidate.listing.ends_at is not None
+    ]
+    return min(times) if times else None
 
 
 def closing_time(ends_at: datetime | None, zone: ZoneInfo) -> str:

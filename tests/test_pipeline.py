@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import unittest
 from dataclasses import replace
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from auction_lens.pipeline import analyze_listings
@@ -115,3 +116,78 @@ class ReportCapTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ClosingWindowTests(unittest.TestCase):
+    """A report is a list of things that can still be bid on."""
+
+    def setUp(self):
+        self.config = example_config()
+        self.listings = example_listings()
+        self.now = datetime(2026, 9, 9, 20, 0, tzinfo=UTC)
+
+    def test_a_lot_that_has_already_closed_never_reaches_scoring(self):
+        closed = [
+            replace(listing, ends_at=self.now - timedelta(minutes=1))
+            for listing in self.listings
+        ]
+        result = self._run(closed)
+        self.assertEqual(result.listings_scored, 0)
+        self.assertEqual(result.lots_outside_the_window, len(closed))
+        self.assertFalse(result.candidates)
+
+    def test_a_lot_still_open_is_scored_when_no_window_is_configured(self):
+        far = [
+            replace(listing, ends_at=self.now + timedelta(days=30))
+            for listing in self.listings
+        ]
+        result = self._run(far)
+        self.assertEqual(result.listings_scored, len(far))
+        self.assertEqual(result.lots_outside_the_window, 0)
+
+    def test_a_window_keeps_what_closes_inside_it_and_sets_the_rest_aside(self):
+        soon, later = self.listings[0], self.listings[1]
+        soon = replace(soon, ends_at=self.now + timedelta(hours=2))
+        later = replace(later, ends_at=self.now + timedelta(hours=20))
+
+        result = self._run([soon, later], within_hours=6)
+
+        self.assertEqual(result.listings_scored, 1)
+        self.assertEqual(result.lots_outside_the_window, 1)
+        self.assertTrue(
+            all(item.listing.listing_id == soon.listing_id for item in result.candidates)
+        )
+
+    def test_a_lot_stating_no_closing_time_is_kept_rather_than_guessed_about(self):
+        # Silence is not a reason to hide something the operator asked for.
+        silent = [replace(listing, ends_at=None) for listing in self.listings]
+        result = self._run(silent, within_hours=1)
+        self.assertEqual(result.listings_scored, len(silent))
+        self.assertEqual(result.lots_outside_the_window, 0)
+
+    def test_the_window_is_not_confused_with_another_provider_s_listings(self):
+        # Both counts are subtracted from the same total, so an error in one
+        # would silently show up as the other.
+        stranger = replace(self.listings[SOUNDBAR], source="other-provider")
+        closed = replace(self.listings[1], ends_at=self.now - timedelta(minutes=1))
+
+        result = self._run([self.listings[SOUNDBAR], stranger, closed])
+
+        self.assertEqual(result.listings_read, 3)
+        self.assertEqual(result.listings_scored, 1)
+        self.assertEqual(result.lots_outside_the_window, 1)
+        self.assertEqual(result.listings_from_other_providers, 1)
+
+    def _run(self, listings, within_hours=None):
+        config = replace(
+            self.config,
+            reports=replace(self.config.reports, closing_within_hours=within_hours),
+        )
+        with temporary_database() as database:
+            return analyze_listings(
+                listings,
+                config,
+                observations=ObservationStore(database),
+                decisions=LogisticsDecisionStore(database),
+                now=self.now,
+            )

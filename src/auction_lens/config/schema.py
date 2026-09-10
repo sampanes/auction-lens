@@ -405,11 +405,18 @@ class ReportsConfig:
     # Reading order only. Which lots are worth reporting is settled by the
     # bars above; this decides nothing except what a person sees first.
     order: ReadingOrder = ReadingOrder.PRIORITY
+    # How far ahead a closing time is still worth reading about. A lot closing
+    # tomorrow evening cannot be acted on tonight, and reading about it now
+    # only to read about it again later is how a digest stops being read.
+    # Absent means every lot still open, however distant.
+    closing_within_hours: int | None = None
 
     def __post_init__(self) -> None:
         _settle(self, "order", ReadingOrder)
         if self.max_items is not None:
             require_at_least(self.max_items, 1, field_name="max_items")
+        if self.closing_within_hours is not None:
+            require_at_least(self.closing_within_hours, 1, field_name="closing_within_hours")
 
 
 # An interest match tops out at 90 (80 base, 3 for new, 7 for ending soon), so
