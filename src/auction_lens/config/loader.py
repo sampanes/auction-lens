@@ -11,6 +11,7 @@ from __future__ import annotations
 import tomllib
 from pathlib import Path
 
+from ..models import ReadingOrder
 from .conditions import resolve_condition_policy
 from .schema import (
     DEFAULT_CACHE_FILE,
@@ -223,7 +224,10 @@ def _logistics(section: Section) -> LogisticsConfig:
 
 def _reports(section: Section) -> ReportsConfig:
     with in_section(section):
-        return ReportsConfig(max_items=section.optional_positive_integer("max_items"))
+        return ReportsConfig(
+            max_items=section.optional_positive_integer("max_items"),
+            order=section.text("order", ReadingOrder.PRIORITY),
+        )
 
 
 def _webhook(section: Section) -> WebhookConfig:

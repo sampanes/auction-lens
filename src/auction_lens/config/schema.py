@@ -26,7 +26,7 @@ from ..fields import (
     require_not_negative,
     require_within,
 )
-from ..models import HIGHEST_SCORE, LOWEST_SCORE
+from ..models import HIGHEST_SCORE, LOWEST_SCORE, ReadingOrder
 
 DEFAULT_USER_AGENT_ENV = "AUCTION_LENS_HTTP_USER_AGENT"
 DEFAULT_CACHE_FILE = "private/cache/provider-response.html"
@@ -402,8 +402,12 @@ class ReportsConfig:
     """
 
     max_items: int | None = None
+    # Reading order only. Which lots are worth reporting is settled by the
+    # bars above; this decides nothing except what a person sees first.
+    order: ReadingOrder = ReadingOrder.PRIORITY
 
     def __post_init__(self) -> None:
+        _settle(self, "order", ReadingOrder)
         if self.max_items is not None:
             require_at_least(self.max_items, 1, field_name="max_items")
 

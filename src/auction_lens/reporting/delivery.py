@@ -14,7 +14,7 @@ from email.message import EmailMessage
 from zoneinfo import ZoneInfo
 
 from ..config import EmailConfig, EmailSecurity
-from ..models import Candidate, WatchedItem
+from ..models import Candidate, ReadingOrder, WatchedItem
 from .html import render_html
 from .searches import SearchHint
 from .text import render_text
@@ -54,10 +54,11 @@ def send_email(
     config: EmailConfig,
     zone: ZoneInfo,
     searches: tuple[SearchHint, ...] = (),
+    order: ReadingOrder = ReadingOrder.PRIORITY,
 ) -> None:
     """Send one report as a text message with an HTML alternative."""
     account = _ready_account(config)
-    message = _build_message(candidates, config, account, zone, searches)
+    message = _build_message(candidates, config, account, zone, searches, order)
 
     _deliver(message, config, account)
 
@@ -131,13 +132,14 @@ def _build_message(
     account: MailAccount,
     zone: ZoneInfo,
     searches: tuple[SearchHint, ...],
+    order: ReadingOrder,
 ) -> EmailMessage:
     message = EmailMessage()
     message["Subject"] = config.subject.replace(MATCH_COUNT_PLACEHOLDER, str(len(candidates)))
     message["From"] = account.sender
     message["To"] = account.recipient
-    message.set_content(render_text(candidates, zone, searches))
+    message.set_content(render_text(candidates, zone, searches, order))
     message.add_alternative(
-        render_html(candidates, zone, searches), subtype="html"
+        render_html(candidates, zone, searches, order), subtype="html"
     )
     return message
