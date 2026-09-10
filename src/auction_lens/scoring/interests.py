@@ -10,6 +10,7 @@ from decimal import Decimal
 
 from ..config import InterestRule
 from ..models import Candidate, CandidateCategory, Listing
+from ..text_match import first_mention, mentions, standalone_mentions
 from .conditions import penalty_for, policy_admits
 from .context import ScoringContext
 from .signals import clamp_score
@@ -71,13 +72,13 @@ def _score_rule(
 def matches_terms(listing: Listing, total_cost: Decimal, rule: InterestRule) -> bool:
     """Apply one rule's term filters, its value floor, and its cost ceiling."""
     searchable = listing.searchable_text
-    if rule.any_terms and not any(term in searchable for term in rule.any_terms):
+    if rule.any_terms and not any(mentions(searchable, term) for term in rule.any_terms):
         return False
-    if rule.all_terms and not all(term in searchable for term in rule.all_terms):
+    if rule.all_terms and not all(mentions(searchable, term) for term in rule.all_terms):
         return False
     # Against the wider text: a seller's note about this one item is exactly
     # the kind of thing that should be able to rule it out.
-    if any(term in listing.disqualifying_text for term in rule.exclude_terms):
+    if any(mentions(listing.disqualifying_text, term) for term in rule.exclude_terms):
         return False
     if describes_an_accessory(searchable, rule):
         return False
@@ -120,8 +121,9 @@ def _named_after_its_host(searchable: str, rule: InterestRule) -> bool:
         return False
     # A rule that named no wanted words has nothing here to be positioned, and
     # an empty "all of them are late" would otherwise be vacuously true.
-    named = [term for term in rule.any_terms if term in searchable]
-    return bool(named) and all(searchable.find(term) > host_marker for term in named)
+    named = [first_mention(searchable, term) for term in rule.any_terms]
+    said = [at for at in named if at != -1]
+    return bool(said) and all(at > host_marker for at in said)
 
 
 def _sold_as_a_fitting(searchable: str, rule: InterestRule) -> bool:
@@ -146,13 +148,11 @@ def _sits_beside(searchable: str, term: str, noun: str) -> bool:
     "Guitar Hard Case" and "Guitar Tripod Holder" both describe a fitting, and
     neither says the two words back to back.
     """
-    found = searchable.find(term)
-    while found != -1:
+    for found in standalone_mentions(searchable, term):
         before = searchable[:found].split()[-ACCESSORY_WORD_GAP:]
         after = searchable[found + len(term) :].split()[:ACCESSORY_WORD_GAP]
         if any(_is_the_word(word, noun) for word in (*before, *after)):
             return True
-        found = searchable.find(term, found + 1)
     return False
 
 

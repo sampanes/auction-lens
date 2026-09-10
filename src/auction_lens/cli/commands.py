@@ -287,6 +287,9 @@ def run(args: argparse.Namespace) -> int:
 
     if args.email:
         send_email(result.candidates, config.email, zone, searches, order)
+        # Name the variable, not the address: the same reason the webhook line
+        # says "the webhook" rather than printing the URL it posted to.
+        print(f"Emailed {len(result.candidates)} match(es) to {config.email.recipient_env}.")
     if args.webhook:
         send_webhook(result.candidates, config.webhook, zone)
         print(f"Posted {len(result.candidates)} match(es) to the webhook.")
