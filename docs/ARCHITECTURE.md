@@ -35,7 +35,11 @@ keeps `scoring` readable without `valuation` open beside it.
 |---|---|
 | `fields` | What is this value allowed to be? |
 | `grading` | What does a provider's condition answer mean, and what colour is it? |
-| `models` | What is a listing, a candidate, a valuation? |
+| `models/lots` | What is a listing, and what is one called? |
+| `models/scale` | What is a score out of, and what can a want reach of it? |
+| `models/candidates` | What is a lot plus the reason it is reported? |
+| `models/watching` | What does the operator think of a lot, and what has it cost? |
+| `models/interests`, `models/handling`, `models/valuation` | Which want, can it be carried, what is it worth? |
 | `config/` | What did the operator's TOML file ask for? |
 | `config/profile` | What do those stable operator choices mean in plain language? |
 | `config/editor` | How can a small profile change preserve the original TOML and be reversed? |

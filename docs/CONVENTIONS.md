@@ -49,7 +49,7 @@ If a setting or a status may only be one of a few words, it is a `StrEnum`
 of allowed values beside it.
 
 - **Settle it at the edge.** The record turns the written word into the member
-  (`_settle` in `config/schema.py`, `_decidable` in `models.py`), so text from
+  (`_settle` in `config/schema.py`, `_decidable` in `models/handling.py`), so text from
   TOML, SQLite, or argparse all arrive inside as the member.
 - **Compare with `==`, never `is`.** `status is LogisticsStatus.INFEASIBLE` is
   silently `False` when `status` is the plain string `"infeasible"`, and that
@@ -146,7 +146,10 @@ so in its docstring.
 - **A setting**: add the field to the record in `config/schema.py`, its rule to
   that record's `__post_init__`, and one line to the matching builder in
   `config/loader.py`. Then add it to `config/providers/nellis.example.toml`.
-- **A scoring signal**: a named constant and a function in `scoring/signals.py`.
+- **A record**: put it in the `models/` module that already holds its subject,
+  and add one line to the `__init__` door so nothing outside has to know which.
+- **A scoring signal**: a function in `scoring/signals.py`, and its number in
+  `models/scale.py` if configuration has to be explained in terms of it.
   Put anything both interests and anomaly discovery need on `ScoringContext`.
 - **A valuation source**: prefer configuration. If it genuinely needs code,
   implement `collect(listing)` and register it in `valuation/registry.py`.
