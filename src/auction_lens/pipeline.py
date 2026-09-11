@@ -7,7 +7,7 @@ test, and what keeps argument parsing from acquiring opinions about scoring.
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 
 from .config import AppConfig
 from .models import (
@@ -47,10 +47,9 @@ class RunResult:
     all_candidates: tuple[Candidate, ...] = ()
     matches_found: int = 0
     lots_followed: int = 0
-    # Lots left unscored because they cannot be acted on: already closed, or
-    # closing further out than this report reaches. Counted so a short report
-    # is never mistaken for a quiet day.
-    lots_outside_the_window: int = 0
+    # Lots left unscored because they cannot be acted on at all: the auction
+    # is over. Counted so a short report is never mistaken for a quiet day.
+    lots_already_closed: int = 0
     # Ways to reach these lots at the provider's end. Built from everything
     # that matched rather than from the part that fitted, because reaching
     # what the cap held back is the whole reason to offer a phrase.
@@ -69,10 +68,10 @@ class RunResult:
         """Everything read that this provider's configuration cannot speak for.
 
         Three things account for every listing read: another provider's, one
-        outside the closing window, and one actually scored. Naming two of them
-        leaves this one as the remainder.
+        whose auction already ended, and one actually scored. Naming two of
+        them leaves this one as the remainder.
         """
-        return self.listings_read - self.listings_scored - self.lots_outside_the_window
+        return self.listings_read - self.listings_scored - self.lots_already_closed
 
     @property
     def matches_not_shown(self) -> int:
@@ -108,10 +107,10 @@ def analyze_listings(
         if listing.source != config.provider.provider_id:
             continue
         # Observation history answers whether the provider has shown us this
-        # auction before. A reporting window decides when to mention it, not
-        # whether that historical fact occurred.
+        # auction before, and that stays true whether or not the lot is still
+        # open, so it is recorded before anything is set aside.
         change = observations.observe(listing)
-        if not still_worth_reading(listing, now, config.reports.closing_within_hours):
+        if not still_open(listing, now):
             skipped += 1
             continue
         scored += 1
@@ -144,35 +143,29 @@ def analyze_listings(
         all_candidates=tuple(candidates),
         matches_found=len(candidates),
         lots_followed=follow_candidates(reportable, candidates, watchlist),
-        lots_outside_the_window=skipped,
+        lots_already_closed=skipped,
         interest_progress=plan.progress,
         unreviewed_wins=plan.unreviewed_wins,
     )
 
 
-def still_worth_reading(
-    listing: Listing,
-    now: datetime,
-    within_hours: int | None,
-) -> bool:
-    """Whether the lot can still be bid on, and soon enough to be worth reading.
+def still_open(listing: Listing, now: datetime) -> bool:
+    """Whether the lot can still be bid on.
 
-    A closed lot is not a bargain, it is history, so it never reaches scoring
-    however well it would have scored. Beyond that the window is the reader's
-    choice: two scheduled runs a day with a window each is how one long list
-    becomes an evening digest and a morning one, without the tool needing to
-    know anything about schedules.
+    This is the only reason to set a lot aside before scoring, because it is
+    the only one that is a fact about the lot rather than a preference about
+    the report. A closed lot is not a bargain, it is history.
+
+    How soon a lot closes is a preference, and it is answered by ranking
+    instead: a lot closing within ``ending_soon_minutes`` earns a bonus and
+    sorts above an otherwise equal lot closing later. Ranking degrades where a
+    cutoff cliffs, and a cliff measured from "now" moves with the clock, so the
+    same configuration hid different lots depending on the hour a run happened.
 
     A lot that states no closing time is kept. Silence is not a reason to hide
     something the operator asked for.
     """
-    if listing.ends_at is None:
-        return True
-    if listing.ends_at <= now:
-        return False
-    if within_hours is None:
-        return True
-    return listing.ends_at <= now + timedelta(hours=within_hours)
+    return listing.ends_at is None or listing.ends_at > now
 
 
 def _with_valuation(

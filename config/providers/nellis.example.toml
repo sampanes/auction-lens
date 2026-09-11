@@ -169,16 +169,6 @@ url_template = "https://example.invalid/music-price-guide?q={query}"
 # short report is never mistaken for a quiet day.
 max_items = 30
 
-# How far ahead a closing time is still worth reading about. A lot closing
-# tomorrow evening cannot be bid on tonight, and reading about it twice is how
-# a digest stops being read. Leave it out entirely to report everything still
-# open, however distant.
-#
-# This is also all there is to a split digest: schedule the run twice, and the
-# second one carries only what the first one's lots left behind, because the
-# rest have closed. Nothing in the tool knows about schedules.
-#   closing_within_hours = 14
-
 # A webhook is the errand email is not: somebody ran the command and wants the
 # answer on their phone now. The address is a secret, so only the name of the
 # variable holding it appears here.

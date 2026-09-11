@@ -423,32 +423,33 @@ rather than by URL, so `[provider.acquisition] session_url` and `session_fields`
 say which branch a run is shopping. Without it the site serves its default city,
 and the results look perfectly real while being hundreds of miles away.
 
-### The closing window, and a digest in two parts
+### Closed lots, and a digest in two parts
 
 A report is a list of things you can still bid on. A lot that has already
 closed never reaches scoring, however well it would have scored, because it is
-no longer a bargain -- it is history.
+no longer a bargain -- it is history. Those are counted out loud, so a short
+report is never mistaken for a quiet day.
 
-How far the other way to reach is your choice:
+Nothing else is set aside for its closing time. A lot closing further out is
+not hidden, it is ranked lower: one closing within `ending_soon_minutes` earns
+a bonus and sorts above an otherwise equal lot closing later.
 
-```toml
-[reports]
-closing_within_hours = 14
-```
+There was once a `closing_within_hours` setting that cut the rest, and it is
+worth saying why it is gone, because it reads like a sensible preference. It is
+measured from the moment a run starts, so the same number means something
+different at every hour. On real data a 14-hour window cut nothing at all from
+an evening run and 794 of 1406 lots from a morning one -- and the lots it hid
+that morning closed that same evening. A setting whose effect depends on what
+time you got up is not a preference.
 
-A lot closing tomorrow evening cannot be acted on tonight, and reading about it
-now only to read about it again later is how a digest stops being read. Leave
-the setting out entirely to report everything still open, however distant.
-Whatever the window sets aside is counted out loud, with the setting named, so
-a short report is never mistaken for a quiet day.
-
-That setting is the only built-in digest boundary. Schedule
+A digest in two parts needs no window anyway. Schedule
 `scripts\run-daily.cmd` twice -- say 09:00 and 17:00 -- with the same
-configuration. The two 14-hour windows may overlap, but their email receipts do
-not: the later run omits a still-open lot when that recipient already accepted
-it at the same bid. A changed bid remains eligible, and unchanged lots are
-removed before the report cap so they cannot crowd out new ones. See
-[Delivery receipts](docs/DELIVERY.md) for retries and explicit resends.
+configuration. Both runs see the same lots, and the email receipts are what
+keep them apart: the later run omits a still-open lot when that recipient
+already accepted it at the same bid. A changed bid remains eligible, and
+unchanged lots are removed before the report cap so they cannot crowd out new
+ones. See [Delivery receipts](docs/DELIVERY.md) for retries and explicit
+resends.
 
 The report's first line names when the earliest lot closes, because that is the
 fact that decides whether the rest is worth reading now. The same fact is
