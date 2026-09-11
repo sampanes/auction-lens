@@ -6,6 +6,7 @@ import argparse
 
 from .. import __version__
 from ..models import OPERATOR_DECIDABLE, Verdict
+from ..reporting import DEFAULT_WITHIN_MINUTES
 from ..storage import DEFAULT_DELIVERY_LEDGER, DEFAULT_WATCHLIST_FILE
 
 PROGRAM = "auction-lens"
@@ -28,6 +29,7 @@ DISCOVER = "discover"
 LOGISTICS = "logistics"
 WATCH = "watch"
 WATCHLIST = "watchlist"
+SOLD = "sold"
 
 # Everything an operator may record, plus the word that removes a past answer.
 CLEAR = "clear"
@@ -64,6 +66,7 @@ def build_parser() -> argparse.ArgumentParser:
     _add_logistics(subparsers)
     _add_watch(subparsers)
     _add_watchlist(subparsers)
+    _add_sold(subparsers)
     return parser
 
 
@@ -290,6 +293,33 @@ def _add_watchlist(subparsers) -> None:
         "--env-file", default=DEFAULT_ENV_FILE, help="optional local KEY=VALUE settings file"
     )
     _add_delivery_ledger(watchlist)
+
+
+def _add_sold(subparsers) -> None:
+    """The only question the observation database can answer that the report cannot."""
+    sold = subparsers.add_parser(
+        SOLD,
+        help="show what closed lots were last seen at (a floor, not the hammer price)",
+    )
+    sold.add_argument("--database", default=DEFAULT_DATABASE)
+    sold.add_argument(
+        "--within-minutes",
+        type=int,
+        default=DEFAULT_WITHIN_MINUTES,
+        help="how close to the close a reading must be to be worth quoting",
+    )
+    sold.add_argument(
+        "--match",
+        help="show only lots whose title says this term",
+    )
+    sold.add_argument(
+        "--limit", type=int, help="show only the tightest readings, not every one"
+    )
+    sold.add_argument(
+        "--config",
+        default=DEFAULT_CONFIG,
+        help="TOML configuration, read for the timezone closing times are shown in",
+    )
 
 
 def _add_delivery_ledger(command, *, allow_repeat: bool = True) -> None:

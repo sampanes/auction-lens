@@ -81,6 +81,7 @@ again -- but neither has to be typed day to day.
 | `fetch` / `pull` | save one page; read saved pages back |
 | `run` | score a listing file you already have |
 | `watch` / `watchlist` | record what you think of a lot; read what you are following |
+| `sold` | see what closed lots were last going for |
 | `logistics` | record how a bulky lot would be collected |
 
 ## Read or edit your profile
@@ -198,6 +199,49 @@ means there is no second timezone setting to disagree with the first.
 A lot that publishes no closing time simply says nothing about one, rather than
 being given an invented deadline. Every lot seen so far publishes one, so if
 that line goes missing across the board, the page shape changed.
+
+## What things actually go for
+
+Every judgement so far has been made against the provider's own estimated
+retail, which is not a price anyone paid. What a lot really sold for is harder
+to come by than it sounds: no hammer price is published, and a closed lot drops
+off the pages this reads, so the last look is always one look too early.
+
+That leaves a floor rather than a sale price, and `sold` says exactly that:
+
+```
+$ auction-lens sold --match "miter saw"
+1 lot(s) were last looked at within 30 minute(s) of closing.
+Each price is a floor: the lot sold for at least this much.
+
+  at least $159 of $739 estimated retail (22%), 18 bid(s), seen 1m before it closed
+    closed Wed 09 Sep 18:00
+    nellis/127315681  Makita LS1019L 10" Dual-Bevel Sliding Compound Miter Saw
+```
+
+Nothing new is collected for this. The observation database already recorded
+what every lot cost each time it was looked at, and already knew when each lot
+closed; `sold` is the read that puts the two together. Its answers therefore
+get better on their own as more looks accumulate.
+
+How good an answer is depends entirely on *when* the last look happened. A bid
+read a minute before the close is nearly the sale price; the same bid read six
+hours before says almost nothing, so readings older than `--within-minutes`
+are counted and set aside rather than quoted:
+
+```
+41 closed lot(s) left out: last looked at more than 30 minute(s) before
+closing, which says little about what they sold for.
+```
+
+That line is usually a schedule problem rather than a missing feature. Lots
+close in a narrow band in the evening, so a run timed near the end of it turns
+a whole night's inventory into closing prices at the cost of one request.
+
+This is also why a lot carries the moment it was seen rather than the moment it
+was read. A page revalidated from the cache was downloaded by an earlier run,
+and a saved page can be pulled weeks later; dating either of them "now" would
+turn a stale reading into an apparently fresh one.
 
 ## Reaching a whole category
 

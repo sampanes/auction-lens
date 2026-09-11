@@ -15,12 +15,14 @@ from .deliveries import (
 )
 from .logistics import LogisticsDecisionStore
 from .observations import ObservationStore
+from .sales import ClosingPriceStore
 from .watchlist import DEFAULT_WATCHLIST_FILE, FollowedListing, WatchlistStore
 
 __all__ = [
     "DEFAULT_DELIVERY_LEDGER",
     "DEFAULT_WATCHLIST_FILE",
     "DELIVERY_LOCK_TIMEOUT_SECONDS",
+    "ClosingPriceStore",
     "Database",
     "DeliveryLedger",
     "DeliverySession",

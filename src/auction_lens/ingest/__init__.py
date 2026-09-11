@@ -5,7 +5,7 @@
 scraped lot and a hand-written one are indistinguishable downstream.
 """
 
-from .canonical import load_listings, unique_lots
+from .canonical import dated, load_listings, unique_lots
 from .nellis import (
     canonical_grade,
     read_product_page,
@@ -15,6 +15,7 @@ from .nellis import (
 
 __all__ = [
     "canonical_grade",
+    "dated",
     "load_listings",
     "read_product_page",
     "read_saved_page",

@@ -53,9 +53,11 @@ keeps `scoring` readable without `valuation` open beside it.
 | `storage/` | What did we see last time? |
 | `storage/deliveries` | What did each report destination successfully receive? |
 | `storage/watchlist` | Which lots am I following, and what have they cost? |
+| `storage/sales` | What were closed lots last going for before they closed? |
 | `reporting/findings` | What does the report say? |
 | `reporting/text`, `reporting/html` | What does that look like? |
 | `reporting/watchlist` | What does the followed list look like? |
+| `reporting/sales` | What do closing prices look like, and how far can they be trusted? |
 | `reporting/delivery` | How does it get sent? |
 | `pipeline` | One whole run, without a command line. |
 | `cli/` | Which arguments map to which command, and how are errors shown? |

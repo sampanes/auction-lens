@@ -6,11 +6,13 @@ import argparse
 import sys
 import warnings
 from dataclasses import replace
+from datetime import UTC, datetime
 from getpass import GetPassWarning, getpass
 from pathlib import Path
 
 from ..acquisition import (
     METADATA_SUFFIX,
+    ResponseCache,
     check_discovery_ready,
     discover_searches,
     fetch_authorized_page,
@@ -26,7 +28,7 @@ from ..config import (
 from ..env_file import write_settings
 from ..fields import parse_money
 from ..file_io import read_json, write_json_atomically
-from ..ingest import load_listings, read_saved_page, read_search_page, unique_lots
+from ..ingest import dated, load_listings, read_saved_page, read_search_page, unique_lots
 from ..models import (
     Candidate,
     InterestRef,
@@ -51,6 +53,7 @@ from ..reporting import (
     DeliverySummary,
     destination_fingerprint,
     email_destination,
+    render_closing_prices,
     render_text,
     render_watchlist,
     send_email,
@@ -60,12 +63,14 @@ from ..reporting import (
 )
 from ..reporting.webhook import webhook_item_limit
 from ..storage import (
+    ClosingPriceStore,
     Database,
     DeliveryLedger,
     LogisticsDecisionStore,
     ObservationStore,
     WatchlistStore,
 )
+from ..text_match import mentions
 from ..valuation import ValuationEngine
 from .parser import CLEAR, DEFAULT_CONFIG, DEFAULT_INBOX, DROP, EXAMPLE_CONFIG, PROGRAM
 from .profile_wizard import edit_profile, restore_profile
@@ -631,7 +636,9 @@ def _discover(args: argparse.Namespace, config: AppConfig, terms: list[str]) -> 
             source=config.provider.provider_id,
             page_url=capture.url,
         )
-        found.extend(listed)
+        # The page's own download time, not now: a page reused from the cache
+        # describes prices that were true when it was fetched.
+        found.extend(dated(listed, capture.fetched_at))
         state = "unchanged" if capture.reused_cache else "fetched"
         print(f"  {capture.term}: {len(listed)} lot(s) ({state})")
 
@@ -689,13 +696,14 @@ def pull(args: argparse.Namespace) -> int:
     rows, failures = [], []
     for page in pages:
         try:
-            rows.extend(
-                read_saved_page(
-                    page.read_text(encoding="utf-8", errors="replace"),
-                    source=config.provider.provider_id,
-                    page_url=_saved_page_url(page),
-                )
+            listed = read_saved_page(
+                page.read_text(encoding="utf-8", errors="replace"),
+                source=config.provider.provider_id,
+                page_url=_saved_page_url(page),
             )
+            # A saved page can be read weeks after it was saved, so the lots in
+            # it keep the date of the page rather than the date of this run.
+            rows.extend(dated(listed, _saved_page_time(page)))
         except ValueError as error:
             # One page the provider changed must not lose the other fifty.
             failures.append(f"{page.name}: {error}")
@@ -790,6 +798,28 @@ def _watch_identity(args: argparse.Namespace) -> tuple[str, str]:
     if not args.source or not args.listing_id:
         raise ValueError("use --key SOURCE/LISTING-ID, or both --source and --listing-id")
     return args.source, args.listing_id
+
+
+def sold(args: argparse.Namespace) -> int:
+    """Show what closed lots were last seen going for, tightest reading first."""
+    config = load_config(args.config)
+    database = Database.at(args.database)
+    database.initialize()
+    prices = ClosingPriceStore(database).closed_by(datetime.now(UTC))
+    if args.match:
+        prices = tuple(
+            price for price in prices if mentions(price.title.lower(), args.match.lower())
+        )
+    print(
+        render_closing_prices(
+            prices,
+            config.acquisition.zone,
+            within_minutes=args.within_minutes,
+            limit=args.limit,
+        ),
+        end="",
+    )
+    return SUCCESS
 
 
 def watchlist(args: argparse.Namespace) -> int:
@@ -957,6 +987,18 @@ def _saved_page_url(page: Path) -> str:
     """
     metadata = read_json(page.with_suffix(page.suffix + METADATA_SUFFIX), default={})
     return str(metadata.get("source_url", ""))
+
+
+def _saved_page_time(page: Path) -> datetime:
+    """When a saved page was downloaded, which is when its prices were true.
+
+    Pages saved before that was recorded have nothing better to offer than the
+    file's own modification time, which is what writing it set.
+    """
+    recorded = ResponseCache.at(page).fetched_at()
+    if recorded is not None:
+        return recorded
+    return datetime.fromtimestamp(page.stat().st_mtime, UTC)
 
 
 def _saved_pages(source: Path) -> list[Path]:

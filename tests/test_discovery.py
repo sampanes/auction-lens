@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import unittest
 from dataclasses import replace
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from unittest.mock import patch
 from urllib.error import HTTPError
@@ -190,14 +190,14 @@ class DiscoveryTests(unittest.TestCase):
         settings.update(overrides)
         return AcquisitionConfig(**settings)
 
-    def _discover(self, directory, terms, **overrides):
+    def _discover(self, directory, terms, now=NOW, **overrides):
         config = self._config(directory, **overrides)
         with self._environment(config):
             return discover_searches(
                 self.provider,
                 config,
                 terms,
-                now=NOW,
+                now=now,
                 opener=self.opener,
                 sleeper=self.slept.append,
             )
@@ -285,6 +285,26 @@ class DiscoveryTests(unittest.TestCase):
         self.assertFalse(first.reused_cache)
         self.assertTrue(second.reused_cache)
         self.assertEqual(first.path, second.path)
+
+    def test_a_downloaded_page_is_dated_when_it_was_downloaded(self):
+        with temporary_directory() as directory:
+            (capture,) = self._discover(directory, ["soundbar"])
+        self.assertFalse(capture.reused_cache)
+        self.assertEqual(capture.fetched_at, NOW)
+
+    def test_a_reused_page_keeps_the_date_it_was_downloaded(self):
+        # The prices in a reused body were true when it was downloaded, not
+        # when a later run decided not to download it again. Dating it "now"
+        # would make a stale reading look like a fresh one.
+        later = NOW + timedelta(hours=6)
+        self.opener.response_headers = {"ETag": "search-etag-1"}
+        with temporary_directory() as directory:
+            self._discover(directory, ["soundbar"])
+            self.opener.raise_not_modified = True
+            (reused,) = self._discover(directory, ["soundbar"], now=later)
+
+        self.assertTrue(reused.reused_cache)
+        self.assertEqual(reused.fetched_at, NOW)
 
     def test_the_branch_is_chosen_before_anything_is_searched_for(self):
         # A provider that scopes its catalogue by session serves its default

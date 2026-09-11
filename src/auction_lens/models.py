@@ -39,6 +39,10 @@ REQUIRED_LISTING_FIELDS = ("source", "listing_id", "title", "url", "current_bid"
 # What separates a provider from its own listing id in a lot's unique name.
 UID_SEPARATOR = ":"
 
+# What separates them in the key a person copies out of a report and types
+# back at a command. Different on purpose: see ``listing_key_of``.
+LISTING_KEY_SEPARATOR = "/"
+
 # The scale every score lives on. Scoring clamps to it and configuration is
 # checked against it, so both read it from the record they are talking about.
 LOWEST_SCORE = 0
@@ -465,6 +469,56 @@ class PriceReading:
 
 
 @dataclass(frozen=True)
+class ClosingPrice:
+    """The last bid seen on a lot while it was still open.
+
+    What a lot actually sold for is not knowable here. The provider never
+    publishes a hammer price, and a closed lot drops off the pages this reads,
+    so the final bid is always one look too late. What is knowable is a floor:
+    the lot sold for *at least* this much.
+
+    ``seen_minutes_before_close`` says how tight that floor is, and is the
+    whole value of the record. A bid read three minutes before the close is
+    nearly the sale price; the same bid read six hours before says almost
+    nothing. Every reader has to be able to tell those apart, so the two facts
+    travel together and neither is stored without the other.
+    """
+
+    source: str
+    listing_id: str
+    title: str
+    url: str
+    last_bid: Decimal
+    ends_at: datetime
+    last_seen_at: datetime
+    bid_count: int = 0
+    estimated_retail: Decimal | None = None
+
+    def __post_init__(self) -> None:
+        require_not_negative(self.last_bid, field_name="last_bid")
+        require_not_negative(self.bid_count, field_name="bid_count")
+        if self.last_seen_at > self.ends_at:
+            raise ValueError("last_seen_at must not be later than ends_at")
+
+    @property
+    def key(self) -> str:
+        """The key a person copies to say which lot they mean."""
+        return listing_key_of(self.source, self.listing_id)
+
+    @property
+    def seen_minutes_before_close(self) -> int:
+        """How long before the close this bid was true, rounded down."""
+        return int((self.ends_at - self.last_seen_at).total_seconds() // 60)
+
+    @property
+    def share_of_retail(self) -> Decimal | None:
+        """The floor price against the provider's estimate, when there is one."""
+        if not self.estimated_retail:
+            return None
+        return self.last_bid / self.estimated_retail
+
+
+@dataclass(frozen=True)
 class WatchedItem:
     """One lot a person is following, and every look they have taken at it.
 
@@ -598,6 +652,16 @@ class WatchedItem:
 def uid_of(source: str, identifier: str) -> str:
     """Name one lot across providers; an id alone is only unique per site."""
     return f"{source}{UID_SEPARATOR}{identifier}"
+
+
+def listing_key_of(source: str, listing_id: str) -> str:
+    """The spelling a person copies out of a report and types back at a command.
+
+    Deliberately not ``uid_of``: a uid may name the physical item, so that a
+    relisted lot keeps one history, while a command has to act on the auction
+    open today. Every report prints this one, so it is written once here.
+    """
+    return f"{source}{LISTING_KEY_SEPARATOR}{listing_id}"
 
 
 def _verdict(verdict: Any) -> Verdict:

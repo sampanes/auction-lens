@@ -53,6 +53,10 @@ class SearchCapture:
     url: str
     path: Path
     reused_cache: bool
+    # When the body at ``path`` was downloaded, which for a reused page is an
+    # earlier run than this one. Every price in it was true at this moment, so
+    # it is what dates the lots read out of it.
+    fetched_at: datetime
 
 
 def discover_searches(
@@ -228,6 +232,7 @@ def _fetch_one(
 ) -> SearchCapture:
     """Revalidate this term's cached page, downloading only if it has changed."""
     cache = ResponseCache.at(cache_path_for(config, term, url))
+    downloaded = instant.astimezone(UTC)
     headers = {
         "User-Agent": user_agent,
         "Accept": ACCEPTED_CONTENT,
@@ -242,7 +247,12 @@ def _fetch_one(
             response_headers = response.headers
     except HTTPError as error:
         if error.code == HTTP_NOT_MODIFIED and cache.exists():
-            return SearchCapture(term, url, cache.path, True)
+            # The body is the one already on disk, so it keeps the date of the
+            # run that downloaded it. A cache written before this field existed
+            # has no date to keep, and now is the closest honest answer.
+            return SearchCapture(
+                term, url, cache.path, True, cache.fetched_at() or downloaded
+            )
         require_not_rate_limited(error)
         raise
 
@@ -251,10 +261,10 @@ def _fetch_one(
     cache.store(
         body,
         headers=response_headers,
-        fetched_at=instant.astimezone(UTC),
+        fetched_at=downloaded,
         source_url=url,
     )
-    return SearchCapture(term, url, cache.path, False)
+    return SearchCapture(term, url, cache.path, False, downloaded)
 
 
 def _timezone_aware(instant: datetime) -> datetime:

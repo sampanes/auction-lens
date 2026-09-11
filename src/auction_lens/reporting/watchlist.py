@@ -12,7 +12,7 @@ from decimal import Decimal
 from html import escape
 
 from ..grading import HIGHEST_RATING, ConditionTag, Tag
-from ..models import InterestRef, Verdict, WatchedItem
+from ..models import InterestRef, Verdict, WatchedItem, listing_key_of
 
 SEPARATOR = " | "
 
@@ -216,7 +216,7 @@ def _watch_key(item: WatchedItem) -> str:
     ``uid`` can instead contain a provider inventory id so that relistings share
     one history. Operator commands need today's listing id, exactly as reports do.
     """
-    return f"{item.source}/{item.listing_id}"
+    return listing_key_of(item.source, item.listing_id)
 
 
 def _fulfillment_command(item: WatchedItem) -> str:

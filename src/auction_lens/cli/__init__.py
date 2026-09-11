@@ -17,6 +17,7 @@ from .parser import (
     PULL,
     RUN,
     SETUP,
+    SOLD,
     WATCH,
     WATCHLIST,
     build_parser,
@@ -34,6 +35,7 @@ COMMANDS = {
     LOGISTICS: commands.logistics,
     WATCH: commands.watch,
     WATCHLIST: commands.watchlist,
+    SOLD: commands.sold,
 }
 
 # Commands that validate or use provider and delivery settings load the ignored
