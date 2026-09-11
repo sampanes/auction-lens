@@ -11,12 +11,13 @@ from collections.abc import Iterable
 from html import escape
 from zoneinfo import ZoneInfo
 
-from ..models import Candidate, InterestProgress, ReadingOrder
+from ..models import Candidate, InterestHarvest, InterestProgress, ReadingOrder
 from .findings import (
     NO_DELIVERY_FILTER,
     DeliverySummary,
     Fact,
     Finding,
+    Group,
     Handling,
     OutcomeSummary,
     Photo,
@@ -41,6 +42,9 @@ SEPARATOR = " &middot; "
 SEARCH_HEADING = "Paste into the site search to see a whole category:"
 SEARCH_RULE_STYLE = "margin:12px 0 4px 0;font-weight:bold"
 SEARCH_NOTE_STYLE = "color:#666;font-size:12px"
+# The tail of a section: quieter than a card, because it is about the
+# lots that are not there.
+WITHHELD_STYLE = "color:#666;font-size:13px;margin:4px 0 18px 0"
 OUTCOME_WARNING_STYLE = (
     "border-left:4px solid #c62828;background:#fff4f4;padding:10px;margin:12px 0"
 )
@@ -54,6 +58,7 @@ def render_html(
     interest_progress: tuple[InterestProgress, ...] = (),
     unreviewed_wins: int = 0,
     delivery: DeliverySummary = NO_DELIVERY_FILTER,
+    harvest: tuple[InterestHarvest, ...] = (),
 ) -> str:
     """Render every candidate as a card, strongest first."""
     return _as_html(
@@ -65,6 +70,7 @@ def render_html(
             interest_progress,
             unreviewed_wins,
             delivery,
+            harvest,
         )
     )
 
@@ -79,8 +85,28 @@ def _as_html(report: Report) -> str:
     for group in report.groups:
         sections.append(f"<h3>{escape(group.title.title())}</h3>")
         sections.extend(_card(finding) for finding in group.findings)
+        sections.append(_rest_of_group(group))
     sections.append(_searches(report))
     return "".join(sections)
+
+
+def _rest_of_group(group: Group) -> str:
+    """Close a section with what it withheld and the phrase that reaches it.
+
+    Deliberately not a link: the point is to arrive at the provider's search
+    with the words in the box, so the next search can be edited by hand.
+    """
+    if not group.is_crowded:
+        return ""
+    lines = [
+        f"<p style='{WITHHELD_STYLE}'>{group.withheld} more not shown.</p>"
+    ]
+    for hint in group.searches:
+        lines.append(
+            f"<p style='{WITHHELD_STYLE}'>Search "
+            f"<code>{escape(hint.phrase)}</code> -- {escape(_note(hint))}</p>"
+        )
+    return "".join(lines)
 
 
 def _outcomes(outcomes: OutcomeSummary) -> str:

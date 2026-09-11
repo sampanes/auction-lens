@@ -404,6 +404,12 @@ class WebhookConfig:
         require_at_least(self.max_items, 1, field_name="max_items")
 
 
+# Enough of one interest to see what today's crop of it looks like, few enough
+# that a busy want leaves room for the others. The same number is what makes a
+# search phrase worth printing: see ``reporting.searches``.
+DEFAULT_MOST_PER_INTEREST = 3
+
+
 @dataclass(frozen=True)
 class ReportsConfig:
     """How much of the ranking is actually worth putting in front of a person.
@@ -425,6 +431,11 @@ class ReportsConfig:
     # only to read about it again later is how a digest stops being read.
     # Absent means every lot still open, however distant.
     closing_within_hours: int | None = None
+    # How many lots one interest may contribute before the rest are summarised.
+    # Ten near-identical keyboards are ten answers to the same question, and a
+    # single overall cap lets whichever want happened to be busy today spend
+    # the whole report. Absent means one want may fill it.
+    most_per_interest: int | None = DEFAULT_MOST_PER_INTEREST
 
     def __post_init__(self) -> None:
         _settle(self, "order", ReadingOrder)
@@ -432,6 +443,8 @@ class ReportsConfig:
             require_at_least(self.max_items, 1, field_name="max_items")
         if self.closing_within_hours is not None:
             require_at_least(self.closing_within_hours, 1, field_name="closing_within_hours")
+        if self.most_per_interest is not None:
+            require_at_least(self.most_per_interest, 1, field_name="most_per_interest")
 
 
 # An interest match's quality score tops out at 87 (80 base plus 7 for ending

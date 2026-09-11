@@ -13,9 +13,12 @@ from .config import AppConfig
 from .models import (
     Candidate,
     CandidateCategory,
+    InterestHarvest,
     InterestProgress,
     InterestRef,
     Listing,
+    best_of_each,
+    harvest_of,
     ranked,
     uid_of,
 )
@@ -52,6 +55,9 @@ class RunResult:
     # that matched rather than from the part that fitted, because reaching
     # what the cap held back is the whole reason to offer a phrase.
     searches: tuple[SearchHint, ...] = ()
+    # How much of each kind matched against how much is on the page, so a
+    # section can say "3 of 11" rather than quietly looking like all of them.
+    harvest: tuple[InterestHarvest, ...] = ()
     # Finite wants are derived from explicit fulfillments on every run. Carrying the
     # explanation beside the candidates lets even an empty report say why a
     # configured interest was intentionally silent.
@@ -121,10 +127,18 @@ def analyze_listings(
     # The local report is ranked and capped here. Every pre-cap match is also
     # retained: destination-specific delivery can first remove receipts that
     # were already accepted, then spend its cap on genuinely new information.
-    reportable = ranked(candidates, config.reports.max_items)
+    #
+    # Two caps in order, because they answer different questions. The first
+    # keeps any one busy interest from spending the whole report; the second
+    # keeps the report to a length a person finishes.
+    reportable = ranked(
+        best_of_each(candidates, config.reports.most_per_interest),
+        config.reports.max_items,
+    )
     return RunResult(
         candidates=reportable,
         searches=search_hints(candidates, listings, plan.active_rules),
+        harvest=harvest_of(candidates, reportable),
         listings_read=len(listings),
         listings_scored=scored,
         all_candidates=tuple(candidates),

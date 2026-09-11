@@ -18,6 +18,7 @@ from zoneinfo import ZoneInfo
 
 from ..models import (
     Candidate,
+    InterestHarvest,
     InterestProgress,
     LogisticsStatus,
     ReadingOrder,
@@ -117,10 +118,23 @@ class Finding:
 
 @dataclass(frozen=True)
 class Group:
-    """Findings that share a reason for being reported."""
+    """One kind of thing: the best few of it, and how to see the rest.
+
+    A section is complete in itself. If the report is holding lots back, the
+    count that says so and the phrase that reaches them belong here, beside the
+    cards they are about, rather than in a footer the reader has to reassemble.
+    """
 
     title: str
     findings: tuple[Finding, ...]
+    # How many of this kind matched today but are not printed above.
+    withheld: int = 0
+    # Ways to reach this kind at the provider's end, for when some are withheld.
+    searches: tuple[SearchHint, ...] = ()
+
+    @property
+    def is_crowded(self) -> bool:
+        return self.withheld > 0
 
 
 @dataclass(frozen=True)
@@ -221,6 +235,7 @@ def build_report(
     interest_progress: tuple[InterestProgress, ...] = (),
     unreviewed_wins: int = 0,
     delivery: DeliverySummary = NO_DELIVERY_FILTER,
+    harvest: tuple[InterestHarvest, ...] = (),
 ) -> Report:
     """Turn scored candidates into everything a report has to say about them.
 
@@ -235,19 +250,48 @@ def build_report(
             else EMPTY_REPORT
         )
         return Report(headline=headline, outcomes=outcomes, delivery=delivery)
+    sections = _by_section(candidates, order)
     return Report(
         headline=_headline(candidates, zone),
-        searches=searches,
+        searches=_hints_without_a_section(searches, set(sections)),
         outcomes=outcomes,
         delivery=delivery,
         groups=tuple(
-            Group(
-                title=category,
-                findings=tuple(_finding(item, zone) for item in items),
-            )
-            for category, items in _by_category(candidates, order).items()
+            _group(name, items, zone, harvest, searches)
+            for name, items in sections.items()
         ),
     )
+
+
+def _group(
+    name: str,
+    items: list[Candidate],
+    zone: ZoneInfo,
+    harvest: tuple[InterestHarvest, ...],
+    searches: tuple[SearchHint, ...],
+) -> Group:
+    """One section, carrying what it is not showing along with what it is."""
+    withheld = next((tally.withheld for tally in harvest if tally.name == name), 0)
+    return Group(
+        title=readable(name),
+        findings=tuple(_finding(item, zone) for item in items),
+        withheld=withheld,
+        # A phrase is only a shortcut when there is something to reach with it.
+        searches=tuple(hint for hint in searches if hint.rule == name) if withheld else (),
+    )
+
+
+def _hints_without_a_section(
+    searches: tuple[SearchHint, ...], sections: set[str]
+) -> tuple[SearchHint, ...]:
+    """Phrases for kinds that are not on the page at all.
+
+    A rule with a section has already said everything it needs to say, in that
+    section, whether or not it is holding anything back. This is the remainder:
+    a rule that earned a phrase but whose lots did not survive the report's own
+    cap. Without a footer those lots would be unreachable and unmentioned.
+    """
+    return tuple(hint for hint in searches if hint.rule not in sections)
 
 
 def build_outcome_summary(
@@ -330,18 +374,21 @@ def readable(identifier: str) -> str:
     return identifier.replace("_", " ").title()
 
 
-def _by_category(
+def _by_section(
     candidates: list[Candidate], order: ReadingOrder
 ) -> dict[str, list[Candidate]]:
-    """Group findings, ordering both the groups and their contents to read.
+    """Group findings by what they are one of, ordering the groups to read.
 
     Ordering only, never selection: which lots are worth reporting was
     already decided against the bars, and a reader preferring to see the
     dearest thing first must not quietly change what reached the page.
+
+    Sections arrive in the order their best lot did, so the strongest thing
+    found today is still the first thing read.
     """
     grouped: dict[str, list[Candidate]] = defaultdict(list)
     for candidate in ranked(candidates, order=order):
-        grouped[str(candidate.category)].append(candidate)
+        grouped[candidate.section].append(candidate)
     return grouped
 
 

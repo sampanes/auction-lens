@@ -10,12 +10,13 @@ from __future__ import annotations
 from collections.abc import Iterator
 from zoneinfo import ZoneInfo
 
-from ..models import Candidate, InterestProgress, ReadingOrder
+from ..models import Candidate, InterestHarvest, InterestProgress, ReadingOrder
 from .findings import (
     NO_DELIVERY_FILTER,
     DeliverySummary,
     Fact,
     Finding,
+    Group,
     Handling,
     OutcomeSummary,
     Report,
@@ -42,8 +43,9 @@ def render_text(
     interest_progress: tuple[InterestProgress, ...] = (),
     unreviewed_wins: int = 0,
     delivery: DeliverySummary = NO_DELIVERY_FILTER,
+    harvest: tuple[InterestHarvest, ...] = (),
 ) -> str:
-    """Render every candidate, grouped by category and ordered by score."""
+    """Render every candidate, grouped by what it is one of and ordered by score."""
     return _as_text(
         build_report(
             candidates,
@@ -53,6 +55,7 @@ def render_text(
             interest_progress,
             unreviewed_wins,
             delivery,
+            harvest,
         )
     )
 
@@ -65,8 +68,18 @@ def _as_text(report: Report) -> str:
         lines.extend(("", group.title.upper()))
         for finding in group.findings:
             lines.extend(_finding_lines(finding))
+        lines.extend(_rest_of_group_lines(group))
     lines.extend(_search_lines(report))
     return "\n".join(lines).rstrip() + "\n"
+
+
+def _rest_of_group_lines(group: Group) -> Iterator[str]:
+    """Close a section by admitting what it left out and how to reach it."""
+    if not group.is_crowded:
+        return
+    yield f"  {group.withheld} more not shown."
+    for hint in group.searches:
+        yield f"  Search: {hint.phrase}{SEPARATOR}{_hint_note(hint)}"
 
 
 def _outcome_lines(outcomes: OutcomeSummary) -> Iterator[str]:

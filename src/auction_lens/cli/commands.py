@@ -36,6 +36,7 @@ from ..models import (
     LogisticsStatus,
     Verdict,
     WatchedItem,
+    harvest_of,
 )
 from ..notifications import (
     DeliveryChannel,
@@ -361,6 +362,7 @@ def _run(
             order,
             result.interest_progress,
             result.unreviewed_wins,
+            harvest=result.harvest,
         ),
         end="",
     )
@@ -470,6 +472,9 @@ def _send_findings(
             result.interest_progress,
             result.unreviewed_wins,
             delivery,
+            # Counted against what this destination is actually being sent,
+            # so a suppressed lot is not described as one still on the page.
+            harvest_of(list(result.all_candidates), selected),
         )
         return
     send_webhook(

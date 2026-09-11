@@ -15,7 +15,13 @@ from html import escape
 from zoneinfo import ZoneInfo
 
 from ..config import EmailConfig, EmailSecurity
-from ..models import Candidate, InterestProgress, ReadingOrder, WatchedItem
+from ..models import (
+    Candidate,
+    InterestHarvest,
+    InterestProgress,
+    ReadingOrder,
+    WatchedItem,
+)
 from .destinations import destination_fingerprint
 from .findings import NO_DELIVERY_FILTER, DeliverySummary, closing_time, soonest_close
 from .html import render_html
@@ -69,6 +75,7 @@ def send_email(
     interest_progress: tuple[InterestProgress, ...] = (),
     unreviewed_wins: int = 0,
     delivery: DeliverySummary = NO_DELIVERY_FILTER,
+    harvest: tuple[InterestHarvest, ...] = (),
 ) -> None:
     """Send one report as a text message with an HTML alternative."""
     account = _ready_account(config)
@@ -82,6 +89,7 @@ def send_email(
         interest_progress,
         unreviewed_wins,
         delivery,
+        harvest,
     )
 
     _deliver(message, config, account)
@@ -179,6 +187,7 @@ def _build_message(
     interest_progress: tuple[InterestProgress, ...] = (),
     unreviewed_wins: int = 0,
     delivery: DeliverySummary = NO_DELIVERY_FILTER,
+    harvest: tuple[InterestHarvest, ...] = (),
 ) -> EmailMessage:
     message = EmailMessage()
     message["Subject"] = _subject(config.subject, candidates, zone)
@@ -193,6 +202,7 @@ def _build_message(
             interest_progress,
             unreviewed_wins,
             delivery,
+            harvest,
         )
     )
     message.add_alternative(
@@ -204,6 +214,7 @@ def _build_message(
             interest_progress,
             unreviewed_wins,
             delivery,
+            harvest,
         ),
         subtype="html",
     )

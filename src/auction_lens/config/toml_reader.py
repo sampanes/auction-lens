@@ -109,6 +109,21 @@ class Section:
             raise ValueError(f"{self.label(key)} must be at least 1, or absent for all")
         return value
 
+    def positive_integer(self, key: str, default: int) -> int:
+        """Read a count the file may leave out, where leaving it out means the default.
+
+        Separate from ``optional_positive_integer`` because the two answer
+        different questions. That one means "all of them" when absent; this one
+        means the project already has an opinion and the file has not overruled
+        it. Sharing a reader would make one of the two error messages a lie.
+        """
+        if not self.contains(key):
+            return default
+        value = self.integer(key, 0)
+        if value < 1:
+            raise ValueError(f"{self.label(key)} must be at least 1")
+        return value
+
     def lowercase_texts(self, key: str) -> tuple[str, ...]:
         """Read a list of free-text terms, lowercased for case-insensitive use."""
         values = self.data.get(key, [])
