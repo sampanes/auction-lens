@@ -74,9 +74,13 @@ was taken in, so a trail that spans a relisting can say so:
 
 ```
 [HUNTING] ***..  Example 2.1 Channel Sound Bar with ARC
-  nellis:INV-77  (seen in 2 auctions)
+  Watch key: nellis/synthetic-014 (seen in 2 auctions)
   Bid $5.00 | Total $5.75 | -$13.00 over 2 looks since 2026-09-04 18:00
 ```
+
+The key printed is the auction open today, because that is the one a command
+acts on. The entry itself is filed under the item, which is why the trail
+survived the relisting at all.
 
 That is the reading worth having: it did not sell at $18, and it is back at $5.
 
