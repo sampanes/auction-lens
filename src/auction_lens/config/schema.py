@@ -26,7 +26,12 @@ from ..fields import (
     require_not_negative,
     require_within,
 )
-from ..models import HIGHEST_SCORE, LOWEST_SCORE, ReadingOrder
+from ..models import (
+    HIGHEST_INTEREST_SCORE,
+    HIGHEST_SCORE,
+    LOWEST_SCORE,
+    ReadingOrder,
+)
 
 DEFAULT_USER_AGENT_ENV = "AUCTION_LENS_HTTP_USER_AGENT"
 DEFAULT_CACHE_FILE = "private/cache/provider-response.html"
@@ -440,11 +445,15 @@ class ReportsConfig:
         require_at_least(self.most_per_interest, 1, field_name="most_per_interest")
 
 
-# An interest match's quality score tops out at 87 (80 base plus 7 for ending
-# soon). Freshness may raise its reading priority to 90, but this gate uses
-# quality: a bar at 88 or above excludes wanted matches. This default lets a
-# strong wanted match through while making a plain one insufficient.
-DEFAULT_FAR_MINIMUM_SCORE = 85
+# Anchored to the ceiling a want can actually reach rather than written as a
+# bare number, because that is the only thing it means anything against. Two
+# points below it: a far branch is worth the drive for a want that is also
+# about to close and carries almost no condition penalty. A plain want does
+# not clear it, and a value above the ceiling would let nothing wanted through
+# at all -- only price-alone bargains, which reach the full 100.
+# "auction-lens profile" says which of those a given value means.
+FAR_BRANCH_PENALTY_ALLOWANCE = 2
+DEFAULT_FAR_MINIMUM_SCORE = HIGHEST_INTEREST_SCORE - FAR_BRANCH_PENALTY_ALLOWANCE
 
 
 @dataclass(frozen=True)

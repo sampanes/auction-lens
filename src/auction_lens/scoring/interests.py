@@ -9,14 +9,11 @@ from __future__ import annotations
 from decimal import Decimal
 
 from ..config import InterestRule
-from ..models import Candidate, CandidateCategory, Listing
+from ..models import BASE_INTEREST_SCORE, Candidate, CandidateCategory, Listing
 from ..text_match import first_mention, mentions, standalone_mentions
 from .conditions import penalty_for, policy_admits
 from .context import ScoringContext
 from .signals import clamp_score
-
-# An explicitly wanted item is presumed reportable; penalties argue it back down.
-BASE_INTEREST_SCORE = 80
 
 # The word an accessory uses to name what it fits. Spaced so that it is the
 # whole word: "for" and not the tail of "comfort".

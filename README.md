@@ -480,19 +480,32 @@ Everything at a near branch is reported as usual. A lot at a far branch is
 reported only if it scores at least `far_minimum_score` -- good enough to
 justify the drive rather than merely good.
 
-Setting that number needs one piece of arithmetic, because the two scoring
-paths do not reach the same heights. An interest match starts at 80 and can add
-at most 7 for closing within `ending_soon_minutes`, so its **quality score tops
-out at 87**, and only for a lot carrying no condition penalty. Freshness is a
-reading-order signal instead: a new listing can add 3 to unweighted priority,
-bringing the maximum to 90, but it cannot make a lot clear a quality bar. A
-retail-ratio match starts from the discount itself -- a lot at 13% of stated
-retail starts at 87 -- so it clears a high bar easily.
+That number does not behave smoothly, because the two scoring paths do not
+reach the same heights. An interest match starts at 80 and can add at most 7
+for closing within `ending_soon_minutes`, so its **quality score tops out at
+87**, and only for a lot carrying no condition penalty. A retail-ratio match
+starts from the discount itself -- a lot at 13% of stated retail starts at 87
+-- so it clears a high bar easily.
 
-A `far_minimum_score` of 88 or more therefore means "at far branches, show me
-deep discounts but never the things I actually asked for", which is usually the
-opposite of what the interest weights are for. Somewhere in the low 80s lets a
-wanted thing through while still asking a discount to be remarkable.
+So `far_minimum_score` works in bands. At 80 or below, any want reaches a far
+branch. Between 81 and 87, only a want that is *also* about to close does. At
+88 or more, none do: it means "at far branches, show me deep discounts but
+never the things I actually asked for", which is usually the opposite of what
+the interest weights are for.
+
+You do not have to remember which band a number falls in, because the profile
+readback says it:
+
+```
+LOCATIONS
+- Far locations: "phoenix".
+- A far location needs a minimum score of 85 (above the 80 a want starts at,
+  so only one also ending soon clears it).
+```
+
+Freshness is a reading-order signal rather than a quality one: a new listing
+can add 3 to unweighted priority, bringing the maximum to 90, but it cannot
+make a lot clear a quality bar.
 
 That bar assumes the drive is a cost. Some days it is not, because you have to
 be over there anyway, and on those days a far branch is simply a branch:

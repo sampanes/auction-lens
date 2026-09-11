@@ -10,6 +10,13 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 from decimal import Decimal
 
+from ..models import (
+    BASE_INTEREST_SCORE,
+    ENDING_SOON_BONUS,
+    HIGHEST_INTEREST_SCORE,
+    HIGHEST_SCORE,
+    LOWEST_SCORE,
+)
 from .schema import AppConfig, ConditionPolicy, InterestRule, LargeItemPolicy
 
 NONE = "none"
@@ -20,6 +27,7 @@ def render_profile(config: AppConfig) -> str:
     """Describe the stable selection policy without exposing operational data."""
     provider = config.provider.display_name or config.provider.provider_id
     lines = [f"Auction Lens profile for {provider}"]
+    _section(lines, "SCORES", _scores(config))
     _section(lines, "INTERESTS", _interests(config))
     _section(lines, "GENERAL BARGAIN RULE", _general_discovery(config))
     _section(lines, "LOCATIONS", _locations(config))
@@ -31,6 +39,57 @@ def render_profile(config: AppConfig) -> str:
 
 def _section(lines: list[str], heading: str, contents: list[str]) -> None:
     lines.extend(("", heading, *contents))
+
+
+def _scores(config: AppConfig) -> list[str]:
+    """Say what the numbers below are numbers on.
+
+    Every bar in this profile is written as a bare number on a 0-100 scale, and
+    a want cannot use most of that scale. Without this section an operator has
+    to already know that a want tops out at 87 in order to set any bar
+    sensibly, and the usual way to find out is to set one that silently admits
+    everything.
+    """
+    scoring = config.scoring
+    return [
+        f"- Every minimum score in this profile is a bar on one "
+        f"{LOWEST_SCORE}-{HIGHEST_SCORE} scale.",
+        f"- A wanted match starts at {BASE_INTEREST_SCORE} and gains "
+        f"{ENDING_SOON_BONUS} when it is also ending soon, so it reaches "
+        f"{HIGHEST_INTEREST_SCORE} at most; condition penalties only take it "
+        "down from there.",
+        "- A general bargain is scored on price alone and reaches "
+        f"{HIGHEST_SCORE}.",
+        f"- Ending soon means within {scoring.ending_soon_minutes} minutes.",
+        f"- Nothing is reported at all below "
+        f"{_minimum_score(scoring.minimum_report_score)}.",
+    ]
+
+
+def _minimum_score(minimum: int) -> str:
+    """A bar, with what it admits when the number alone would mislead.
+
+    The band between a want's base and its ceiling is narrow and easy to
+    misread: 85 looks like a small step up from 80 and is in fact the
+    difference between "any want" and "only a want that is also about to
+    close". Above the ceiling it stops meaning anything to a want at all.
+    """
+    if minimum <= LOWEST_SCORE:
+        return f"{minimum} (every match clears this)"
+    if minimum > HIGHEST_INTEREST_SCORE:
+        return (
+            f"{minimum} (above {HIGHEST_INTEREST_SCORE}, so no wanted match "
+            "can clear it; general bargains only)"
+        )
+    if minimum > BASE_INTEREST_SCORE:
+        return (
+            f"{minimum} (above the {BASE_INTEREST_SCORE} a want starts at, so "
+            "only one also ending soon clears it)"
+        )
+    return (
+        f"{minimum} (a want clears it with up to "
+        f"{BASE_INTEREST_SCORE - minimum} points of condition penalty)"
+    )
 
 
 def _interests(config: AppConfig) -> list[str]:
@@ -61,8 +120,8 @@ def _interest(number: int, rule: InterestRule, global_minimum_score: int) -> lis
             f"{_optional_money(rule.max_total_cost, empty=NO_LIMIT)}",
             f"   Minimum stated retail: "
             f"{_optional_money(rule.minimum_retail, empty=NONE)}",
-            f"   Minimum score: {threshold}; relative importance: "
-            f"{_number(rule.weight)}",
+            f"   Minimum score: {_minimum_score(threshold)}",
+            f"   Relative importance: {_number(rule.weight)}",
             f"   Conditions{policy_name}: {_condition(rule.condition)}",
         ]
     )
@@ -82,9 +141,7 @@ def _general_discovery(config: AppConfig) -> list[str]:
         "- General bargains: stated retail at least "
         f"{_money(scoring.anomaly_minimum_retail)}, total cost at most "
         f"{scoring.anomaly_maximum_ratio:.0%} of it.",
-        f"- Minimum score: {scoring.minimum_report_score}; relative importance: "
-        f"{_number(scoring.anomaly_weight)}.",
-        f"- Ending soon means within {scoring.ending_soon_minutes} minutes.",
+        f"- Relative importance: {_number(scoring.anomaly_weight)}.",
         "- Conditions for every purpose: "
         f"{_reject_and_penalties(scoring.rejected_conditions, scoring.condition_penalties)}.",
         f"- Additional bargain conditions: {_condition(scoring.anomaly_condition)}.",
@@ -96,7 +153,9 @@ def _locations(config: AppConfig) -> list[str]:
     far = _terms(config.locations.far, empty=NONE)
     return [
         f"- Allowed: {allowed}.",
-        f"- Far locations (minimum score {config.locations.far_minimum_score}): {far}.",
+        f"- Far locations: {far}.",
+        f"- A far location needs a minimum score of "
+        f"{_minimum_score(config.locations.far_minimum_score)}.",
     ]
 
 
