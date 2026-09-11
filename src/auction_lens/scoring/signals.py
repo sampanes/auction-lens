@@ -1,18 +1,15 @@
 """The bonuses shared by every scoring path, and the range scores live in.
 
-These numbers are the project's opinion about what matters, so they are named
-constants rather than literals buried in an expression.
+The numbers themselves live in ``models`` beside the scale they are part of,
+because configuration has to be explained in terms of them and cannot import
+scoring. What lives here is only how they are applied.
 """
 
 from __future__ import annotations
 
 from datetime import datetime
 
-from ..models import HIGHEST_SCORE, LOWEST_SCORE, Listing
-
-# A lot about to close is actionable now, which is worth more than a better lot
-# that cannot be acted on for another day.
-ENDING_SOON_BONUS = 7
+from ..models import ENDING_SOON_BONUS, HIGHEST_SCORE, LOWEST_SCORE, Listing
 
 SECONDS_PER_MINUTE = 60
 
