@@ -462,7 +462,7 @@ def ranked(
     return best if limit is None else best[:limit]
 
 
-def best_of_each(candidates: list[Candidate], most_each: int | None) -> list[Candidate]:
+def best_of_each(candidates: list[Candidate], most_each: int) -> list[Candidate]:
     """The best few of each kind, so one crowded want cannot spend the report.
 
     Ten near-identical keyboards are ten answers to the same question. Keeping
@@ -474,8 +474,6 @@ def best_of_each(candidates: list[Candidate], most_each: int | None) -> list[Can
     Deliberately by the same ranking as everything else, so "the best few"
     means what it means everywhere.
     """
-    if most_each is None:
-        return ranked(candidates)
     kept: dict[str, list[Candidate]] = defaultdict(list)
     for candidate in ranked(candidates):
         section = kept[candidate.section]

@@ -53,12 +53,13 @@ from .sending import delivery_failure, preflight_reports
 
 def logistics(args: argparse.Namespace) -> int:
     """Save or clear one listing's handling decision."""
+    source, listing_id = lot_identity(args)
     database = Database.at(args.database)
     database.initialize()
     decisions = LogisticsDecisionStore(database)
 
     if args.status == CLEAR:
-        decisions.clear(args.source, args.listing_id)
+        decisions.clear(source, listing_id)
         print("Logistics decision cleared.")
         return SUCCESS
 
@@ -67,7 +68,7 @@ def logistics(args: argparse.Namespace) -> int:
         added_cost=parse_money(args.added_cost, field_name="added_cost"),
         note=args.note.strip(),
     )
-    decisions.save(args.source, args.listing_id, decision)
+    decisions.save(source, listing_id, decision)
     print(
         f"Logistics decision saved as {decision.status} "
         f"with ${decision.added_cost} added cost."
@@ -77,7 +78,7 @@ def logistics(args: argparse.Namespace) -> int:
 
 def watch(args: argparse.Namespace) -> int:
     """Record what a person thinks of one lot, or stop following it."""
-    source, listing_id = _watch_identity(args)
+    source, listing_id = lot_identity(args)
     store = WatchlistStore(Path(args.watchlist))
     if args.verdict == DROP:
         if args.fulfills is not None or args.clear_fulfillments:
@@ -121,8 +122,13 @@ def watch(args: argparse.Namespace) -> int:
     return SUCCESS
 
 
-def _watch_identity(args: argparse.Namespace) -> tuple[str, str]:
-    """Read either the report's copyable key or the older two-flag spelling."""
+def lot_identity(args: argparse.Namespace) -> tuple[str, str]:
+    """Which lot a command was asked about, however the operator spelled it.
+
+    Both commands that act on a single lot read it through here, so the key
+    printed in every report works at either of them and neither has to grow its
+    own idea of what names a lot.
+    """
     if args.key:
         if args.source or args.listing_id:
             raise ValueError("--key cannot be combined with --source or --listing-id")
