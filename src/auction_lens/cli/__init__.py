@@ -5,7 +5,8 @@ from __future__ import annotations
 import sys
 
 from ..env_file import load_env_file
-from . import commands
+from . import analyze, collect, doctor, setup, track
+from .exit_codes import OPERATOR_ERROR
 from .parser import (
     DAILY,
     DISCOVER,
@@ -23,26 +24,26 @@ from .parser import (
     build_parser,
 )
 
+# The one door. Every command is one function, named for the word an operator
+# types, and this is the only place that knows which is which.
 COMMANDS = {
-    SETUP: commands.setup,
-    PROFILE: commands.profile,
-    DOCTOR: commands.doctor,
-    DAILY: commands.daily,
-    RUN: commands.run,
-    FETCH: commands.fetch,
-    PULL: commands.pull,
-    DISCOVER: commands.discover,
-    LOGISTICS: commands.logistics,
-    WATCH: commands.watch,
-    WATCHLIST: commands.watchlist,
-    SOLD: commands.sold,
+    SETUP: setup.setup,
+    PROFILE: setup.profile,
+    DOCTOR: doctor.doctor,
+    DAILY: analyze.daily,
+    RUN: analyze.run,
+    FETCH: collect.fetch,
+    PULL: collect.pull,
+    DISCOVER: collect.discover,
+    LOGISTICS: track.logistics,
+    WATCH: track.watch,
+    WATCHLIST: track.watchlist,
+    SOLD: track.sold,
 }
 
 # Commands that validate or use provider and delivery settings load the ignored
 # environment file first; the rest record or read local files.
 COMMANDS_NEEDING_ENVIRONMENT = frozenset({DOCTOR, RUN, FETCH, DISCOVER, DAILY})
-
-OPERATOR_ERROR = 2
 
 
 def main(argv: list[str] | None = None) -> int:

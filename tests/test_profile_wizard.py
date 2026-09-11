@@ -57,10 +57,10 @@ class ProfileEditorCommandTests(unittest.TestCase):
             config = _config_copy(directory)
             original = config.read_bytes()
             with patch("auction_lens.cli.load_env_file") as load_env:
-                with patch("auction_lens.cli.commands.discover_searches") as discover:
-                    with patch("auction_lens.cli.commands.fetch_authorized_page") as fetch:
-                        with patch("auction_lens.cli.commands.load_listings") as listings:
-                            with patch("auction_lens.cli.commands.Database") as database:
+                with patch("auction_lens.cli.collect.discover_searches") as discover:
+                    with patch("auction_lens.cli.collect.fetch_authorized_page") as fetch:
+                        with patch("auction_lens.cli.analyze.load_listings") as listings:
+                            with patch("auction_lens.cli.analyze.Database") as database:
                                 output, prompts = _run_profile(
                                     config, ["allow", "80.5", "70", "y"]
                                 )
@@ -329,7 +329,7 @@ class SetupProfileSuggestionTests(unittest.TestCase):
             config = directory / "custom folder" / "local.toml"
             env_file = directory / ".env"
             output = io.StringIO()
-            with patch("auction_lens.cli.commands.edit_profile") as edit_profile:
+            with patch("auction_lens.cli.setup.edit_profile") as edit_profile:
                 with redirect_stdout(output):
                     exit_code = main(
                         [
