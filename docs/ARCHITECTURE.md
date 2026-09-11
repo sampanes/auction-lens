@@ -60,7 +60,13 @@ keeps `scoring` readable without `valuation` open beside it.
 | `reporting/sales` | What do closing prices look like, and how far can they be trusted? |
 | `reporting/delivery` | How does it get sent? |
 | `pipeline` | One whole run, without a command line. |
-| `cli/` | Which arguments map to which command, and how are errors shown? |
+| `cli/parser` | Which words and flags exist, and what are their defaults? |
+| `cli/setup`, `cli/prompts` | How does a fresh clone become a working one? |
+| `cli/collect` | How do lots get from a provider into a file? |
+| `cli/analyze` | How does a file of lots become a report someone reads? |
+| `cli/track` | What does the operator think of one particular lot? |
+| `cli/doctor` | Would a scheduled run work right now? |
+| `cli/sending`, `cli/searching`, `cli/exit_codes` | The answers more than one command needs. |
 | `file_io`, `env_file`, `http_safety`, `throttle` | Shared plumbing with no domain opinions. |
 
 ## Rules that keep it navigable

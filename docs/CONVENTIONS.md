@@ -152,8 +152,10 @@ so in its docstring.
   implement `collect(listing)` and register it in `valuation/registry.py`.
 - **Something to say in reports**: add it to the view model in
   `reporting/findings.py` first. Both renderings then have to show it.
-- **A command**: parser in `cli/parser.py`, function in `cli/commands.py`,
-  mapping in `cli/__init__.py`. Real logic belongs in `pipeline` instead.
+- **A command**: parser in `cli/parser.py`, function in the `cli/` module that
+  already holds its subject -- `setup`, `collect`, `analyze`, `doctor`, or
+  `track` -- and one line in the `COMMANDS` map in `cli/__init__.py`. Real
+  logic belongs in `pipeline` instead.
 
 ## Running the checks
 
