@@ -426,11 +426,6 @@ class ReportsConfig:
     # Reading order only. Which lots are worth reporting is settled by the
     # bars above; this decides nothing except what a person sees first.
     order: ReadingOrder = ReadingOrder.PRIORITY
-    # How far ahead a closing time is still worth reading about. A lot closing
-    # tomorrow evening cannot be acted on tonight, and reading about it now
-    # only to read about it again later is how a digest stops being read.
-    # Absent means every lot still open, however distant.
-    closing_within_hours: int | None = None
     # How many lots one interest may contribute before the rest are summarised.
     # Ten near-identical keyboards are ten answers to the same question, and a
     # single overall cap lets whichever want happened to be busy today spend
@@ -441,8 +436,6 @@ class ReportsConfig:
         _settle(self, "order", ReadingOrder)
         if self.max_items is not None:
             require_at_least(self.max_items, 1, field_name="max_items")
-        if self.closing_within_hours is not None:
-            require_at_least(self.closing_within_hours, 1, field_name="closing_within_hours")
         if self.most_per_interest is not None:
             require_at_least(self.most_per_interest, 1, field_name="most_per_interest")
 

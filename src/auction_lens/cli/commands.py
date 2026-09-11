@@ -367,9 +367,7 @@ def _run(
         end="",
     )
     _report_skipped(result.listings_from_other_providers, config.provider.provider_id)
-    _report_outside_window(
-        result.lots_outside_the_window, config.reports.closing_within_hours
-    )
+    _report_already_closed(result.lots_already_closed)
     _report_capped(result.matches_not_shown, len(result.candidates))
     additionally_followed, delivery_failures = _deliver_findings(
         args,
@@ -1026,22 +1024,10 @@ def _report_skipped(count: int, provider_id: str) -> None:
         print(f"Ignored {count} listing(s) from other providers than {provider_id}.")
 
 
-def _report_outside_window(count: int, within_hours: int | None) -> None:
-    """Say how many lots were set aside for closing too late, or not at all.
-
-    Without the window that is only the lots that already closed, which needs
-    no explanation. With one it is a choice the reader made and may want back,
-    so the line names the setting that made it.
-    """
-    if not count:
-        return
-    if within_hours is None:
+def _report_already_closed(count: int) -> None:
+    """Account for the lots that were read but could no longer be bid on."""
+    if count:
         print(f"Passed over {count} lot(s) that have already closed.")
-        return
-    print(
-        f"Passed over {count} lot(s) already closed or closing more than "
-        f"{within_hours}h out. Change reports.closing_within_hours to widen it."
-    )
 
 
 def _report_capped(hidden: int, shown: int) -> None:

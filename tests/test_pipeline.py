@@ -128,12 +128,15 @@ class ReportCapTests(unittest.TestCase):
             )
 
 
-if __name__ == "__main__":
-    unittest.main()
+class StillOpenTests(unittest.TestCase):
+    """A report is a list of things that can still be bid on.
 
-
-class ClosingWindowTests(unittest.TestCase):
-    """A report is a list of things that can still be bid on."""
+    That is the whole of the test now. A report once also cut lots closing
+    further out than a configured window, which sounded like a preference and
+    behaved like a clock: the same setting hid half a day's lots from a morning
+    run and none at all from an evening one. Closing time is a ranking signal,
+    so it is ranked instead.
+    """
 
     def setUp(self):
         self.config = example_config()
@@ -147,39 +150,29 @@ class ClosingWindowTests(unittest.TestCase):
         ]
         result = self._run(closed)
         self.assertEqual(result.listings_scored, 0)
-        self.assertEqual(result.lots_outside_the_window, len(closed))
+        self.assertEqual(result.lots_already_closed, len(closed))
         self.assertFalse(result.candidates)
 
-    def test_a_lot_still_open_is_scored_when_no_window_is_configured(self):
+    def test_a_lot_closing_far_out_is_still_reported(self):
+        # The one behaviour the removed window changed. A lot nobody can act on
+        # tonight is still a lot the operator asked to hear about.
         far = [
             replace(listing, ends_at=self.now + timedelta(days=30))
             for listing in self.listings
         ]
         result = self._run(far)
         self.assertEqual(result.listings_scored, len(far))
-        self.assertEqual(result.lots_outside_the_window, 0)
-
-    def test_a_window_keeps_what_closes_inside_it_and_sets_the_rest_aside(self):
-        soon, later = self.listings[0], self.listings[1]
-        soon = replace(soon, ends_at=self.now + timedelta(hours=2))
-        later = replace(later, ends_at=self.now + timedelta(hours=20))
-
-        result = self._run([soon, later], within_hours=6)
-
-        self.assertEqual(result.listings_scored, 1)
-        self.assertEqual(result.lots_outside_the_window, 1)
-        self.assertTrue(
-            all(item.listing.listing_id == soon.listing_id for item in result.candidates)
-        )
+        self.assertEqual(result.lots_already_closed, 0)
+        self.assertTrue(result.candidates)
 
     def test_a_lot_stating_no_closing_time_is_kept_rather_than_guessed_about(self):
         # Silence is not a reason to hide something the operator asked for.
         silent = [replace(listing, ends_at=None) for listing in self.listings]
-        result = self._run(silent, within_hours=1)
+        result = self._run(silent)
         self.assertEqual(result.listings_scored, len(silent))
-        self.assertEqual(result.lots_outside_the_window, 0)
+        self.assertEqual(result.lots_already_closed, 0)
 
-    def test_the_window_is_not_confused_with_another_provider_s_listings(self):
+    def test_a_closed_lot_is_not_confused_with_another_provider_s_listing(self):
         # Both counts are subtracted from the same total, so an error in one
         # would silently show up as the other.
         stranger = replace(self.listings[SOUNDBAR], source="other-provider")
@@ -189,34 +182,31 @@ class ClosingWindowTests(unittest.TestCase):
 
         self.assertEqual(result.listings_read, 3)
         self.assertEqual(result.listings_scored, 1)
-        self.assertEqual(result.lots_outside_the_window, 1)
+        self.assertEqual(result.lots_already_closed, 1)
         self.assertEqual(result.listings_from_other_providers, 1)
 
-    def test_a_future_lot_is_observed_before_its_reporting_window_opens(self):
-        later = replace(
-            self.listings[SOUNDBAR], ends_at=self.now + timedelta(hours=20)
-        )
+    def test_a_lot_is_observed_even_on_the_run_that_sets_it_aside(self):
+        # Being shown a lot is a historical fact. Whether the lot is worth
+        # scoring today must not decide whether that fact was recorded, or a
+        # relisting would look new when it is not.
+        open_lot = replace(self.listings[SOUNDBAR], ends_at=self.now + timedelta(hours=4))
+        closed = replace(open_lot, ends_at=self.now - timedelta(minutes=1))
         with temporary_database() as database:
-            first = self._run_with_database(database, [later], within_hours=6)
-            inside = replace(later, ends_at=self.now + timedelta(hours=4))
-            second = self._run_with_database(database, [inside], within_hours=6)
+            first = self._run_with_database(database, [closed])
+            second = self._run_with_database(database, [open_lot])
 
         self.assertEqual(first.listings_scored, 0)
         self.assertTrue(second.candidates)
         self.assertFalse(any(candidate.change.is_new for candidate in second.candidates))
 
-    def _run(self, listings, within_hours=None):
+    def _run(self, listings):
         with temporary_database() as database:
-            return self._run_with_database(database, listings, within_hours)
+            return self._run_with_database(database, listings)
 
-    def _run_with_database(self, database, listings, within_hours=None):
-        config = replace(
-            self.config,
-            reports=replace(self.config.reports, closing_within_hours=within_hours),
-        )
+    def _run_with_database(self, database, listings):
         return analyze_listings(
             listings,
-            config,
+            self.config,
             observations=ObservationStore(database),
             decisions=LogisticsDecisionStore(database),
             now=self.now,
@@ -351,3 +341,7 @@ class OutcomeAwareInterestTests(unittest.TestCase):
             decisions=LogisticsDecisionStore(database),
             watchlist=store,
         )
+
+
+if __name__ == "__main__":
+    unittest.main()
