@@ -1,0 +1,18 @@
+# One answer to "what is a line ending in this repository".
+#
+# Without this file the answer was "whatever the last tool to touch it did",
+# and the repository held 76 all-CRLF files, 49 all-LF files, and 6 with both.
+# That is invisible until you edit one: a two-line change to a mixed file came
+# back as a 318-line diff, twice, because the editor settled the whole file on
+# the way past. Every line of that noise is a line nobody reviews.
+#
+# So: every text file is stored with LF, and checked out with whatever this
+# machine wants. Windows checkouts still get CRLF on disk under
+# core.autocrlf=true; nothing about how you edit has to change.
+*               text=auto
+
+# Batch files are the exception worth naming. Windows runs them line by line
+# off disk, and a stray LF-only continuation has been known to break a label
+# jump, so these are pinned to CRLF in the working tree regardless.
+*.cmd           text eol=crlf
+*.bat           text eol=crlf

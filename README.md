@@ -444,7 +444,7 @@ a short report is never mistaken for a quiet day.
 
 That setting is the only built-in digest boundary. Schedule
 `scripts\run-daily.cmd` twice -- say 09:00 and 17:00 -- with the same
-configuration.The two 14-hour windows may overlap, but their email receipts do
+configuration. The two 14-hour windows may overlap, but their email receipts do
 not: the later run omits a still-open lot when that recipient already accepted
 it at the same bid. A changed bid remains eligible, and unchanged lots are
 removed before the report cap so they cannot crowd out new ones. See
