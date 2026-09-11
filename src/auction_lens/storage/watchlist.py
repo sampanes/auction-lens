@@ -27,7 +27,14 @@ from ..fields import (
 )
 from ..file_io import read_json, write_json_atomically
 from ..grading import ConditionTag, Tag
-from ..models import InterestRef, Listing, PriceReading, Verdict, WatchedItem, uid_of
+from ..models import (
+    InterestRef,
+    Listing,
+    PriceReading,
+    Verdict,
+    WatchedItem,
+    key_of,
+)
 
 DEFAULT_WATCHLIST_FILE = "private/watchlist.json"
 
@@ -86,8 +93,10 @@ class WatchlistStore:
         )
 
     def save(self, item: WatchedItem) -> None:
-        """Add a lot, or replace the one already stored under its uid."""
-        kept = [stored for stored in self.items() if stored.uid != item.uid]
+        """Add a lot, or replace the one already stored under the same item key."""
+        kept = [
+            stored for stored in self.items() if stored.item_key != item.item_key
+        ]
         self._write([*kept, item])
 
     def drop(self, source: str, identifier: str) -> bool:
@@ -106,11 +115,11 @@ class WatchlistStore:
         the same input file read twice, say -- leaves one reading, not two, but
         newly learned match provenance can still update that entry.
         """
-        stored = {item.uid: item for item in self.items()}
+        stored = {item.item_key: item for item in self.items()}
         touched = 0
         for followed in seen:
             listing = followed.listing
-            item = stored.get(uid_of(listing.source, listing.lot_key))
+            item = stored.get(listing.item_key)
             updated = _observed(
                 item,
                 listing,
@@ -118,7 +127,7 @@ class WatchlistStore:
                 followed.matched_interests,
             )
             if updated is not None:
-                stored[updated.uid] = updated
+                stored[updated.item_key] = updated
                 touched += 1
         if touched:
             self._write(list(stored.values()))
@@ -135,7 +144,10 @@ class WatchlistStore:
         try:
             return _from_json(row)
         except (ValueError, KeyError) as error:
-            name = row.get("uid") or row.get("listing_id") or "an item"
+            # "uid" is what this field was called in files written earlier.
+            name = (
+                row.get("key") or row.get("uid") or row.get("listing_id") or "an item"
+            )
             raise ValueError(f"{self.path}: {name}: {error}") from error
 
 
@@ -205,15 +217,15 @@ def _require_unambiguous_items(
     could disagree about which row a command means. Failing at the read
     boundary keeps the original bytes intact until a person merges the rows.
     """
-    uids: set[str] = set()
+    seen: set[str] = set()
     lookup_keys: dict[tuple[str, str], str] = {}
     for item in items:
-        if item.uid in uids:
+        if item.item_key in seen:
             raise ValueError(
-                f"{path}: duplicate watchlist identity {item.uid}; "
+                f"{path}: duplicate watchlist identity {item.item_key}; "
                 "merge the duplicate entries before continuing"
             )
-        uids.add(item.uid)
+        seen.add(item.item_key)
         identifiers = {
             item.inventory_id,
             item.listing_id,
@@ -221,24 +233,25 @@ def _require_unambiguous_items(
         }
         for identifier in identifiers - {""}:
             key = (item.source, identifier)
-            prior_uid = lookup_keys.get(key)
-            if prior_uid is not None and prior_uid != item.uid:
+            prior = lookup_keys.get(key)
+            if prior is not None and prior != item.item_key:
                 raise ValueError(
-                    f"{path}: watch key {item.source}/{identifier} refers to "
-                    f"both {prior_uid} and {item.uid}; merge those entries "
+                    f"{path}: watch key {key_of(*key)} refers to both "
+                    f"{prior} and {item.item_key}; merge those entries "
                     "before continuing"
                 )
-            lookup_keys[key] = item.uid
+            lookup_keys[key] = item.item_key
 
 
 def _as_json(item: WatchedItem) -> dict[str, Any]:
     """Write money as text, so a rounded float can never become the record.
 
-    ``uid`` is written for a person reading or searching the file. It is derived
-    from source and listing id, so editing it in place changes nothing.
+    ``key`` is written for a person reading or searching the file, and is the
+    same spelling ``watch --key`` accepts. It is derived from source and
+    listing id, so editing it in place changes nothing.
     """
     return {
-        "uid": item.uid,
+        "key": item.key,
         "source": item.source,
         "listing_id": item.listing_id,
         "inventory_id": item.inventory_id,

@@ -479,7 +479,7 @@ def _facts(candidate: Candidate, zone: ZoneInfo) -> tuple[Fact, ...]:
         facts.append(Fact("Closes", closes))
     facts.append(Fact("Location", listing.location or NO_LOCATION))
     facts.append(Fact("Conditions", ", ".join(listing.conditions) or NO_CONDITIONS))
-    facts.append(Fact("Watch key", _decision_key(candidate)))
+    facts.append(Fact("Watch key", candidate.listing.key))
     return tuple(facts)
 
 
@@ -491,17 +491,12 @@ def _handling(candidate: Candidate) -> Handling:
     if assessment.status == LogisticsStatus.NEEDS_PLAN:
         return Handling(
             questions=assessment.questions,
-            decision_key=_decision_key(candidate),
+            decision_key=candidate.listing.key,
         )
     return Handling(
         summary=readable(assessment.status),
         note=assessment.decision_note,
     )
-
-
-def _decision_key(candidate: Candidate) -> str:
-    """The exact key the logistics command expects for this listing."""
-    return f"{candidate.listing.source}/{candidate.listing.listing_id}"
 
 
 def _valuation(summary: ValuationSummary | None) -> Valuation:
