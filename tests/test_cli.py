@@ -929,6 +929,40 @@ class LogisticsCommandTests(unittest.TestCase):
         self.assertIn("$25.00", saved)
         self.assertIn("cleared", cleared)
 
+    def test_the_key_printed_in_a_report_works_here_too(self):
+        # Every report prints "Watch key: nellis/synthetic-001". Splitting that
+        # by hand for one command and not the other is the kind of difference
+        # nobody remembers which way round.
+        with temporary_directory() as directory:
+            database = str(directory / "observations.sqlite3")
+            saved = run_cli(
+                [
+                    "logistics",
+                    "--database",
+                    database,
+                    "--key",
+                    "nellis/synthetic-001",
+                    "--status",
+                    "infeasible",
+                ]
+            )
+        self.assertIn("saved as infeasible", saved)
+
+    def test_naming_a_lot_twice_over_is_refused_rather_than_guessed_at(self):
+        with self.assertRaises(ValueError) as refused:
+            run_cli(
+                [
+                    "logistics",
+                    "--key",
+                    "nellis/synthetic-001",
+                    "--source",
+                    "nellis",
+                    "--status",
+                    "clear",
+                ]
+            )
+        self.assertIn("--key cannot be combined", str(refused.exception))
+
     def _logistics_argv(self, database: str) -> list[str]:
         return [
             "logistics",

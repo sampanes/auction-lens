@@ -72,10 +72,6 @@ class BestOfEachTests(unittest.TestCase):
         kept = best_of_each(many("keyboard", [70, 87, 75, 86, 85]), 3)
         self.assertEqual(sorted(item.score for item in kept), [85, 86, 87])
 
-    def test_no_limit_keeps_everything(self):
-        crowd = many("keyboard", [87, 86, 85, 84])
-        self.assertEqual(len(best_of_each(crowd, None)), 4)
-
     def test_an_interest_below_the_limit_is_untouched(self):
         kept = best_of_each(many("telescope", [80, 79]), 3)
         self.assertEqual(len(kept), 2)

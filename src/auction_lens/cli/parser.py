@@ -89,7 +89,7 @@ def _add_profile(subparsers) -> None:
     profile = subparsers.add_parser(
         PROFILE, help="read interests and safely edit practical limits"
     )
-    profile.add_argument("--config", default=DEFAULT_CONFIG)
+    _add_config(profile)
     action = profile.add_mutually_exclusive_group()
     action.add_argument(
         "--edit",
@@ -108,8 +108,8 @@ def _add_doctor(subparsers) -> None:
     doctor = subparsers.add_parser(
         DOCTOR, help="check configuration and credentials without contacting anything"
     )
-    doctor.add_argument("--config", default=DEFAULT_CONFIG)
-    doctor.add_argument("--env-file", default=DEFAULT_ENV_FILE)
+    _add_config(doctor)
+    _add_env_file(doctor)
     _add_delivery_ledger(doctor, allow_repeat=False)
     doctor.add_argument(
         "--email",
@@ -132,13 +132,13 @@ def _add_daily(subparsers) -> None:
     daily = subparsers.add_parser(
         DAILY, help="find lots, score them, and report what matters"
     )
-    daily.add_argument("--config", default=DEFAULT_CONFIG)
+    _add_config(daily)
     daily.add_argument(
         "--output", default=DEFAULT_INBOX, help="where the found lots are written"
     )
-    daily.add_argument("--database", default=DEFAULT_DATABASE)
-    daily.add_argument("--watchlist", default=DEFAULT_WATCHLIST_FILE)
-    daily.add_argument("--env-file", default=DEFAULT_ENV_FILE)
+    _add_database(daily)
+    _add_watchlist_file(daily)
+    _add_env_file(daily)
     _add_delivery_ledger(daily)
     daily.add_argument(
         "--search", action="append", default=[], metavar="TERM",
@@ -154,33 +154,13 @@ def _add_daily(subparsers) -> None:
     )
 
 
-def _add_visiting(command) -> None:
-    """Both reporting commands take it, because it is one fact about the day."""
-    command.add_argument(
-        "--visiting",
-        action="append",
-        default=[],
-        metavar="BRANCH",
-        help="a branch you are already going to today; repeatable. Its lots are "
-        "held to the ordinary bar rather than the higher far-branch one",
-    )
-
-
 def _add_run(subparsers) -> None:
     run = subparsers.add_parser(RUN, help="ingest listings, evaluate them, and render a report")
     run.add_argument("--input", required=True, help="canonical .json or .csv listing file")
-    run.add_argument(
-        "--config", default=DEFAULT_CONFIG, help="TOML provider and scoring configuration"
-    )
-    run.add_argument("--database", default=DEFAULT_DATABASE)
-    run.add_argument(
-        "--watchlist",
-        default=DEFAULT_WATCHLIST_FILE,
-        help="ignored JSON file that collects a price reading per reported lot",
-    )
-    run.add_argument(
-        "--env-file", default=DEFAULT_ENV_FILE, help="optional local KEY=VALUE settings file"
-    )
+    _add_config(run)
+    _add_database(run)
+    _add_watchlist_file(run)
+    _add_env_file(run)
     _add_delivery_ledger(run)
     _add_visiting(run)
     run.add_argument(
@@ -193,10 +173,8 @@ def _add_run(subparsers) -> None:
 
 def _add_fetch(subparsers) -> None:
     fetch = subparsers.add_parser(FETCH, help="fetch one authorized public provider page")
-    fetch.add_argument("--config", default=DEFAULT_CONFIG, help="TOML provider configuration")
-    fetch.add_argument(
-        "--env-file", default=DEFAULT_ENV_FILE, help="optional local KEY=VALUE settings file"
-    )
+    _add_config(fetch)
+    _add_env_file(fetch)
 
 
 def _add_discover(subparsers) -> None:
@@ -204,9 +182,7 @@ def _add_discover(subparsers) -> None:
     discover = subparsers.add_parser(
         DISCOVER, help="ask the provider's search for lots and write them as canonical JSON"
     )
-    discover.add_argument(
-        "--config", default=DEFAULT_CONFIG, help="TOML provider configuration"
-    )
+    _add_config(discover)
     discover.add_argument("--output", required=True, help="canonical .json file to write")
     discover.add_argument(
         "--search",
@@ -215,9 +191,7 @@ def _add_discover(subparsers) -> None:
         metavar="TERM",
         help="search term; repeatable. Defaults to configured searches or interest terms",
     )
-    discover.add_argument(
-        "--env-file", default=DEFAULT_ENV_FILE, help="optional local KEY=VALUE settings file"
-    )
+    _add_env_file(discover)
 
 
 def _add_pull(subparsers) -> None:
@@ -226,7 +200,7 @@ def _add_pull(subparsers) -> None:
     pull = subparsers.add_parser(
         PULL, help="read saved provider pages into a canonical listing file"
     )
-    pull.add_argument("--config", default=DEFAULT_CONFIG, help="TOML provider configuration")
+    _add_config(pull)
     pull.add_argument(
         "--input", required=True, help="a saved .html page, or a directory of them"
     )
@@ -237,25 +211,28 @@ def _add_logistics(subparsers) -> None:
     logistics = subparsers.add_parser(
         LOGISTICS, help="save or clear a handling decision for one listing"
     )
-    logistics.add_argument("--database", default=DEFAULT_DATABASE)
-    logistics.add_argument("--source", required=True)
-    logistics.add_argument("--listing-id", required=True)
-    logistics.add_argument("--status", required=True, choices=LOGISTICS_STATUSES)
-    logistics.add_argument("--added-cost", default="0")
-    logistics.add_argument("--note", default="")
+    _add_database(logistics)
+    _add_lot_identity(logistics)
+    logistics.add_argument(
+        "--status",
+        required=True,
+        choices=LOGISTICS_STATUSES,
+        help="whether you can actually collect this lot, or clear a saved answer",
+    )
+    logistics.add_argument(
+        "--added-cost",
+        default="0",
+        help="what collecting it costs on top of the bid, such as a van hire",
+    )
+    logistics.add_argument("--note", default="", help="why, for when you have forgotten")
 
 
 def _add_watch(subparsers) -> None:
     watch = subparsers.add_parser(
         WATCH, help="say what you think of one lot, or stop following it"
     )
-    watch.add_argument("--watchlist", default=DEFAULT_WATCHLIST_FILE)
-    watch.add_argument(
-        "--key",
-        help="copyable SOURCE/LISTING-ID shown as Watch key in a report",
-    )
-    watch.add_argument("--source", help="provider id; use with --listing-id")
-    watch.add_argument("--listing-id", help="provider listing id; use with --source")
+    _add_watchlist_file(watch)
+    _add_lot_identity(watch)
     watch.add_argument("--verdict", choices=WATCH_ACTIONS)
     watch.add_argument("--estimate", help="what the lot is worth to you, all in")
     watch.add_argument("--note", help="anything the other fields cannot say")
@@ -279,19 +256,15 @@ def _add_watch(subparsers) -> None:
 def _add_watchlist(subparsers) -> None:
     """Reading the file is the common case, so it is its own command."""
     watchlist = subparsers.add_parser(WATCHLIST, help="show the lots you are following")
-    watchlist.add_argument("--watchlist", default=DEFAULT_WATCHLIST_FILE)
+    _add_watchlist_file(watchlist)
     watchlist.add_argument(
         "--verdict", choices=VERDICTS, help="show only lots you decided one way"
     )
     watchlist.add_argument(
         "--email", action="store_true", help="email the selected lots after showing them"
     )
-    watchlist.add_argument(
-        "--config", default=DEFAULT_CONFIG, help="TOML configuration, used when emailing"
-    )
-    watchlist.add_argument(
-        "--env-file", default=DEFAULT_ENV_FILE, help="optional local KEY=VALUE settings file"
-    )
+    _add_config(watchlist)
+    _add_env_file(watchlist)
     _add_delivery_ledger(watchlist)
 
 
@@ -301,7 +274,7 @@ def _add_sold(subparsers) -> None:
         SOLD,
         help="show what closed lots were last seen at (a floor, not the hammer price)",
     )
-    sold.add_argument("--database", default=DEFAULT_DATABASE)
+    _add_database(sold)
     sold.add_argument(
         "--within-minutes",
         type=int,
@@ -315,11 +288,7 @@ def _add_sold(subparsers) -> None:
     sold.add_argument(
         "--limit", type=int, help="show only the tightest readings, not every one"
     )
-    sold.add_argument(
-        "--config",
-        default=DEFAULT_CONFIG,
-        help="TOML configuration, read for the timezone closing times are shown in",
-    )
+    _add_config(sold)
 
 
 def _add_delivery_ledger(command, *, allow_repeat: bool = True) -> None:
@@ -335,3 +304,71 @@ def _add_delivery_ledger(command, *, allow_repeat: bool = True) -> None:
             action="store_true",
             help="send the current report even when this destination already received it",
         )
+
+
+def _add_visiting(command) -> None:
+    """Both reporting commands take it, because it is one fact about the day."""
+    command.add_argument(
+        "--visiting",
+        action="append",
+        default=[],
+        metavar="BRANCH",
+        help="a branch you are already going to today; repeatable. Its lots are "
+        "held to the ordinary bar rather than the higher far-branch one",
+    )
+
+
+# The flags below name the same four files on almost every command. Each is
+# described once here, so "what is --config" has one answer rather than one per
+# command, and a changed default is a single edit.
+
+
+def _add_lot_identity(command) -> None:
+    """Name one lot the way the report already offers it.
+
+    Every report prints a Watch key, so pasting that back is the short path and
+    the only one worth remembering. The two-flag spelling stays because scripts
+    already hold the parts separately and have no key to paste.
+    """
+    command.add_argument(
+        "--key",
+        help="copyable SOURCE/LISTING-ID shown as Watch key in a report",
+    )
+    command.add_argument("--source", help="provider id; use with --listing-id")
+    command.add_argument("--listing-id", help="provider listing id; use with --source")
+
+
+def _add_config(command) -> None:
+    """The file a person edits: the provider, their interests, and their limits."""
+    command.add_argument(
+        "--config",
+        default=DEFAULT_CONFIG,
+        help="TOML file holding the provider, your interests, and your limits",
+    )
+
+
+def _add_env_file(command) -> None:
+    """The ignored file holding a contact address and any secrets."""
+    command.add_argument(
+        "--env-file",
+        default=DEFAULT_ENV_FILE,
+        help="ignored KEY=VALUE file holding your contact address and any secrets",
+    )
+
+
+def _add_database(command) -> None:
+    """What the tool remembers between runs, and nothing a person edits."""
+    command.add_argument(
+        "--database",
+        default=DEFAULT_DATABASE,
+        help="SQLite file remembering observations, prices, and handling decisions",
+    )
+
+
+def _add_watchlist_file(command) -> None:
+    """The lots being followed. Named for the file, not the command of that name."""
+    command.add_argument(
+        "--watchlist",
+        default=DEFAULT_WATCHLIST_FILE,
+        help="ignored JSON file recording the lots you are following",
+    )

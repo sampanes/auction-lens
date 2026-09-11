@@ -429,15 +429,15 @@ class ReportsConfig:
     # How many lots one interest may contribute before the rest are summarised.
     # Ten near-identical keyboards are ten answers to the same question, and a
     # single overall cap lets whichever want happened to be busy today spend
-    # the whole report. Absent means one want may fill it.
-    most_per_interest: int | None = DEFAULT_MOST_PER_INTEREST
+    # the whole report. Unlike max_items there is no "all of them": a report
+    # with no per-interest cap is the crowded one this setting exists to fix.
+    most_per_interest: int = DEFAULT_MOST_PER_INTEREST
 
     def __post_init__(self) -> None:
         _settle(self, "order", ReadingOrder)
         if self.max_items is not None:
             require_at_least(self.max_items, 1, field_name="max_items")
-        if self.most_per_interest is not None:
-            require_at_least(self.most_per_interest, 1, field_name="most_per_interest")
+        require_at_least(self.most_per_interest, 1, field_name="most_per_interest")
 
 
 # An interest match's quality score tops out at 87 (80 base plus 7 for ending
