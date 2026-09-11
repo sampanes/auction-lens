@@ -22,13 +22,12 @@ from zoneinfo import ZoneInfo
 from ..config import WebhookConfig
 from ..grading import Tag
 from ..http_safety import public_https_opener, require_public_https
-from ..models import Candidate, InterestProgress, Listing, ReadingOrder, ranked
+from ..models import Candidate, Listing, ranked
 from .destinations import destination_fingerprint
 from .findings import (
-    NO_DELIVERY_FILTER,
     DeliverySummary,
     OutcomeSummary,
-    build_outcome_summary,
+    Report,
     closing_time,
 )
 
@@ -46,27 +45,14 @@ ALL_CLEAR = "every tag green"
 
 
 def send_webhook(
-    candidates: list[Candidate],
+    report: Report,
     config: WebhookConfig,
-    zone: ZoneInfo,
-    interest_progress: tuple[InterestProgress, ...] = (),
-    unreviewed_wins: int = 0,
-    delivery: DeliverySummary = NO_DELIVERY_FILTER,
-    order: ReadingOrder = ReadingOrder.PRIORITY,
     *,
     opener: Callable[..., Any] | None = None,
 ) -> None:
-    """Post the best candidates to the configured chat webhook."""
+    """Post the best of a built report to the configured chat webhook."""
     address = _ready_address(config)
-    payload = build_message(
-        candidates,
-        config,
-        zone,
-        interest_progress,
-        unreviewed_wins,
-        delivery,
-        order,
-    )
+    payload = build_message(report, config)
     request = Request(
         address,
         data=json.dumps(payload).encode("utf-8"),
@@ -111,26 +97,23 @@ def webhook_item_limit(config: WebhookConfig, report_limit: int | None) -> int:
     return min(limits)
 
 
-def build_message(
-    candidates: list[Candidate],
-    config: WebhookConfig,
-    zone: ZoneInfo,
-    interest_progress: tuple[InterestProgress, ...] = (),
-    unreviewed_wins: int = 0,
-    delivery: DeliverySummary = NO_DELIVERY_FILTER,
-    order: ReadingOrder = ReadingOrder.PRIORITY,
-) -> dict[str, Any]:
+def build_message(report: Report, config: WebhookConfig) -> dict[str, Any]:
     """One message: a line saying how many, then a card for each of the best.
+
+    Chat has a harder length limit than mail, so this takes its own last cut
+    from the same ranking rather than rendering the report's worded groups.
 
     Public because it is worth testing without posting anything anywhere.
     """
+    candidates = list(report.candidates)
     selected = ranked(candidates, limit=webhook_item_limit(config, None))
-    shown = ranked(selected, order=order)
-    outcomes = build_outcome_summary(interest_progress, unreviewed_wins)
+    shown = ranked(selected, order=report.order)
     return {
         "username": config.username,
-        "content": _content(len(candidates), len(shown), outcomes, delivery),
-        "embeds": [_card(candidate, zone) for candidate in shown],
+        "content": _content(
+            len(candidates), len(shown), report.outcomes, report.delivery
+        ),
+        "embeds": [_card(candidate, report.zone) for candidate in shown],
     }
 
 

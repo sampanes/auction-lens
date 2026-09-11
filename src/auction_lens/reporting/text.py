@@ -8,12 +8,8 @@ This module decides layout only. What the report says comes from ``findings``.
 from __future__ import annotations
 
 from collections.abc import Iterator
-from zoneinfo import ZoneInfo
 
-from ..models import Candidate, InterestHarvest, InterestProgress, ReadingOrder
 from .findings import (
-    NO_DELIVERY_FILTER,
-    DeliverySummary,
     Fact,
     Finding,
     Group,
@@ -21,7 +17,6 @@ from .findings import (
     OutcomeSummary,
     Report,
     Valuation,
-    build_report,
 )
 from .searches import SearchHint
 
@@ -35,32 +30,8 @@ SEARCH_HEADING = "Paste into the site search to see a whole category:"
 OUTCOME_HEADING = "INTEREST PROGRESS"
 
 
-def render_text(
-    candidates: list[Candidate],
-    zone: ZoneInfo,
-    searches: tuple[SearchHint, ...] = (),
-    order: ReadingOrder = ReadingOrder.PRIORITY,
-    interest_progress: tuple[InterestProgress, ...] = (),
-    unreviewed_wins: int = 0,
-    delivery: DeliverySummary = NO_DELIVERY_FILTER,
-    harvest: tuple[InterestHarvest, ...] = (),
-) -> str:
-    """Render every candidate, grouped by what it is one of and ordered by score."""
-    return _as_text(
-        build_report(
-            candidates,
-            zone,
-            searches,
-            order,
-            interest_progress,
-            unreviewed_wins,
-            delivery,
-            harvest,
-        )
-    )
-
-
-def _as_text(report: Report) -> str:
+def render_text(report: Report) -> str:
+    """Render a built report as plain text, grouped and ordered as it says."""
     lines = [report.headline]
     lines.extend(report.delivery.lines)
     lines.extend(_outcome_lines(report.outcomes))

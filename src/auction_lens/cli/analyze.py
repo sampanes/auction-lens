@@ -19,7 +19,7 @@ from ..ingest import load_listings
 from ..notifications import DeliveryChannel
 from ..outcomes import plan_interests
 from ..pipeline import analyze_listings
-from ..reporting import render_text
+from ..reporting import build_report, render_text
 from ..storage import (
     Database,
     LogisticsDecisionStore,
@@ -84,18 +84,17 @@ def _score_and_report(
         watchlist=watchlist,
         valuation_engine=_valuation_engine(config),
     )
-    zone = config.acquisition.zone
-    searches = result.searches
-    order = config.reports.order
     print(
         render_text(
-            result.candidates,
-            zone,
-            searches,
-            order,
-            result.interest_progress,
-            result.unreviewed_wins,
-            harvest=result.harvest,
+            build_report(
+                result.candidates,
+                config.acquisition.zone,
+                searches=result.searches,
+                order=config.reports.order,
+                interest_progress=result.interest_progress,
+                unreviewed_wins=result.unreviewed_wins,
+                harvest=result.harvest,
+            )
         ),
         end="",
     )

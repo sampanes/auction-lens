@@ -24,6 +24,7 @@ from ..notifications import (
 from ..pipeline import RunResult, follow_candidates
 from ..reporting import (
     DeliverySummary,
+    build_report,
     email_destination,
     send_email,
     send_webhook,
@@ -132,30 +133,22 @@ def _send_findings(
 ) -> None:
     """Cross one transport boundary; its caller owns receipt persistence."""
     selected = list(candidates)
-    if channel == DeliveryChannel.EMAIL:
-        send_email(
-            selected,
-            config.email,
-            config.acquisition.zone,
-            result.searches,
-            config.reports.order,
-            result.interest_progress,
-            result.unreviewed_wins,
-            delivery,
-            # Counted against what this destination is actually being sent,
-            # so a suppressed lot is not described as one still on the page.
-            harvest_of(list(result.all_candidates), selected),
-        )
-        return
-    send_webhook(
+    report = build_report(
         selected,
-        config.webhook,
         config.acquisition.zone,
-        result.interest_progress,
-        result.unreviewed_wins,
-        delivery,
+        searches=result.searches,
         order=config.reports.order,
+        interest_progress=result.interest_progress,
+        unreviewed_wins=result.unreviewed_wins,
+        delivery=delivery,
+        # Counted against what this destination is actually being sent, so a
+        # suppressed lot is not described as one still on the page.
+        harvest=harvest_of(list(result.all_candidates), selected),
     )
+    if channel == DeliveryChannel.EMAIL:
+        send_email(report, config.email)
+        return
+    send_webhook(report, config.webhook)
 
 
 def _report_delivery_current(channel: DeliveryChannel, unchanged: int) -> None:

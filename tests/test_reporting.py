@@ -66,13 +66,15 @@ class TextReportTests(unittest.TestCase):
         self.listings = example_listings()
 
     def test_report_states_the_actionable_cost(self):
-        report = render_text(evaluate(self.listings[LASER_LEVEL], self.config), REPORT_ZONE)
+        report = render_text(
+            build_report(evaluate(self.listings[LASER_LEVEL], self.config), REPORT_ZONE),
+        )
         self.assertIn("Estimated total: $12.65", report)
         self.assertIn("Example Laser Level Kit", report)
         self.assertIn("Watch key: nellis/synthetic-002", report)
 
     def test_empty_report_says_so_plainly(self):
-        self.assertIn("no listings", render_text([], REPORT_ZONE))
+        self.assertIn("no listings", render_text(build_report([], REPORT_ZONE)))
 
     def test_a_changed_price_names_what_the_destination_last_received(self):
         candidate = evaluate(self.listings[LASER_LEVEL], self.config)[0]
@@ -85,8 +87,8 @@ class TextReportTests(unittest.TestCase):
             ),
         )
 
-        plain = render_text([candidate], REPORT_ZONE)
-        markup = render_html([candidate], REPORT_ZONE)
+        plain = render_text(build_report([candidate], REPORT_ZONE))
+        markup = render_html(build_report([candidate], REPORT_ZONE))
 
         for report in (plain, markup):
             self.assertIn("price changed from $7.50", report.lower())
@@ -101,7 +103,7 @@ class TextReportTests(unittest.TestCase):
         candidate = next(
             item for item in evaluate(listing, self.config) if item.category == "wanted"
         )
-        report = render_text([candidate], REPORT_ZONE)
+        report = render_text(build_report([candidate], REPORT_ZONE))
         self.assertIn("LOGISTICS CHECK", report)
         self.assertIn("Decision key: nellis/synthetic-001", report)
 
@@ -116,8 +118,8 @@ class OutcomeReportTests(unittest.TestCase):
             _progress("useful materials", None, 7, interest_id="salvage"),
         )
 
-        plain = render_text([], REPORT_ZONE, interest_progress=progress)
-        markup = render_html([], REPORT_ZONE, interest_progress=progress)
+        plain = render_text(build_report([], REPORT_ZONE, interest_progress=progress))
+        markup = render_html(build_report([], REPORT_ZONE, interest_progress=progress))
 
         expected = (
             "soundbar: 1/2 fulfilled; 1 remaining",
@@ -132,10 +134,10 @@ class OutcomeReportTests(unittest.TestCase):
     def test_unreviewed_win_is_a_prominent_action_in_both_renderings(self):
         progress = (_progress("soundbar", 1),)
         plain = render_text(
-            [], REPORT_ZONE, interest_progress=progress, unreviewed_wins=1
+            build_report([], REPORT_ZONE, interest_progress=progress, unreviewed_wins=1),
         )
         markup = render_html(
-            [], REPORT_ZONE, interest_progress=progress, unreviewed_wins=1
+            build_report([], REPORT_ZONE, interest_progress=progress, unreviewed_wins=1),
         )
 
         warning = (
@@ -151,23 +153,26 @@ class OutcomeReportTests(unittest.TestCase):
     def test_interest_name_is_escaped_in_html(self):
         progress = (_progress("<audio & video>", 1),)
 
-        markup = render_html([], REPORT_ZONE, interest_progress=progress)
+        markup = render_html(build_report([], REPORT_ZONE, interest_progress=progress))
 
         self.assertNotIn("<audio & video>", markup)
         self.assertIn(
             "&lt;audio &amp; video&gt;: 0/1 fulfilled; 1 remaining", markup
         )
 
-    def test_existing_positional_report_calls_keep_their_meaning(self):
-        # Outcome arguments were added at the end, so integrations using the
-        # original four positions still select their reading order.
-        report = build_report([], REPORT_ZONE, (), ReadingOrder.RETAIL)
-        plain = render_text([], REPORT_ZONE, (), ReadingOrder.RETAIL)
-        markup = render_html([], REPORT_ZONE, (), ReadingOrder.RETAIL)
+    def test_an_empty_report_still_renders_in_a_chosen_order(self):
+        report = build_report([], REPORT_ZONE, order=ReadingOrder.RETAIL)
 
         self.assertTrue(report.is_empty)
-        self.assertIn("no listings", plain)
-        self.assertIn("no listings", markup)
+        self.assertIn("no listings", render_text(report))
+        self.assertIn("no listings", render_html(report))
+
+    def test_the_report_bundle_cannot_be_passed_in_the_wrong_order(self):
+        # Six functions once took these eight values positionally, and two of
+        # them took them in different orders. Only build_report assembles them
+        # now, and it will not accept them in any order at all.
+        with self.assertRaises(TypeError):
+            build_report([], REPORT_ZONE, (), ReadingOrder.RETAIL)
 
 
 class DeliverySummaryTests(unittest.TestCase):
@@ -180,8 +185,8 @@ class DeliverySummaryTests(unittest.TestCase):
             held_back_matches=3,
         )
 
-        plain = render_text([], REPORT_ZONE, delivery=delivery)
-        markup = render_html([], REPORT_ZONE, delivery=delivery)
+        plain = render_text(build_report([], REPORT_ZONE, delivery=delivery))
+        markup = render_html(build_report([], REPORT_ZONE, delivery=delivery))
 
         for report in (plain, markup):
             self.assertIn("no new or price-changed listings", report.lower())
@@ -192,7 +197,7 @@ class DeliverySummaryTests(unittest.TestCase):
     def test_an_explicit_repeat_says_the_filter_was_bypassed(self):
         delivery = DeliverySummary(active=True, repeated=True)
 
-        report = render_text([], REPORT_ZONE, delivery=delivery)
+        report = render_text(build_report([], REPORT_ZONE, delivery=delivery))
 
         self.assertIn("filter bypassed for this requested repeat", report)
 
@@ -241,17 +246,21 @@ class ClosingTimeTests(unittest.TestCase):
         # Phoenix. Asserting the local reading means a report that skipped the
         # conversion would fail here rather than be off by seven hours in
         # silence -- and it would name the wrong weekday while it did it.
-        report = render_text(self._wanted(SOUNDBAR), REPORT_ZONE)
+        report = render_text(build_report(self._wanted(SOUNDBAR), REPORT_ZONE))
         self.assertIn("Closes: Mon 19:30 MST", report)
         self.assertNotIn("02:30", report)
 
     def test_the_same_closing_time_reaches_the_html_report(self):
-        self.assertIn("Mon 19:30 MST", render_html(self._wanted(SOUNDBAR), REPORT_ZONE))
+        self.assertIn("Mon 19:30 MST", render_html(
+            build_report(self._wanted(SOUNDBAR), REPORT_ZONE),
+        ))
 
     def test_a_lot_with_no_stated_closing_time_claims_none(self):
         # Rather than inventing a deadline, or printing an empty label that
         # reads like the auction never ends.
-        report = render_text(evaluate(self.listings[LASER_LEVEL], self.config), REPORT_ZONE)
+        report = render_text(
+            build_report(evaluate(self.listings[LASER_LEVEL], self.config), REPORT_ZONE),
+        )
         self.assertIn("Example Laser Level Kit", report)
         self.assertNotIn("Closes", report)
 
@@ -282,7 +291,7 @@ class ReadingOrderTests(unittest.TestCase):
 
     def test_retail_order_reads_dearest_first(self):
         found = self._candidates([Decimal("120"), Decimal("900"), Decimal("300")])
-        report = build_report(found, REPORT_ZONE, (), ReadingOrder.RETAIL)
+        report = build_report(found, REPORT_ZONE, searches=(), order=ReadingOrder.RETAIL)
         shown = [
             fact.value
             for group in report.groups
@@ -295,7 +304,7 @@ class ReadingOrderTests(unittest.TestCase):
     def test_a_lot_with_no_stated_retail_reads_last(self):
         # An unknown value is not a large one, so it does not lead the report.
         found = self._candidates([None, Decimal("500")])
-        report = build_report(found, REPORT_ZONE, (), ReadingOrder.RETAIL)
+        report = build_report(found, REPORT_ZONE, searches=(), order=ReadingOrder.RETAIL)
         titles = [
             finding.title for group in report.groups for finding in group.findings
         ]
@@ -306,7 +315,7 @@ class ReadingOrderTests(unittest.TestCase):
         # read first. Both orders must show the same lots.
         found = self._candidates([Decimal("120"), Decimal("900"), None])
         def titles(order):
-            report = build_report(found, REPORT_ZONE, (), order)
+            report = build_report(found, REPORT_ZONE, searches=(), order=order)
             return {
                 finding.title
                 for group in report.groups
@@ -322,7 +331,7 @@ class HtmlReportTests(unittest.TestCase):
 
     def test_card_shows_the_listing_and_links_to_it(self):
         candidates = evaluate(self.listings[SOUNDBAR], self.config)
-        report = render_html(candidates, REPORT_ZONE)
+        report = render_html(build_report(candidates, REPORT_ZONE))
         self.assertIn("Example 2.1 Channel Sound Bar with ARC", report)
         self.assertIn("https://example.invalid/auction/synthetic-001", report)
         self.assertIn("Estimated total: $20.70", report)
@@ -330,7 +339,7 @@ class HtmlReportTests(unittest.TestCase):
     def test_card_links_product_and_actual_lot_photos_to_the_listing(self):
         candidate = evaluate(self.listings[SOUNDBAR], self.config)[0]
 
-        report = render_html([candidate], REPORT_ZONE)
+        report = render_html(build_report([candidate], REPORT_ZONE))
 
         listing_link = "<a href='https://example.invalid/auction/synthetic-001'>"
         self.assertEqual(report.count(listing_link), 3)  # Two photos and View listing.
@@ -346,7 +355,9 @@ class HtmlReportTests(unittest.TestCase):
             photo_urls=("https://example.invalid/photo/only.jpg",),
         )
 
-        report = render_html([replace(candidate, listing=listing)], REPORT_ZONE)
+        report = render_html(
+            build_report([replace(candidate, listing=listing)], REPORT_ZONE),
+        )
 
         self.assertEqual(report.count("src='https://example.invalid/photo/only.jpg'"), 1)
         self.assertIn("<strong>Listing photo</strong>", report)
@@ -361,7 +372,9 @@ class HtmlReportTests(unittest.TestCase):
             photo_urls=("https://example.invalid/lot.jpg?size='full'&crop=none",),
         )
 
-        report = render_html([replace(candidate, listing=listing)], REPORT_ZONE)
+        report = render_html(
+            build_report([replace(candidate, listing=listing)], REPORT_ZONE),
+        )
 
         self.assertIn("next=&#x27;details&#x27;&amp;view=full", report)
         self.assertIn("size=&#x27;full&#x27;&amp;crop=none", report)
@@ -373,7 +386,9 @@ class HtmlReportTests(unittest.TestCase):
             photo_urls=("http://example.invalid/photo/lot.jpg",),
         )
 
-        report = render_html([replace(candidate, listing=listing)], REPORT_ZONE)
+        report = render_html(
+            build_report([replace(candidate, listing=listing)], REPORT_ZONE),
+        )
 
         self.assertNotIn("<img", report)
 
@@ -387,7 +402,9 @@ class HtmlReportTests(unittest.TestCase):
             ),
         )
 
-        report = render_html([replace(candidate, listing=listing)], REPORT_ZONE)
+        report = render_html(
+            build_report([replace(candidate, listing=listing)], REPORT_ZONE),
+        )
 
         self.assertNotIn("stock.jpg", report)
         self.assertIn("<strong>Actual lot</strong>", report)
@@ -396,12 +413,14 @@ class HtmlReportTests(unittest.TestCase):
     def test_listing_title_is_escaped(self):
         candidate = evaluate(self.listings[SOUNDBAR], self.config)[0]
         listing = replace(candidate.listing, title="<script>alert(1)</script>")
-        report = render_html([replace(candidate, listing=listing)], REPORT_ZONE)
+        report = render_html(
+            build_report([replace(candidate, listing=listing)], REPORT_ZONE),
+        )
         self.assertNotIn("<script>", report)
         self.assertIn("&lt;script&gt;", report)
 
     def test_empty_report_says_so_plainly(self):
-        self.assertIn("no listings", render_html([], REPORT_ZONE))
+        self.assertIn("no listings", render_html(build_report([], REPORT_ZONE)))
 
 
 class EmailDeliveryTests(unittest.TestCase):
@@ -413,7 +432,7 @@ class EmailDeliveryTests(unittest.TestCase):
     @patch("auction_lens.reporting.delivery.smtplib.SMTP_SSL")
     def test_implicit_tls_verifies_the_server_certificate(self, smtp_ssl):
         with patch.dict("os.environ", SMTP_ENVIRONMENT, clear=False):
-            send_email(self.candidates, self.email, REPORT_ZONE)
+            send_email(build_report(self.candidates, REPORT_ZONE), self.email)
 
         context = smtp_ssl.call_args.kwargs["context"]
         self.assertTrue(context.check_hostname)
@@ -427,7 +446,7 @@ class EmailDeliveryTests(unittest.TestCase):
     def test_starttls_verifies_the_server_certificate(self, smtp):
         email = replace(self.email, port=587, security="starttls")
         with patch.dict("os.environ", SMTP_ENVIRONMENT, clear=False):
-            send_email(self.candidates, email, REPORT_ZONE)
+            send_email(build_report(self.candidates, REPORT_ZONE), email)
 
         smtp.assert_called_once_with("smtp.example.invalid", 587, timeout=30)
         connection = smtp.return_value.__enter__.return_value
@@ -471,7 +490,10 @@ class EmailDeliveryTests(unittest.TestCase):
         # Each sender takes its own arguments, so each is paired with the call
         # that exercises it rather than with a payload some caller has to shape.
         senders = (
-            ("send_email", lambda: send_email(self.candidates, disabled, REPORT_ZONE)),
+            ("send_email", lambda: send_email(
+                build_report(self.candidates, REPORT_ZONE),
+                disabled,
+            )),
             ("send_watchlist_email", lambda: send_watchlist_email(watchlist, disabled)),
         )
         with patch.dict("os.environ", SMTP_ENVIRONMENT, clear=False):
@@ -486,14 +508,17 @@ class EmailDeliveryTests(unittest.TestCase):
     def test_missing_settings_are_named_before_connecting(self, smtp_ssl):
         with patch.dict("os.environ", {}, clear=True):
             with self.assertRaisesRegex(RuntimeError, "missing email environment settings"):
-                send_email(self.candidates, self.email, REPORT_ZONE)
+                send_email(build_report(self.candidates, REPORT_ZONE), self.email)
         smtp_ssl.assert_not_called()
 
     @patch("auction_lens.reporting.delivery.smtplib.SMTP")
     @patch("auction_lens.reporting.delivery.smtplib.SMTP_SSL")
     def test_unknown_security_is_refused_without_connecting(self, smtp_ssl, smtp):
         with self.assertRaisesRegex(ValueError, "security must be one of: ssl, starttls"):
-            send_email([], replace(self.email, security="starttlz"), REPORT_ZONE)
+            send_email(
+                build_report([], REPORT_ZONE),
+                replace(self.email, security="starttlz"),
+            )
         smtp.assert_not_called()
         smtp_ssl.assert_not_called()
 
@@ -534,7 +559,7 @@ class EmailDeliveryTests(unittest.TestCase):
     @patch("auction_lens.reporting.delivery.smtplib.SMTP_SSL")
     def test_a_daily_email_includes_product_and_actual_lot_photos(self, smtp_ssl):
         with patch.dict("os.environ", SMTP_ENVIRONMENT, clear=False):
-            send_email(self.candidates, self.email, REPORT_ZONE)
+            send_email(build_report(self.candidates, REPORT_ZONE), self.email)
 
         message = smtp_ssl.return_value.__enter__.return_value.send_message.call_args.args[0]
         markup = message.get_body(preferencelist=("html",)).get_content()
@@ -546,11 +571,8 @@ class EmailDeliveryTests(unittest.TestCase):
         progress = (_progress("soundbar", 2, 1, interest_id="audio"),)
         with patch.dict("os.environ", SMTP_ENVIRONMENT, clear=False):
             send_email(
-                [],
+                build_report([], REPORT_ZONE, interest_progress=progress, unreviewed_wins=2),
                 self.email,
-                REPORT_ZONE,
-                interest_progress=progress,
-                unreviewed_wins=2,
             )
 
         message = smtp_ssl.return_value.__enter__.return_value.send_message.call_args.args[0]
@@ -603,16 +625,16 @@ class BothRenderingsSayTheSameThingTests(unittest.TestCase):
         return [finding for group in self.report.groups for finding in group.findings]
 
     def test_every_fact_reaches_both_renderings(self):
-        plain = render_text(self.candidates, REPORT_ZONE)
-        markup = render_html(self.candidates, REPORT_ZONE)
+        plain = render_text(build_report(self.candidates, REPORT_ZONE))
+        markup = render_html(build_report(self.candidates, REPORT_ZONE))
         for finding in self._findings():
             for fact in finding.facts:
                 self.assertIn(fact.value, plain, f"{fact.label} missing from text")
                 self.assertIn(fact.value, markup, f"{fact.label} missing from HTML")
 
     def test_every_open_handling_question_reaches_both_renderings(self):
-        plain = render_text(self.candidates, REPORT_ZONE)
-        markup = render_html(self.candidates, REPORT_ZONE)
+        plain = render_text(build_report(self.candidates, REPORT_ZONE))
+        markup = render_html(build_report(self.candidates, REPORT_ZONE))
         asked = [q for finding in self._findings() for q in finding.handling.questions]
         self.assertTrue(asked, "this fixture is meant to raise handling questions")
         for question in asked:
@@ -677,7 +699,7 @@ class DeadlineHeadlineTests(unittest.TestCase):
         ]
 
     def test_the_headline_names_when_the_first_lot_closes(self):
-        report = render_text(self._wanted(SOUNDBAR), REPORT_ZONE)
+        report = render_text(build_report(self._wanted(SOUNDBAR), REPORT_ZONE))
         self.assertIn("the first closes Mon 19:30 MST", report.splitlines()[0])
 
     def test_the_headline_says_only_the_count_when_nothing_states_a_close(self):
@@ -685,7 +707,7 @@ class DeadlineHeadlineTests(unittest.TestCase):
             replace(item, listing=replace(item.listing, ends_at=None))
             for item in self._wanted(SOUNDBAR)
         ]
-        headline = render_text(silent, REPORT_ZONE).splitlines()[0]
+        headline = render_text(build_report(silent, REPORT_ZONE)).splitlines()[0]
         self.assertIn("match(es).", headline)
         self.assertNotIn("closes", headline)
 
@@ -699,7 +721,7 @@ class DeadlineHeadlineTests(unittest.TestCase):
                 first.listing, ends_at=datetime(2031, 1, 15, 2, 30, tzinfo=UTC)
             ),
         )
-        headline = render_text([later, second], REPORT_ZONE).splitlines()[0]
+        headline = render_text(build_report([later, second], REPORT_ZONE)).splitlines()[0]
         self.assertIn("Mon 19:30 MST", headline)
 
 

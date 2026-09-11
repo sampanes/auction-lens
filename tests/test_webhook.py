@@ -13,6 +13,7 @@ from auction_lens.grading import read_grade
 from auction_lens.models import InterestProgress, InterestRef, ReadingOrder
 from auction_lens.reporting import (
     DeliverySummary,
+    build_report,
     check_webhook_ready,
     send_webhook,
     webhook_destination,
@@ -54,11 +55,11 @@ class MessageShapeTests(unittest.TestCase):
         # The provider publishes app links for this address, so one link opens
         # the app on a phone and the site everywhere else. There is no second,
         # app-flavoured address to build.
-        message = build_message(_candidates(), self.config, REPORT_ZONE)
+        message = build_message(build_report(_candidates(), REPORT_ZONE), self.config)
         self.assertEqual(message["embeds"][0]["url"], _candidates()[0].listing.url)
 
     def test_every_card_carries_the_key_the_watch_command_accepts(self):
-        message = build_message(_candidates(), self.config, REPORT_ZONE)
+        message = build_message(build_report(_candidates(), REPORT_ZONE), self.config)
         fields = {
             field["name"]: field["value"]
             for field in message["embeds"][0]["fields"]
@@ -67,7 +68,7 @@ class MessageShapeTests(unittest.TestCase):
         self.assertEqual(fields["Watch key"], "nellis/synthetic-001")
 
     def test_a_card_says_when_bidding_ends_in_the_providers_own_time(self):
-        message = build_message(_candidates(), self.config, REPORT_ZONE)
+        message = build_message(build_report(_candidates(), REPORT_ZONE), self.config)
         fields = {field["name"]: field["value"] for field in message["embeds"][0]["fields"]}
         self.assertEqual(fields["Closes"], "Mon 19:30 MST")
 
@@ -78,19 +79,19 @@ class MessageShapeTests(unittest.TestCase):
         undated[0] = replace(
             undated[0], listing=replace(undated[0].listing, ends_at=None)
         )
-        message = build_message(undated, self.config, REPORT_ZONE)
+        message = build_message(build_report(undated, REPORT_ZONE), self.config)
         fields = {field["name"]: field["value"] for field in message["embeds"][0]["fields"]}
         self.assertEqual(fields["Closes"], "unstated")
 
     def test_it_never_sends_more_cards_than_the_service_accepts(self):
         many = replace(self.config, max_items=99)
-        message = build_message(_candidates(40), many, REPORT_ZONE)
+        message = build_message(build_report(_candidates(40), REPORT_ZONE), many)
         self.assertEqual(len(message["embeds"]), HIGHEST_EMBED_COUNT)
         self.assertIn("the best 10 follow", message["content"])
 
     def test_a_smaller_limit_is_respected(self):
         few = replace(self.config, max_items=3)
-        message = build_message(_candidates(40), few, REPORT_ZONE)
+        message = build_message(build_report(_candidates(40), REPORT_ZONE), few)
         self.assertEqual(len(message["embeds"]), 3)
 
     def test_the_public_limit_matches_the_cards_the_transport_will_render(self):
@@ -127,10 +128,8 @@ class MessageShapeTests(unittest.TestCase):
         )
 
         message = build_message(
-            candidates,
+            build_report(candidates, REPORT_ZONE, order=ReadingOrder.RETAIL),
             self.config,
-            REPORT_ZONE,
-            order=ReadingOrder.RETAIL,
         )
 
         self.assertEqual(
@@ -139,15 +138,13 @@ class MessageShapeTests(unittest.TestCase):
         )
 
         capped = build_message(
-            candidates,
+            build_report(candidates, REPORT_ZONE, order=ReadingOrder.RETAIL),
             replace(self.config, max_items=1),
-            REPORT_ZONE,
-            order=ReadingOrder.RETAIL,
         )
         self.assertEqual([card["title"] for card in capped["embeds"]], ["Priority first"])
 
     def test_finding_nothing_still_says_so(self):
-        message = build_message([], self.config, REPORT_ZONE)
+        message = build_message(build_report([], REPORT_ZONE), self.config)
         self.assertEqual(message["embeds"], [])
         self.assertIn("Nothing matched", message["content"])
 
@@ -158,7 +155,8 @@ class MessageShapeTests(unittest.TestCase):
         )
 
         message = build_message(
-            [], self.config, REPORT_ZONE, interest_progress=progress
+            build_report([], REPORT_ZONE, interest_progress=progress),
+            self.config,
         )
 
         self.assertIn("soundbar: 1/1 fulfilled; retired", message["content"])
@@ -166,7 +164,8 @@ class MessageShapeTests(unittest.TestCase):
 
     def test_unreviewed_wins_point_to_the_explicit_watch_action(self):
         message = build_message(
-            [], self.config, REPORT_ZONE, unreviewed_wins=2
+            build_report([], REPORT_ZONE, unreviewed_wins=2),
+            self.config,
         )
 
         self.assertIn(
@@ -177,10 +176,12 @@ class MessageShapeTests(unittest.TestCase):
 
     def test_delivery_filter_counts_reach_chat(self):
         message = build_message(
-            [],
+            build_report(
+                [],
+                REPORT_ZONE,
+                delivery=DeliverySummary(active=True, unchanged_matches=7),
+            ),
             self.config,
-            REPORT_ZONE,
-            delivery=DeliverySummary(active=True, unchanged_matches=7),
         )
 
         self.assertIn("No new or price-changed matches", message["content"])
@@ -194,7 +195,8 @@ class MessageShapeTests(unittest.TestCase):
         )
 
         message = build_message(
-            [], self.config, REPORT_ZONE, interest_progress=progress
+            build_report([], REPORT_ZONE, interest_progress=progress),
+            self.config,
         )
 
         self.assertLessEqual(len(message["content"]), HIGHEST_CONTENT_LENGTH)
@@ -212,10 +214,12 @@ class MessageShapeTests(unittest.TestCase):
                 worrying[0].listing, grade=read_grade({"damage": "Major Damage"})
             ),
         )
-        self.assertNotEqual(
-            build_message(clear, self.config, REPORT_ZONE)["embeds"][0]["color"],
-            build_message(worrying, self.config, REPORT_ZONE)["embeds"][0]["color"],
-        )
+        self.assertNotEqual(self._colour(clear), self._colour(worrying))
+
+    def _colour(self, candidates) -> int:
+        """The colour of the first card, which is what these tests compare."""
+        message = build_message(build_report(candidates, REPORT_ZONE), self.config)
+        return message["embeds"][0]["color"]
 
 
 class AddressTests(unittest.TestCase):
@@ -259,7 +263,7 @@ class AddressTests(unittest.TestCase):
             for name, action in (
                 ("readiness", lambda: check_webhook_ready(disabled)),
                 ("identity", lambda: webhook_destination(disabled)),
-                ("sender", lambda: send_webhook([], disabled, REPORT_ZONE)),
+                ("sender", lambda: send_webhook(build_report([], REPORT_ZONE), disabled)),
             ):
                 with self.subTest(action=name):
                     with self.assertRaisesRegex(RuntimeError, "webhook reporting is disabled"):
@@ -271,7 +275,7 @@ class PostingTests(unittest.TestCase):
     @patch("auction_lens.reporting.webhook.public_https_opener")
     def test_the_default_path_uses_the_redirect_safe_opener(self, opener_factory):
         with patch.dict("os.environ", ENVIRONMENT, clear=False):
-            send_webhook([], WebhookConfig(enabled=True), REPORT_ZONE)
+            send_webhook(build_report([], REPORT_ZONE), WebhookConfig(enabled=True))
 
         opener_factory.assert_called_once_with()
         opener_factory.return_value.assert_called_once()
@@ -280,7 +284,9 @@ class PostingTests(unittest.TestCase):
         opener = MagicMock()
         with patch.dict("os.environ", ENVIRONMENT, clear=False):
             send_webhook(
-                _candidates(), WebhookConfig(enabled=True), REPORT_ZONE, opener=opener
+                build_report(_candidates(), REPORT_ZONE),
+                WebhookConfig(enabled=True),
+                opener=opener,
             )
 
         request = opener.call_args.args[0]
@@ -296,11 +302,8 @@ class PostingTests(unittest.TestCase):
         progress = (_progress("soundbar", 1, 1),)
         with patch.dict("os.environ", ENVIRONMENT, clear=False):
             send_webhook(
-                [],
+                build_report([], REPORT_ZONE, interest_progress=progress, unreviewed_wins=1),
                 WebhookConfig(enabled=True),
-                REPORT_ZONE,
-                interest_progress=progress,
-                unreviewed_wins=1,
                 opener=opener,
             )
 
@@ -314,7 +317,9 @@ class PostingTests(unittest.TestCase):
         candidates[0] = replace(candidates[0], total_cost=Decimal("20.70"))
         with patch.dict("os.environ", ENVIRONMENT, clear=False):
             send_webhook(
-                candidates, WebhookConfig(enabled=True), REPORT_ZONE, opener=opener
+                build_report(candidates, REPORT_ZONE),
+                WebhookConfig(enabled=True),
+                opener=opener,
             )
         payload = json.loads(opener.call_args.args[0].data.decode("utf-8"))
         costs = [

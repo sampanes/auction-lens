@@ -17,15 +17,17 @@ from zoneinfo import ZoneInfo
 from ..config import EmailConfig, EmailSecurity
 from ..models import (
     Candidate,
-    InterestHarvest,
-    InterestProgress,
-    ReadingOrder,
     WatchedItem,
 )
 from .destinations import destination_fingerprint
-from .findings import NO_DELIVERY_FILTER, DeliverySummary, closing_time, soonest_close
+from .findings import (
+    NO_DELIVERY_FILTER,
+    DeliverySummary,
+    Report,
+    closing_time,
+    soonest_close,
+)
 from .html import render_html
-from .searches import SearchHint
 from .text import render_text
 from .watchlist import render_watchlist, render_watchlist_html
 
@@ -66,33 +68,10 @@ def _ready_account(config: EmailConfig) -> MailAccount:
     return _account_from_environment(config)
 
 
-def send_email(
-    candidates: list[Candidate],
-    config: EmailConfig,
-    zone: ZoneInfo,
-    searches: tuple[SearchHint, ...] = (),
-    order: ReadingOrder = ReadingOrder.PRIORITY,
-    interest_progress: tuple[InterestProgress, ...] = (),
-    unreviewed_wins: int = 0,
-    delivery: DeliverySummary = NO_DELIVERY_FILTER,
-    harvest: tuple[InterestHarvest, ...] = (),
-) -> None:
-    """Send one report as a text message with an HTML alternative."""
+def send_email(report: Report, config: EmailConfig) -> None:
+    """Send one built report as a text message with an HTML alternative."""
     account = _ready_account(config)
-    message = _build_message(
-        candidates,
-        config,
-        account,
-        zone,
-        searches,
-        order,
-        interest_progress,
-        unreviewed_wins,
-        delivery,
-        harvest,
-    )
-
-    _deliver(message, config, account)
+    _deliver(_build_message(report, config, account), config, account)
 
 
 def send_watchlist_email(
@@ -178,44 +157,12 @@ def _subject(template: str, candidates: list[Candidate], zone: ZoneInfo) -> str:
 
 
 def _build_message(
-    candidates: list[Candidate],
-    config: EmailConfig,
-    account: MailAccount,
-    zone: ZoneInfo,
-    searches: tuple[SearchHint, ...],
-    order: ReadingOrder,
-    interest_progress: tuple[InterestProgress, ...] = (),
-    unreviewed_wins: int = 0,
-    delivery: DeliverySummary = NO_DELIVERY_FILTER,
-    harvest: tuple[InterestHarvest, ...] = (),
+    report: Report, config: EmailConfig, account: MailAccount
 ) -> EmailMessage:
     message = EmailMessage()
-    message["Subject"] = _subject(config.subject, candidates, zone)
+    message["Subject"] = _subject(config.subject, report.candidates, report.zone)
     message["From"] = account.sender
     message["To"] = account.recipient
-    message.set_content(
-        render_text(
-            candidates,
-            zone,
-            searches,
-            order,
-            interest_progress,
-            unreviewed_wins,
-            delivery,
-            harvest,
-        )
-    )
-    message.add_alternative(
-        render_html(
-            candidates,
-            zone,
-            searches,
-            order,
-            interest_progress,
-            unreviewed_wins,
-            delivery,
-            harvest,
-        ),
-        subtype="html",
-    )
+    message.set_content(render_text(report))
+    message.add_alternative(render_html(report), subtype="html")
     return message
