@@ -109,7 +109,10 @@ class SectionedReportTests(unittest.TestCase):
 
     def _report(self):
         return build_report(
-            self.shown, REPORT_ZONE, self.hints, harvest=self.harvest
+            self.shown,
+            REPORT_ZONE,
+            searches=self.hints,
+            harvest=self.harvest,
         )
 
     def test_each_kind_gets_its_own_section(self):
@@ -134,7 +137,10 @@ class SectionedReportTests(unittest.TestCase):
     def test_a_phrase_no_section_claimed_still_reaches_the_footer(self):
         orphan = SearchHint(rule="retired want", phrase="kayak", finds=4, also_finds=1)
         report = build_report(
-            self.shown, REPORT_ZONE, (*self.hints, orphan), harvest=self.harvest
+            self.shown,
+            REPORT_ZONE,
+            searches=(*self.hints, orphan),
+            harvest=self.harvest,
         )
         self.assertEqual([hint.phrase for hint in report.searches], ["kayak"])
 
@@ -150,12 +156,12 @@ class SectionRenderingTests(unittest.TestCase):
 
     def _text(self):
         return render_text(
-            self.shown, REPORT_ZONE, self.hints, harvest=self.harvest
+            build_report(self.shown, REPORT_ZONE, searches=self.hints, harvest=self.harvest),
         )
 
     def _html(self):
         return render_html(
-            self.shown, REPORT_ZONE, self.hints, harvest=self.harvest
+            build_report(self.shown, REPORT_ZONE, searches=self.hints, harvest=self.harvest),
         )
 
     def test_text_names_every_section(self):
@@ -192,7 +198,7 @@ class HarvestlessReportTests(unittest.TestCase):
         shown = many("telescope", [80, 79])
         report = build_report(shown, REPORT_ZONE)
         self.assertEqual(report.groups[0].withheld, 0)
-        self.assertNotIn("more not shown", render_text(shown, REPORT_ZONE))
+        self.assertNotIn("more not shown", render_text(build_report(shown, REPORT_ZONE)))
 
 
 class InterestHarvestRecordTests(unittest.TestCase):

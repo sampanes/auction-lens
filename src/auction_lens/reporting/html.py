@@ -9,12 +9,8 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from html import escape
-from zoneinfo import ZoneInfo
 
-from ..models import Candidate, InterestHarvest, InterestProgress, ReadingOrder
 from .findings import (
-    NO_DELIVERY_FILTER,
-    DeliverySummary,
     Fact,
     Finding,
     Group,
@@ -23,7 +19,6 @@ from .findings import (
     Photo,
     Report,
     Valuation,
-    build_report,
 )
 from .searches import SearchHint
 
@@ -50,32 +45,8 @@ OUTCOME_WARNING_STYLE = (
 )
 
 
-def render_html(
-    candidates: list[Candidate],
-    zone: ZoneInfo,
-    searches: tuple[SearchHint, ...] = (),
-    order: ReadingOrder = ReadingOrder.PRIORITY,
-    interest_progress: tuple[InterestProgress, ...] = (),
-    unreviewed_wins: int = 0,
-    delivery: DeliverySummary = NO_DELIVERY_FILTER,
-    harvest: tuple[InterestHarvest, ...] = (),
-) -> str:
-    """Render every candidate as a card, strongest first."""
-    return _as_html(
-        build_report(
-            candidates,
-            zone,
-            searches,
-            order,
-            interest_progress,
-            unreviewed_wins,
-            delivery,
-            harvest,
-        )
-    )
-
-
-def _as_html(report: Report) -> str:
+def render_html(report: Report) -> str:
+    """Render a built report as cards, strongest first."""
     if report.is_empty:
         sections = [f"<p>{escape(report.headline)}</p>"]
     else:

@@ -212,9 +212,24 @@ NO_DELIVERY_FILTER = DeliverySummary()
 
 @dataclass(frozen=True)
 class Report:
-    """One rendering-independent report."""
+    """One rendering-independent report, and what it was built from.
+
+    Three renderers read this: text, HTML, and a chat webhook. The first two
+    want the worded groups below. The third arranges its own cards and wants
+    the scored lots, so they are carried here rather than threaded alongside
+    this record as a second argument everything has to keep in step.
+
+    Building it is what ``build_report`` is for, and doing so is the only place
+    that has to get the order of these facts right. Before that, six functions
+    took the same eight values as positional arguments -- and two of them took
+    them in different orders.
+    """
 
     headline: str
+    zone: ZoneInfo
+    # What the report was built from, for a renderer that words lots itself.
+    candidates: tuple[Candidate, ...] = ()
+    order: ReadingOrder = ReadingOrder.PRIORITY
     groups: tuple[Group, ...] = ()
     # Ways to reach the same lots at the provider's end, for the categories
     # the report found too many of to click through one at a time.
@@ -230,6 +245,7 @@ class Report:
 def build_report(
     candidates: list[Candidate],
     zone: ZoneInfo,
+    *,
     searches: tuple[SearchHint, ...] = (),
     order: ReadingOrder = ReadingOrder.PRIORITY,
     interest_progress: tuple[InterestProgress, ...] = (),
@@ -241,6 +257,11 @@ def build_report(
 
     The zone is the provider's, because a closing time is a fact about the
     auction rather than about whoever opens the mail.
+
+    Everything after it must be named. This is the only function left that
+    takes the whole bundle, so it is the only place a caller could put two of
+    them the wrong way round, and naming them makes that impossible rather
+    than merely unlikely.
     """
     outcomes = build_outcome_summary(interest_progress, unreviewed_wins)
     if not candidates:
@@ -249,10 +270,16 @@ def build_report(
             if delivery.active and not delivery.repeated
             else EMPTY_REPORT
         )
-        return Report(headline=headline, outcomes=outcomes, delivery=delivery)
+        return Report(
+            headline=headline, zone=zone, order=order,
+            outcomes=outcomes, delivery=delivery,
+        )
     sections = _by_section(candidates, order)
     return Report(
         headline=_headline(candidates, zone),
+        zone=zone,
+        candidates=tuple(candidates),
+        order=order,
         searches=_hints_without_a_section(searches, set(sections)),
         outcomes=outcomes,
         delivery=delivery,

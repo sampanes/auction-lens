@@ -22,7 +22,6 @@ from auction_lens.config import load_config
 from auction_lens.env_file import load_env_file
 from auction_lens.ingest import load_listings
 from auction_lens.models import InterestRef, Verdict, WatchedItem
-from auction_lens.reporting import DeliverySummary
 from auction_lens.storage import Database, ObservationStore, WatchlistStore
 from support import EXAMPLE_CONFIG, ROOT, SYNTHETIC_LISTINGS, temporary_directory
 
@@ -39,13 +38,14 @@ def run_cli(argv: list[str]) -> str:
     return buffer.getvalue()
 
 
-def _emailed(send_email, kind):
-    """One argument of a mocked send_email call, found by what it is.
+def _emailed(send_email):
+    """The report a mocked send_email was handed.
 
-    A positional index goes stale every time the signature grows a field, and
-    then fails somewhere unrelated to whatever broke. Type says what is meant.
+    One argument, so there is nothing to search for. This used to hunt through
+    nine loose arguments by type, because a positional index went stale every
+    time the signature grew a field.
     """
-    return next(arg for arg in send_email.call_args.args if isinstance(arg, kind))
+    return send_email.call_args.args[0]
 
 
 def _enable_email(config) -> None:
@@ -265,7 +265,7 @@ class DeliveryLedgerCommandTests(unittest.TestCase):
             second = run_cli([*argv, "--email"])
 
         self.assertEqual(send_email.call_count, 1)
-        self.assertEqual(send_email.call_args.args[0], [])
+        self.assertEqual(_emailed(send_email).candidates, ())
         self.assertIn("Emailed 0 match", first)
         self.assertIn("outcome summary is unchanged", second)
 
@@ -381,7 +381,7 @@ class DeliveryLedgerCommandTests(unittest.TestCase):
             run_cli([*argv, "--email"])
 
         self.assertEqual(send_email.call_count, 2)
-        resent = send_email.call_args.args[0]
+        resent = _emailed(send_email).candidates
         self.assertEqual(
             {candidate.listing.listing_id for candidate in resent},
             {"synthetic-001"},
@@ -418,10 +418,11 @@ class DeliveryLedgerCommandTests(unittest.TestCase):
             run_cli([*argv, "--email"])
 
         self.assertEqual(send_email.call_count, 2)
-        self.assertEqual(send_email.call_args.args[0], [])
-        progress = send_email.call_args.args[5]
-        soundbar = next(item for item in progress if item.interest.interest_id == "soundbar")
-        self.assertTrue(soundbar.is_retired)
+        report = _emailed(send_email)
+        self.assertEqual(report.candidates, ())
+        # Asserted on the worded line rather than the record behind it: what
+        # matters is that the reader is told the want is finished.
+        self.assertIn("soundbar: 1/1 fulfilled; retired", report.outcomes.progress)
 
     @patch("auction_lens.cli.sending.email_destination", return_value="a" * 64)
     @patch("auction_lens.cli.sending.send_email")
@@ -436,7 +437,7 @@ class DeliveryLedgerCommandTests(unittest.TestCase):
             repeated = run_cli([*argv, "--email", "--repeat-delivery"])
 
         self.assertEqual(send_email.call_count, 2)
-        self.assertTrue(_emailed(send_email, DeliverySummary).repeated)
+        self.assertTrue(_emailed(send_email).delivery.repeated)
         self.assertIn("Emailed", repeated)
 
     def test_repeat_delivery_requires_a_destination_before_creating_state(self):

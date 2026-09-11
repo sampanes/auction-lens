@@ -12,7 +12,7 @@ from urllib.request import Request
 from auction_lens.config import ValuationSourceConfig
 from auction_lens.http_safety import PublicHttpsRedirectHandler
 from auction_lens.models import ValuationObservation
-from auction_lens.reporting import render_html, render_text
+from auction_lens.reporting import build_report, render_html, render_text
 from auction_lens.reporting.webhook import build_message
 from auction_lens.scoring import evaluate
 from auction_lens.valuation import ValuationEngine, create_adapter
@@ -87,13 +87,16 @@ class EngineTests(unittest.TestCase):
             valuation=summary,
         )
         rendered = (
-            render_text([candidate], REPORT_ZONE),
-            render_html([candidate], REPORT_ZONE),
+            render_text(build_report([candidate], REPORT_ZONE)),
+            render_html(build_report([candidate], REPORT_ZONE)),
         )
         for report in rendered:
             self.assertNotIn(private_detail, report)
             self.assertIn("broken: unavailable (RuntimeError)", report)
-        webhook = json.dumps(build_message([candidate], self.config.webhook, REPORT_ZONE))
+        webhook = json.dumps(build_message(
+            build_report([candidate], REPORT_ZONE),
+            self.config.webhook,
+        ))
         self.assertNotIn(private_detail, webhook)
 
     def test_an_unknown_adapter_names_the_built_in_choices(self):
