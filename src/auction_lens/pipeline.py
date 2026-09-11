@@ -20,7 +20,6 @@ from .models import (
     best_of_each,
     harvest_of,
     ranked,
-    uid_of,
 )
 from .outcomes import plan_interests
 from .reporting.searches import SearchHint, search_hints
@@ -204,21 +203,21 @@ def _one_entry_per_lot(
     for candidate in all_matches:
         if candidate.category != CandidateCategory.WANTED:
             continue
-        uid = uid_of(candidate.listing.source, candidate.listing.lot_key)
-        interests.setdefault(uid, {})[candidate.rule_id.casefold()] = InterestRef(
+        key = candidate.listing.item_key
+        interests.setdefault(key, {})[candidate.rule_id.casefold()] = InterestRef(
             candidate.rule_id, candidate.rule_name
         )
 
     seen: dict[str, FollowedListing] = {}
     for candidate in reportable:
         listing = candidate.listing
-        uid = uid_of(listing.source, listing.lot_key)
+        key = listing.item_key
         seen.setdefault(
-            uid,
+            key,
             FollowedListing(
                 listing=listing,
                 total_cost=candidate.total_cost,
-                matched_interests=tuple(interests.get(uid, {}).values()),
+                matched_interests=tuple(interests.get(key, {}).values()),
             ),
         )
     return list(seen.values())

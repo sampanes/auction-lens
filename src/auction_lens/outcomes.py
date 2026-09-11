@@ -60,28 +60,28 @@ def _confirmed_fulfillments(
 ) -> tuple[Counter[str], int]:
     """Count each won item once and flag only unreviewed finite matches."""
     counts: Counter[str] = Counter()
-    allocations_by_uid: dict[str, set[str]] = {}
-    matches_by_uid: dict[str, set[str]] = {}
-    reviewed_by_uid: dict[str, bool] = {}
+    allocations_by_key: dict[str, set[str]] = {}
+    matches_by_key: dict[str, set[str]] = {}
+    reviewed_by_key: dict[str, bool] = {}
     for item in watched:
-        matches_by_uid.setdefault(item.uid, set()).update(
+        matches_by_key.setdefault(item.item_key, set()).update(
             reference.interest_id.casefold() for reference in item.matched_interests
         )
-        reviewed_by_uid[item.uid] = (
-            reviewed_by_uid.get(item.uid, False) or item.fulfillment_reviewed
+        reviewed_by_key[item.item_key] = (
+            reviewed_by_key.get(item.item_key, False) or item.fulfillment_reviewed
         )
         if item.verdict != Verdict.WON:
             continue
-        allocations_by_uid.setdefault(item.uid, set()).update(
+        allocations_by_key.setdefault(item.item_key, set()).update(
             reference.interest_id.casefold()
             for reference in item.fulfilled_interests
         )
     unreviewed = sum(
         not allocations
-        and not reviewed_by_uid[uid]
-        and bool(matches_by_uid[uid] & finite_ids)
-        for uid, allocations in allocations_by_uid.items()
+        and not reviewed_by_key[key]
+        and bool(matches_by_key[key] & finite_ids)
+        for key, allocations in allocations_by_key.items()
     )
-    for allocations in allocations_by_uid.values():
+    for allocations in allocations_by_key.values():
         counts.update(allocations)
     return counts, unreviewed

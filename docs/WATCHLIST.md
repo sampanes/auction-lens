@@ -163,7 +163,7 @@ The list shows the last one for that reason, and the accessors are named
   "version": 2,
   "items": [
     {
-      "uid": "nellis:INV-77",
+      "key": "nellis/synthetic-001",
       "source": "nellis",
       "listing_id": "synthetic-001",
       "inventory_id": "INV-77",
@@ -215,11 +215,20 @@ before any write. Auction Lens 0.4 and later refuse versions newer than they
 understand; do not edit a version-2 watchlist with Auction Lens 0.3, which
 predates that protection.
 
-`uid` is written for you to read and search; it is derived from `source` plus
-`inventory_id` (or `listing_id` when the provider gives no item id), so editing
-it in place changes nothing. A hand edit that is not
-readable is reported against the entry it broke, as in
-`nellis:synthetic-001: my_estimate must be a number`.
+`key` is written for you to read and search, and is exactly what
+`watch --key` accepts. It is derived from `source` plus `listing_id`, so
+editing it in place changes nothing. Files written before Auction Lens 0.7 call
+this field `uid` and spell it with a colon; nothing reads it, so an old file
+stays readable and is rewritten the next time an entry changes.
+
+A hand edit that is not readable is reported against the entry it broke, as in
+`nellis/synthetic-001: my_estimate must be a number`.
+
+Two names for one lot appear throughout, and they are spelled the same way on
+purpose. `nellis/synthetic-001` is the auction open today, which is what every
+report prints and what commands take. `nellis/INV-77` is the item itself, which
+is how one trail spans a relisting. Either finds the right entry, so you never
+have to know which one you are holding.
 
 ## Commands
 

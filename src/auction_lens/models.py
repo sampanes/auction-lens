@@ -37,12 +37,11 @@ from .grading import ConditionTag, Grade, read_grade
 
 REQUIRED_LISTING_FIELDS = ("source", "listing_id", "title", "url", "current_bid")
 
-# What separates a provider from its own listing id in a lot's unique name.
-UID_SEPARATOR = ":"
-
-# What separates them in the key a person copies out of a report and types
-# back at a command. Different on purpose: see ``listing_key_of``.
-LISTING_KEY_SEPARATOR = "/"
+# What separates a provider from one of its own ids, everywhere. There were
+# once two of these, a colon for storage identity and a slash for the key a
+# person types, and they were one character apart. A record printed with the
+# wrong one still looked like a key, so the mistake survived being read.
+KEY_SEPARATOR = "/"
 
 # The scale every score lives on. Scoring clamps to it and configuration is
 # checked against it, so both read it from the record they are talking about.
@@ -186,6 +185,21 @@ class Listing:
         give one falls back to the auction id, which is all it has.
         """
         return self.inventory_id or self.listing_id
+
+    @property
+    def key(self) -> str:
+        """The name of this auction, which is what every report prints.
+
+        Four places used to build this string themselves, each writing the
+        separator out by hand. A key a person types is exactly the sort of
+        thing that must have one spelling.
+        """
+        return key_of(self.source, self.listing_id)
+
+    @property
+    def item_key(self) -> str:
+        """The name of the thing, which is what survives its relisting."""
+        return key_of(self.source, self.lot_key)
 
     @property
     def searchable_text(self) -> str:
@@ -569,7 +583,7 @@ class ClosingPrice:
     @property
     def key(self) -> str:
         """The key a person copies to say which lot they mean."""
-        return listing_key_of(self.source, self.listing_id)
+        return key_of(self.source, self.listing_id)
 
     @property
     def seen_minutes_before_close(self) -> int:
@@ -657,9 +671,24 @@ class WatchedItem:
             require_not_negative(self.my_estimate, field_name="my_estimate")
 
     @property
-    def uid(self) -> str:
-        """The one name that identifies this lot, across every relisting of it."""
-        return uid_of(self.source, self.inventory_id or self.listing_id)
+    def key(self) -> str:
+        """The auction this lot is in today, which is what a person types.
+
+        Deliberately today's auction and not ``item_key``: a command acts on
+        something that is open now, and this is the spelling the report the
+        person is looking at also printed.
+        """
+        return key_of(self.source, self.listing_id)
+
+    @property
+    def item_key(self) -> str:
+        """The thing itself, which is how one trail spans several auctions.
+
+        This is the watchlist's identity for a row. It is not what a person
+        types -- ``key`` is -- but both spell out the same way, so pasting the
+        wrong one still finds the right row.
+        """
+        return key_of(self.source, self.inventory_id or self.listing_id)
 
     @property
     def auctions_seen(self) -> int:
@@ -715,19 +744,17 @@ class WatchedItem:
         return self.my_estimate - self.latest.total_cost
 
 
-def uid_of(source: str, identifier: str) -> str:
-    """Name one lot across providers; an id alone is only unique per site."""
-    return f"{source}{UID_SEPARATOR}{identifier}"
+def key_of(source: str, identifier: str) -> str:
+    """Name one lot: a provider, and one of its own ids.
 
-
-def listing_key_of(source: str, listing_id: str) -> str:
-    """The spelling a person copies out of a report and types back at a command.
-
-    Deliberately not ``uid_of``: a uid may name the physical item, so that a
-    relisted lot keeps one history, while a command has to act on the auction
-    open today. Every report prints this one, so it is written once here.
+    An id alone is only unique per site, so the provider always travels with
+    it. Which id is the caller's choice, and the two that matter have their own
+    named properties: ``key`` is the auction open today, which is what a person
+    reads and types back, and ``item_key`` is the physical item, which survives
+    a relisting. Both are spelled the same way on purpose -- a person pasting
+    either one should not have to know which they are holding.
     """
-    return f"{source}{LISTING_KEY_SEPARATOR}{listing_id}"
+    return f"{source}{KEY_SEPARATOR}{identifier}"
 
 
 def _verdict(verdict: Any) -> Verdict:

@@ -12,7 +12,7 @@ from decimal import Decimal
 from html import escape
 
 from ..grading import HIGHEST_RATING, ConditionTag, Tag
-from ..models import InterestRef, Verdict, WatchedItem, listing_key_of
+from ..models import InterestRef, Verdict, WatchedItem
 
 SEPARATOR = " | "
 
@@ -115,12 +115,12 @@ def _html_card(item: WatchedItem) -> str:
     return "".join(
         (
             f"<article style='{CARD_STYLE}'>",
-            f"<h3 style='margin:0 0 8px'>{escape(item.title or item.uid)}</h3>",
+            f"<h3 style='margin:0 0 8px'>{escape(item.title or item.key)}</h3>",
             f"<p style='margin:0 0 14px;color:#1967d2;font-weight:bold'>"
             f"{escape(str(item.verdict).upper())} &nbsp; "
             f"{escape(stars_of(item.quality_rating))}</p>",
             f"<p><strong>Watch key:</strong> "
-            f"<code>{escape(_watch_key(item))}</code>{escape(_relisting(item))}</p>",
+            f"<code>{escape(item.key)}</code>{escape(_relisting(item))}</p>",
             interests,
             concerns,
             photo,
@@ -149,7 +149,7 @@ def _keenness(item: WatchedItem) -> tuple:
 def _item_lines(item: WatchedItem, *, colour: bool) -> Iterator[str]:
     yield ""
     yield f"[{item.verdict.upper()}] {stars_of(item.quality_rating)}  {item.title}"
-    yield f"  Watch key: {_watch_key(item)}{_relisting(item)}"
+    yield f"  Watch key: {item.key}{_relisting(item)}"
     yield from _interest_lines(item)
     yield from _condition_lines(item.conditions, colour=colour)
     yield from _indented(_value_facts(item))
@@ -210,19 +210,10 @@ def _interest_list(references: tuple[InterestRef, ...]) -> str:
     )
 
 
-def _watch_key(item: WatchedItem) -> str:
-    """The current listing key accepted by ``watch --key``.
-
-    ``uid`` can instead contain a provider inventory id so that relistings share
-    one history. Operator commands need today's listing id, exactly as reports do.
-    """
-    return listing_key_of(item.source, item.listing_id)
-
-
 def _fulfillment_command(item: WatchedItem) -> str:
     """A copyable skeleton for assigning an explicit fulfillment."""
     return (
-        f"auction-lens watch --key {_watch_key(item)} --verdict won "
+        f"auction-lens watch --key {item.key} --verdict won "
         "--fulfills INTEREST"
     )
 

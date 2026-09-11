@@ -89,7 +89,7 @@ def watch(args: argparse.Namespace) -> int:
                 reference.name for reference in followed.fulfilled_interests
             )
             raise ValueError(
-                f"cannot drop {followed.uid} while it fulfills: {names}; "
+                f"cannot drop {followed.key} while it fulfills: {names}; "
                 "first run watch with --clear-fulfillments (this reopens the "
                 "interest), then run watch with --verdict drop"
             )
@@ -202,7 +202,7 @@ def _recorded_matches(references: tuple[InterestRef, ...]) -> str:
 
 def _watch_confirmation(item: WatchedItem) -> str:
     """Confirm whether a saved allocation currently counts toward a want."""
-    opening = f"{item.uid}: {item.verdict}."
+    opening = f"{item.key}: {item.verdict}."
     if item.verdict == Verdict.WON:
         if item.fulfilled_interests:
             names = ", ".join(ref.name for ref in item.fulfilled_interests)

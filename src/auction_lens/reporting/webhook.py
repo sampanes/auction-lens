@@ -166,7 +166,7 @@ def _card(candidate: Candidate, zone: ZoneInfo) -> dict[str, Any]:
             {"name": "Why", "value": ", ".join(candidate.reasons) or "-", "inline": False},
             {
                 "name": "Watch key",
-                "value": f"{listing.source}/{listing.listing_id}",
+                "value": listing.key,
                 "inline": False,
             },
         ],

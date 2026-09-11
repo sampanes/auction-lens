@@ -102,7 +102,7 @@ class WatchlistStoreTests(unittest.TestCase):
             )
             (stored,) = store.items()
             document = json.loads((directory / "watchlist.json").read_text("utf-8"))
-        self.assertEqual(stored.uid, "nellis:sb-1")
+        self.assertEqual(stored.item_key, "nellis/sb-1")
         self.assertEqual(stored.my_estimate, Decimal("60"))
         self.assertEqual(stored.verdict, Verdict.HUNTING)
         self.assertEqual(stored.matched_interests[0].interest_id, "audio")
@@ -162,7 +162,7 @@ class WatchlistStoreTests(unittest.TestCase):
             document = json.loads(path.read_text("utf-8"))
 
         self.assertEqual(upgraded, legacy)
-        self.assertEqual(upgraded.uid, "nellis:legacy-item-1")
+        self.assertEqual(upgraded.item_key, "nellis/legacy-item-1")
         self.assertEqual(upgraded.auctions_seen, 2)
         self.assertEqual(upgraded.my_estimate, Decimal("42.50"))
         self.assertEqual(upgraded.verdict, Verdict.WON)
@@ -275,7 +275,7 @@ class WatchlistStoreTests(unittest.TestCase):
             path.write_text(original, encoding="utf-8")
 
             with self.assertRaisesRegex(
-                ValueError, "duplicate watchlist identity synthetic:physical-one"
+                ValueError, "duplicate watchlist identity synthetic/physical-one"
             ):
                 WatchlistStore(path).save(_followed())
 
@@ -331,7 +331,7 @@ class WatchlistStoreTests(unittest.TestCase):
                         "version": 1,
                         "items": [
                             {
-                                "uid": "nellis:sb-1",
+                                "uid": "nellis/sb-1",
                                 "source": "nellis",
                                 "listing_id": "sb-1",
                                 "my_estimate": "not money",
@@ -341,7 +341,7 @@ class WatchlistStoreTests(unittest.TestCase):
                 ),
                 encoding="utf-8",
             )
-            with self.assertRaisesRegex(ValueError, "nellis:sb-1: my_estimate"):
+            with self.assertRaisesRegex(ValueError, "nellis/sb-1: my_estimate"):
                 WatchlistStore(path).items()
 
     def test_an_invalid_interest_collection_names_the_item_and_field(self):
@@ -353,7 +353,7 @@ class WatchlistStoreTests(unittest.TestCase):
                         "version": 2,
                         "items": [
                             {
-                                "uid": "nellis:sb-1",
+                                "uid": "nellis/sb-1",
                                 "source": "nellis",
                                 "listing_id": "sb-1",
                                 "matched_interests": {"id": "audio", "name": "Audio"},
@@ -365,7 +365,7 @@ class WatchlistStoreTests(unittest.TestCase):
             )
 
             with self.assertRaisesRegex(
-                ValueError, "nellis:sb-1: matched_interests must be a list"
+                ValueError, "nellis/sb-1: matched_interests must be a list"
             ):
                 WatchlistStore(path).items()
 
@@ -383,8 +383,8 @@ class RunRecordingTests(unittest.TestCase):
 
         self.assertEqual(result.lots_followed, 2)
         self.assertEqual(
-            {item.uid for item in items},
-            {"nellis:synthetic-001", "nellis:synthetic-002"},
+            {item.item_key for item in items},
+            {"nellis/synthetic-001", "nellis/synthetic-002"},
         )
         self.assertTrue(all(len(item.readings) == 1 for item in items))
 
@@ -508,7 +508,7 @@ class RelistingTests(unittest.TestCase):
             self._seen(store, listing_id="auction-2", bid="5", hours=48)
             (item,) = store.items()
 
-        self.assertEqual(item.uid, "nellis:INV-77")
+        self.assertEqual(item.item_key, "nellis/INV-77")
         self.assertEqual(len(item.readings), 2)
         self.assertEqual(item.auctions_seen, 2)
 
@@ -526,7 +526,7 @@ class RelistingTests(unittest.TestCase):
             listing = replace(example_listings()[SOUNDBAR], inventory_id="")
             store.record([FollowedListing(listing, Decimal("20"))])
             (item,) = store.items()
-        self.assertEqual(item.uid, "nellis:synthetic-001")
+        self.assertEqual(item.item_key, "nellis/synthetic-001")
 
     def test_a_repeat_look_merges_matches_without_rewriting_human_answers(self):
         listing = replace(
@@ -615,7 +615,7 @@ class WatchlistRenderingTests(unittest.TestCase):
         self.assertIn("Headroom $30.10", text)
         self.assertIn("+$8 over 2 looks", text)
 
-    def test_a_relisting_prints_the_current_watch_key_not_its_inventory_uid(self):
+    def test_a_relisting_prints_the_auction_key_not_the_item_key(self):
         original = _followed(listing_id="auction-2", bids=("18", "5"))
         item = replace(
             original,
@@ -629,7 +629,7 @@ class WatchlistRenderingTests(unittest.TestCase):
         text = render_watchlist((item,))
         markup = render_watchlist_html((item,))
 
-        self.assertEqual(item.uid, "nellis:INV-77")
+        self.assertEqual(item.item_key, "nellis/INV-77")
         self.assertIn("Watch key: nellis/auction-2", text)
         self.assertNotIn("Watch key: nellis/INV-77", text)
         self.assertIn(
