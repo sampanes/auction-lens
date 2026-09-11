@@ -10,17 +10,33 @@ from __future__ import annotations
 import csv
 import json
 from collections.abc import Iterable
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 from ..models import Listing
 
 LISTINGS_KEY = "listings"
+OBSERVED_AT_KEY = "observed_at"
 
 # Unlike price and closing time, these facts do not change between two pages
 # that show the same physical item. A later category sweep or product page may
 # know one that the first search did not.
 STABLE_IDENTITY_FIELDS = ("brand", "model", "category")
+
+
+def dated(rows: Iterable[dict[str, Any]], observed_at: datetime) -> list[dict[str, Any]]:
+    """Say when these rows were true, rather than leaving a reader to guess.
+
+    A row carries the prices of the moment its page was downloaded, which is
+    not the moment the page is read: pages are cached, and a saved page can be
+    re-read days later. Without this stamp the two collapse into "now", and a
+    bid seen minutes before a lot closed becomes indistinguishable from one
+    replayed long afterwards. Anything a lot's closing price is inferred from
+    rests on this field being the truth.
+    """
+    stamp = observed_at.isoformat()
+    return [{**row, OBSERVED_AT_KEY: stamp} for row in rows]
 
 
 def unique_lots(rows: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:

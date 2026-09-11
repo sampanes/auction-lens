@@ -10,16 +10,19 @@ import unittest
 import warnings
 from contextlib import redirect_stderr, redirect_stdout
 from dataclasses import replace
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from getpass import GetPassWarning
 from unittest.mock import patch
 
 from auction_lens import __version__
+from auction_lens.acquisition import SearchCapture
 from auction_lens.cli import build_parser, console, main
 from auction_lens.config import load_config
 from auction_lens.env_file import load_env_file
+from auction_lens.ingest import load_listings
 from auction_lens.models import InterestRef, Verdict, WatchedItem
-from auction_lens.storage import WatchlistStore
+from auction_lens.storage import Database, ObservationStore, WatchlistStore
 from support import EXAMPLE_CONFIG, ROOT, SYNTHETIC_LISTINGS, temporary_directory
 
 NELLIS_PRODUCT_PAGE = ROOT / "fixtures" / "nellis" / "product-page.html"
@@ -1427,6 +1430,108 @@ class DoctorCommandTests(unittest.TestCase):
         self.assertNotIn("daily --email --webhook", script)
 
 
+class DiscoverCommandTests(unittest.TestCase):
+    def test_a_discovered_lot_is_dated_when_its_page_was_fetched(self):
+        # Not when the command ran: a page revalidated from the cache was
+        # downloaded by an earlier run, and its prices are that run's prices.
+        fetched_at = datetime(2026, 9, 10, 3, 0, tzinfo=UTC)
+        with temporary_directory() as directory:
+            page = directory / "search.html"
+            page.write_text(
+                (ROOT / "fixtures" / "nellis" / "search-page.html").read_text(
+                    encoding="utf-8"
+                ),
+                encoding="utf-8",
+            )
+            capture = SearchCapture(
+                term="soundbar",
+                url="https://example.invalid/search?query=soundbar",
+                path=page,
+                reused_cache=True,
+                fetched_at=fetched_at,
+            )
+            output = directory / "listings.json"
+            with patch(
+                "auction_lens.cli.commands.discover_searches", return_value=[capture]
+            ):
+                run_cli(
+                    ["discover", "--config", str(EXAMPLE_CONFIG), "--output",
+                     str(output), "--search", "soundbar"]
+                )
+            rows = json.loads(output.read_text(encoding="utf-8"))["listings"]
+
+        self.assertTrue(rows)
+        for row in rows:
+            self.assertEqual(row["observed_at"], fetched_at.isoformat())
+
+
+class SoldCommandTests(unittest.TestCase):
+    """Reading closing prices back out of whatever the database already holds."""
+
+    CLOSES_AT = datetime(2026, 9, 10, 3, 0, tzinfo=UTC)
+
+    def _database_with_one_closed_lot(self, directory, *, seen_before_close):
+        database = Database.at(directory / "observations.sqlite3")
+        database.initialize()
+        listing = replace(
+            load_listings(SYNTHETIC_LISTINGS)[0],
+            ends_at=self.CLOSES_AT,
+            current_bid=Decimal("159.00"),
+            observed_at=self.CLOSES_AT - seen_before_close,
+        )
+        ObservationStore(database).observe(listing)
+        return database.path, listing
+
+    def test_a_closed_lot_is_reported_as_a_floor(self):
+        with temporary_directory() as directory:
+            path, listing = self._database_with_one_closed_lot(
+                directory, seen_before_close=timedelta(minutes=4)
+            )
+            message = run_cli(
+                ["sold", "--config", str(EXAMPLE_CONFIG), "--database", str(path)]
+            )
+
+        self.assertIn("at least $159", message)
+        self.assertIn("seen 4m before it closed", message)
+        self.assertIn(f"{listing.source}/{listing.listing_id}", message)
+
+    def test_a_search_term_narrows_the_answer_to_one_kind_of_thing(self):
+        with temporary_directory() as directory:
+            path, _ = self._database_with_one_closed_lot(
+                directory, seen_before_close=timedelta(minutes=4)
+            )
+            message = run_cli(
+                ["sold", "--config", str(EXAMPLE_CONFIG), "--database", str(path),
+                 "--match", "chainsaw"]
+            )
+
+        self.assertIn("No lot in the database has closed yet", message)
+
+    def test_a_reading_too_early_to_trust_is_withheld_with_its_reason(self):
+        with temporary_directory() as directory:
+            path, _ = self._database_with_one_closed_lot(
+                directory, seen_before_close=timedelta(hours=6)
+            )
+            message = run_cli(
+                ["sold", "--config", str(EXAMPLE_CONFIG), "--database", str(path)]
+            )
+
+        self.assertNotIn("at least $159", message)
+        self.assertIn("no price worth quoting", message)
+
+    def test_the_window_can_be_widened_to_take_in_an_earlier_reading(self):
+        with temporary_directory() as directory:
+            path, _ = self._database_with_one_closed_lot(
+                directory, seen_before_close=timedelta(hours=6)
+            )
+            message = run_cli(
+                ["sold", "--config", str(EXAMPLE_CONFIG), "--database", str(path),
+                 "--within-minutes", "420"]
+            )
+
+        self.assertIn("at least $159", message)
+
+
 class DefaultsTests(unittest.TestCase):
     def test_the_program_reports_its_release_version(self):
         output = io.StringIO()
@@ -1445,7 +1550,8 @@ class DefaultsTests(unittest.TestCase):
     def test_the_configuration_flag_can_be_left_off(self):
         # One door: the file a person edits is where every command looks.
         for command in (
-            "profile", "doctor", "run", "fetch", "discover", "pull", "daily", "watchlist"
+            "profile", "doctor", "run", "fetch", "discover", "pull", "daily",
+            "watchlist", "sold",
         ):
             with self.subTest(command=command):
                 self.assertEqual(_parsed_default(command, "config"), "config/local.toml")
@@ -1513,6 +1619,36 @@ class PullCommandTests(unittest.TestCase):
 
         self.assertIn("Read 2 lot(s) from 1 saved page(s)", message)
         self.assertEqual(rows[0]["url"], "https://example.invalid/p/Example-Sound-Bar/900000101")
+
+    def test_a_pulled_lot_is_dated_when_its_page_was_saved(self):
+        # A page read back weeks later still describes the prices of the day it
+        # was fetched, and the closing-price view depends on saying so.
+        saved_at = "2026-09-10T03:00:00+00:00"
+        with temporary_directory() as directory:
+            page = directory / "search.html"
+            page.write_text(
+                (ROOT / "fixtures" / "nellis" / "search-page.html").read_text(
+                    encoding="utf-8"
+                ),
+                encoding="utf-8",
+            )
+            (directory / "search.html.metadata.json").write_text(
+                json.dumps(
+                    {
+                        "source_url": "https://example.invalid/search?query=soundbar",
+                        "fetched_at": saved_at,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            output = directory / "listings.json"
+            run_cli(
+                ["pull", "--config", str(EXAMPLE_CONFIG), "--input", str(directory),
+                 "--output", str(output)]
+            )
+            rows = json.loads(output.read_text(encoding="utf-8"))["listings"]
+
+        self.assertEqual([row["observed_at"] for row in rows], [saved_at, saved_at])
 
     def test_a_page_the_provider_has_changed_is_named_and_the_batch_survives(self):
         with temporary_directory() as directory:

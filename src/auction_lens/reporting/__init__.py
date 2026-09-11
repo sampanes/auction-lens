@@ -15,12 +15,14 @@ from .findings import (
     build_report,
 )
 from .html import render_html
+from .sales import DEFAULT_WITHIN_MINUTES, render_closing_prices
 from .searches import SearchHint, search_hints
 from .text import render_text
 from .watchlist import render_watchlist, render_watchlist_html
 from .webhook import check_webhook_ready, send_webhook, webhook_destination
 
 __all__ = [
+    "DEFAULT_WITHIN_MINUTES",
     "Report",
     "DeliverySummary",
     "OutcomeSummary",
@@ -32,6 +34,7 @@ __all__ = [
     "check_webhook_ready",
     "destination_fingerprint",
     "email_destination",
+    "render_closing_prices",
     "render_html",
     "render_text",
     "render_watchlist",

@@ -26,6 +26,35 @@ The wizard remains an editor for the existing profile, not a second rules
 engine. It records what action to take, not a biography about trucks, trailers,
 or available friends. Personal answers stay in ignored local configuration.
 
+## Closing prices
+
+Status: collection and readback implemented; scoring still values lots against
+estimated retail alone.
+
+Every judgement this project makes compares a bid with the provider's estimated
+retail, which is a number nobody paid. The realized price is not published, and
+a closed lot leaves the pages the collector reads, so the best obtainable answer
+is the last bid seen while the lot was still open -- a floor, never a sale
+price. `sold` reports that floor together with how long before the close it was
+read, because a reading is worth exactly what its timing is worth.
+
+No new collection was required. `listings` already knew when each lot closed and
+`price_history` already knew what it cost at each look; the closing price is a
+read across the two, so it improves as looks accumulate rather than needing a
+migration. What did have to change is that a lot now carries the moment its page
+was fetched instead of the moment the page was read, since cached and saved
+pages made those two quietly different.
+
+Two things remain open, and both are deliberately not config:
+
+1. **Timing.** A reading is only tight if a run happened near the close. Lots
+   close in a narrow evening band, so one well-timed run converts a whole
+   night's inventory. Whether to schedule that is the operator's call.
+2. **Scoring.** Nothing reads closing prices back into what a lot is worth. It
+   should eventually be possible to rank against what similar lots actually
+   went for, but a floor is not a sale price and a handful of readings is not a
+   market, so the bar for acting on this is evidence, not availability.
+
 ## Feedback-assisted tuning
 
 Status: reliable match provenance and explicit outcome allocation implemented;

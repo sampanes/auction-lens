@@ -17,6 +17,7 @@ METADATA_SUFFIX = ".metadata.json"
 
 ETAG = "etag"
 LAST_MODIFIED = "last_modified"
+FETCHED_AT = "fetched_at"
 
 
 @dataclass(frozen=True)
@@ -38,6 +39,16 @@ class ResponseCache:
 
     def size(self) -> int:
         return self.path.stat().st_size
+
+    def fetched_at(self) -> datetime | None:
+        """When this body was downloaded, if the metadata beside it says.
+
+        A reused body is as old as its download, not as old as the run that
+        reused it. Everything read out of the body was true at this moment and
+        at no other, so this is the only honest date to put on those lots.
+        """
+        recorded = read_json(self.metadata_path, default={}).get(FETCHED_AT, "")
+        return datetime.fromisoformat(recorded) if recorded else None
 
     def conditional_headers(self) -> dict[str, str]:
         """Ask the provider to send a body only if the cached copy is stale."""
@@ -62,7 +73,7 @@ class ResponseCache:
         write_json_atomically(
             self.metadata_path,
             {
-                "fetched_at": fetched_at.isoformat(),
+                FETCHED_AT: fetched_at.isoformat(),
                 ETAG: headers.get("ETag", ""),
                 LAST_MODIFIED: headers.get("Last-Modified", ""),
                 "source_url": source_url,
