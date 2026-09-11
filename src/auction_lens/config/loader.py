@@ -17,6 +17,7 @@ from .schema import (
     DEFAULT_CACHE_FILE,
     DEFAULT_FAR_MINIMUM_SCORE,
     DEFAULT_LEDGER_FILE,
+    DEFAULT_MOST_PER_INTEREST,
     DEFAULT_SEARCH_CACHE_DIR,
     DEFAULT_USER_AGENT_ENV,
     AcquisitionConfig,
@@ -268,6 +269,9 @@ def _reports(section: Section) -> ReportsConfig:
             order=section.text("order", ReadingOrder.PRIORITY),
             closing_within_hours=section.optional_positive_integer(
                 "closing_within_hours"
+            ),
+            most_per_interest=section.positive_integer(
+                "most_per_interest", DEFAULT_MOST_PER_INTEREST
             ),
         )
 

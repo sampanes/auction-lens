@@ -157,6 +157,40 @@ from occupying a slot that could carry a lower-ranked new one. The delivered
 report counts both kinds of omission; the exact rules are in
 [Delivery receipts](docs/DELIVERY.md).
 
+## When there are many of one thing
+
+A cap on its own is not enough. On a day with eleven car seats, the best
+thirty lots can be ten car seats and little else -- ten answers to the same
+question, crowding out the one telescope. So each interest contributes only
+its best few:
+
+```toml
+[reports]
+most_per_interest = 3
+```
+
+The report is then grouped by what things *are*, one section per interest,
+strongest section first. A section that is holding lots back closes by
+saying so and offering the phrase that reaches the rest at the provider's
+end, so the shortcut sits beside the lots it is about rather than in a
+footer:
+
+```
+CAR SEAT
+  ... three cards ...
+
+  7 more not shown.
+  Search: chicco | finds 1, plus 2 other lot(s)
+  Search: car seat | finds 9, plus 32 other lot(s)
+```
+
+A section showing everything it found offers no phrase, because there is no
+list to get past. Lots reported on price alone form their own section the
+same way, and are capped the same way -- that is usually the biggest pile.
+
+This is a fairness rule, not a length rule. `max_items` still decides how
+long the report is; this decides that no single want can spend it.
+
 ## What gets read first
 
 ```toml
@@ -245,15 +279,17 @@ turn a stale reading into an apparently fresh one.
 
 ## Reaching a whole category
 
-When a rule finds more lots than anyone will click through, the report ends
+When a rule finds more lots than anyone will click through, its section closes
 with a way to see the same thing at the provider's end:
 
 ```
-Paste into the site search to see a whole category:
-  bounce house:
-    splash pool | finds 3, plus 1 other lot(s)
-    water slide | finds 7, plus 7 other lot(s)
-    water park | finds 1, plus 3 other lot(s)
+BOUNCE HOUSE
+  ... three cards ...
+
+  11 more not shown.
+  Search: splash pool | finds 3, plus 1 other lot(s)
+  Search: water slide | finds 7, plus 7 other lot(s)
+  Search: water park | finds 1, plus 3 other lot(s)
 ```
 
 Several phrases rather than one, because the provider's search has no OR and a
@@ -268,9 +304,11 @@ strangers is not a shortcut, and is left out rather than offered: that lot
 keeps its link. Rules matching only a handful get no phrases at all, since the
 links are the shorter path.
 
-The phrases are built from everything that matched, not from the thirty that
-fitted in the report, because reaching what the cap held back is the whole
-reason to offer one.
+The phrases are built from everything that matched, not from the few that
+fitted in the section, because reaching what the caps held back is the whole
+reason to offer one. A phrase appears in the footer instead of a section only
+when that kind of thing did not make the report at all -- otherwise those lots
+would be both unreachable and unmentioned.
 
 ## Chat webhook
 

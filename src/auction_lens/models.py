@@ -11,6 +11,7 @@ so an invalid one cannot exist for any caller to trip over. Records that are
 
 from __future__ import annotations
 
+from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -386,6 +387,16 @@ class Candidate:
     weight: Decimal = Decimal("1")
 
     @property
+    def section(self) -> str:
+        """What this lot is one *of*, which is how a reader groups them.
+
+        The interest it matched, or, for a lot reported on price alone, the
+        reason it was reported. One name, so that capping, tallying, and
+        grouping cannot disagree about what counts as the same kind of thing.
+        """
+        return self.rule_name or str(self.category)
+
+    @property
     def priority(self) -> Decimal:
         """Reading order: quality plus fresh news, scaled by how much it was wanted.
 
@@ -397,6 +408,25 @@ class Candidate:
         """
         attention_score = min(HIGHEST_SCORE, self.score + self.change.priority_bonus)
         return attention_score * self.weight
+
+
+@dataclass(frozen=True)
+class InterestHarvest:
+    """How many lots one kind of thing found today, and how many are shown."""
+
+    name: str
+    found: int
+    shown: int
+
+    @property
+    def withheld(self) -> int:
+        """The ones the report is deliberately not printing."""
+        return self.found - self.shown
+
+    @property
+    def is_crowded(self) -> bool:
+        """Whether this kind found more than the report is willing to print."""
+        return self.withheld > 0
 
 
 class ReadingOrder(StrEnum):
@@ -430,6 +460,44 @@ def ranked(
     """
     best = sorted(candidates, key=_reading_key(order), reverse=True)
     return best if limit is None else best[:limit]
+
+
+def best_of_each(candidates: list[Candidate], most_each: int | None) -> list[Candidate]:
+    """The best few of each kind, so one crowded want cannot spend the report.
+
+    Ten near-identical keyboards are ten answers to the same question. Keeping
+    the best few of each leaves room for everything else that matched today,
+    and what is held back is neither lost nor hidden: the caller still has
+    every candidate, and the report says how many it is not showing and how to
+    reach them at the provider's end.
+
+    Deliberately by the same ranking as everything else, so "the best few"
+    means what it means everywhere.
+    """
+    if most_each is None:
+        return ranked(candidates)
+    kept: dict[str, list[Candidate]] = defaultdict(list)
+    for candidate in ranked(candidates):
+        section = kept[candidate.section]
+        if len(section) < most_each:
+            section.append(candidate)
+    return ranked([candidate for section in kept.values() for candidate in section])
+
+
+def harvest_of(
+    found: list[Candidate], shown: list[Candidate]
+) -> tuple[InterestHarvest, ...]:
+    """How much of each kind matched today, beside how much of it is on the page.
+
+    Both numbers together, because either alone misleads: "three telescopes"
+    reads as the whole crop, and "eleven" reads as eleven links.
+    """
+    total = Counter(candidate.section for candidate in found)
+    printed = Counter(candidate.section for candidate in shown)
+    return tuple(
+        InterestHarvest(name=name, found=count, shown=printed.get(name, 0))
+        for name, count in total.most_common()
+    )
 
 
 def _reading_key(order: ReadingOrder):

@@ -22,6 +22,7 @@ from auction_lens.config import load_config
 from auction_lens.env_file import load_env_file
 from auction_lens.ingest import load_listings
 from auction_lens.models import InterestRef, Verdict, WatchedItem
+from auction_lens.reporting import DeliverySummary
 from auction_lens.storage import Database, ObservationStore, WatchlistStore
 from support import EXAMPLE_CONFIG, ROOT, SYNTHETIC_LISTINGS, temporary_directory
 
@@ -36,6 +37,15 @@ def run_cli(argv: list[str]) -> str:
     if exit_code != 0:
         raise AssertionError(f"command exited with {exit_code}")
     return buffer.getvalue()
+
+
+def _emailed(send_email, kind):
+    """One argument of a mocked send_email call, found by what it is.
+
+    A positional index goes stale every time the signature grows a field, and
+    then fails somewhere unrelated to whatever broke. Type says what is meant.
+    """
+    return next(arg for arg in send_email.call_args.args if isinstance(arg, kind))
 
 
 def _enable_email(config) -> None:
@@ -426,7 +436,7 @@ class DeliveryLedgerCommandTests(unittest.TestCase):
             repeated = run_cli([*argv, "--email", "--repeat-delivery"])
 
         self.assertEqual(send_email.call_count, 2)
-        self.assertTrue(send_email.call_args.args[-1].repeated)
+        self.assertTrue(_emailed(send_email, DeliverySummary).repeated)
         self.assertIn("Emailed", repeated)
 
     def test_repeat_delivery_requires_a_destination_before_creating_state(self):
