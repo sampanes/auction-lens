@@ -84,6 +84,38 @@ class InterestScoringTests(unittest.TestCase):
         matches = evaluate(listing, config)
         self.assertEqual([item for item in matches if item.category == "wanted"], [])
 
+    def test_a_lot_asking_most_of_retail_is_never_reported(self):
+        """Wanting a thing must not argue for paying near retail at auction.
+
+        A gate rather than a penalty: a real run reported a laptop at 86% of
+        its stated retail as a good match, because a high enough score could
+        outrank the price.
+        """
+        config = replace(
+            self.config,
+            scoring=replace(self.config.scoring, maximum_retail_ratio=Decimal("0.60")),
+        )
+        listing = self.listings[SOUNDBAR]
+        near_retail = replace(listing, current_bid=listing.estimated_retail)
+        self.assertEqual(evaluate(near_retail, config), [])
+
+    def test_the_ceiling_leaves_a_fairly_priced_lot_alone(self):
+        config = replace(
+            self.config,
+            scoring=replace(self.config.scoring, maximum_retail_ratio=Decimal("0.60")),
+        )
+        self.assertNotEqual(evaluate(self.listings[SOUNDBAR], config), [])
+
+    def test_a_lot_stating_no_retail_is_not_judged_by_the_ceiling(self):
+        """No stated retail states no ratio, so there is nothing to exceed."""
+        config = replace(
+            self.config,
+            scoring=replace(self.config.scoring, maximum_retail_ratio=Decimal("0.60")),
+        )
+        unpriced = replace(self.listings[SOUNDBAR], estimated_retail=None)
+        wanted = [item for item in evaluate(unpriced, config) if item.category == "wanted"]
+        self.assertNotEqual(wanted, [])
+
     def test_listing_outside_an_allowed_location_is_skipped(self):
         config = replace(self.config, locations=LocationPolicy(allowed=("north warehouse",)))
         self.assertEqual(evaluate(self.listings[SOUNDBAR], config), [])

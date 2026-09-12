@@ -7,6 +7,7 @@ gates come before scores so that a rejection is cheap and obvious to explain.
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from decimal import Decimal
 
 from ..config import AppConfig
 from ..logistics import assess_logistics
@@ -53,6 +54,25 @@ def evaluate(
     return _worth_collecting(candidates, config)
 
 
+def _costs_too_much_of_retail(
+    listing: Listing, total_cost: Decimal, ceiling: Decimal | None
+) -> bool:
+    """Whether the lot asks more of its stated retail than is ever worth paying.
+
+    A gate rather than a penalty, and deliberately so: no score a want can
+    reach should be able to argue for paying near retail on a used, unwarranted
+    lot. Placed with the other shared gates so it applies to a wanted match and
+    a bargain alike, and so one answer settles it for every rule at once.
+
+    A lot with no stated retail states no ratio, so there is nothing here to
+    exceed and the bar does not apply. The value floors on individual rules are
+    what decline an unproven claim; this one only judges a claim that was made.
+    """
+    if ceiling is None or listing.estimated_retail is None:
+        return False
+    return total_cost > ceiling * listing.estimated_retail
+
+
 def build_context(
     listing: Listing,
     config: AppConfig,
@@ -70,11 +90,14 @@ def build_context(
     conditions = frozenset(listing.conditions)
     if conditions & config.scoring.rejected_conditions:
         return None
+    total_cost = estimate_total_cost(listing, config.economics) + logistics.added_cost
+    if _costs_too_much_of_retail(listing, total_cost, config.scoring.maximum_retail_ratio):
+        return None
 
     return ScoringContext(
         listing=listing,
         conditions=conditions,
-        total_cost=estimate_total_cost(listing, config.economics) + logistics.added_cost,
+        total_cost=total_cost,
         change=change,
         logistics=logistics,
         baseline_penalty=penalty_for(conditions, config.scoring.condition_penalties),

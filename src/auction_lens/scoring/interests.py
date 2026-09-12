@@ -36,6 +36,11 @@ ACCESSORY_WORD_GAP = 2
 # Titles end words with these; they are not part of the word.
 TITLE_PUNCTUATION = ".,:;!?()[]{}\"'-*/"
 
+# How much text around a wanted word can hold ACCESSORY_WORD_GAP words. Two
+# words are never sixty characters, and reading the whole title on both sides
+# of every match is work with no answer in it.
+NEARBY_TEXT = 60
+
 
 def score_interests(
     context: ScoringContext,
@@ -197,11 +202,26 @@ def _sits_beside(searchable: str, term: str, noun: str) -> bool:
     neither says the two words back to back.
     """
     for found in standalone_mentions(searchable, term):
-        before = searchable[:found].split()[-ACCESSORY_WORD_GAP:]
-        after = searchable[found + len(term) :].split()[:ACCESSORY_WORD_GAP]
+        starts = max(0, found - NEARBY_TEXT)
+        ends = found + len(term) + NEARBY_TEXT
+        before = _words_of(searchable[starts:found])[-ACCESSORY_WORD_GAP:]
+        after = _words_of(searchable[found + len(term) : ends])[:ACCESSORY_WORD_GAP]
         if any(_is_the_word(word, noun) for word in (*before, *after)):
             return True
     return False
+
+
+def _words_of(text: str) -> list[str]:
+    """The words in a fragment, with punctuation read as a space.
+
+    A title is not reliably spaced. "xdr monitor stand?Single Desk Mount"
+    writes two words with nothing between them, and splitting on whitespace
+    alone yields "stand?single" -- a word that is neither, and that no list of
+    accessory nouns can ever match. So a monitor stand was reported as a
+    monitor, and "Desk Mount" was pushed a word further away than it is.
+    """
+    spaced = "".join(" " if letter in TITLE_PUNCTUATION else letter for letter in text)
+    return spaced.split()
 
 
 def _is_the_word(word: str, noun: str) -> bool:

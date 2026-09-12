@@ -139,6 +139,7 @@ def _scoring(section: Section, conditions: Section, profiles: Section) -> Scorin
             anomaly_weight=section.decimal("anomaly_weight", "0.4"),
             minimum_report_score=section.integer("minimum_report_score", 70),
             ending_soon_minutes=section.integer("ending_soon_minutes", 20),
+            maximum_retail_ratio=section.optional_decimal("maximum_retail_ratio"),
             condition_penalties=conditions.non_negative_integer_map("penalties"),
             rejected_conditions=frozenset(conditions.lowercase_texts("reject")),
             anomaly_condition=resolve_condition_policy(
