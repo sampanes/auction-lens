@@ -150,9 +150,10 @@ quiet day should never look alike:
 Showing the best 30; 766 more matched. Raise reports.max_items to see them.
 ```
 
-The local report applies the cap to today's ranking. Each outbound destination
+The local report applies the caps to today's ranking. Each outbound destination
 first removes unchanged listings it has already received, then applies the same
-configured limit (and any smaller transport limit). That keeps an old top result
+two caps in the same order -- `most_per_interest`, then `max_items` (or any
+smaller transport limit). That keeps an old top result
 from occupying a slot that could carry a lower-ranked new one. The delivered
 report counts both kinds of omission; the exact rules are in
 [Delivery receipts](docs/DELIVERY.md).
@@ -644,6 +645,26 @@ eligibility: a wanted item at a fair price ranks above something you never asked
 for at a steep discount. Weight is deliberately kept out of every threshold, so
 `[scoring] anomaly_weight = 0.4` sinks the catch-all in the report without ever
 silencing it, and raising a weight can never push a lot past a bar it failed.
+
+One of those bars is the most of an item's stated retail you will ever pay:
+
+```toml
+[scoring]
+maximum_retail_ratio = 0.60
+```
+
+An auction lot is used, unwarranted and not returnable, so paying most of retail
+is a loss however much you want the thing. This is a gate rather than a penalty,
+and it sits with the location and condition gates before anything is scored --
+so no score a want can reach argues its way past it, and it applies to a wanted
+match and a bargain alike. One number states it once, for every rule, instead of
+a `max_total_cost` on each: a dollar cap knows only the total, and cannot tell a
+flagship monitor at a steal from a mediocre one at a fair price.
+
+A lot that states no retail states no ratio and is not judged by this. Value
+floors on individual rules are what decline an unproven claim; this judges only
+a claim that was actually made. Leave the key out and nothing is too expensive
+to report.
 
 Valuation sources are ordinary `[[valuation.sources]]` TOML entries. Built-in
 adapters support human-reviewed XML catalogs, research-link templates, and
