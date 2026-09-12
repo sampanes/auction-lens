@@ -89,6 +89,7 @@ def deliver_findings(
                     delivery.revisions(proposed),
                     limit=_delivery_limit(channel, config),
                     repeat=args.repeat_delivery,
+                    most_each=config.reports.most_per_interest,
                 )
                 summary_changed = delivery.summary_changed(summary)
                 if not plan.candidates and not summary_changed and not args.repeat_delivery:

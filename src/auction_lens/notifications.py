@@ -21,6 +21,7 @@ from .models import (
     InterestProgress,
     ObservationChange,
     WatchedItem,
+    best_of_each,
     ranked,
 )
 
@@ -137,6 +138,7 @@ def plan_candidates(
     delivered: Mapping[tuple[str, str], str],
     limit: int | None = None,
     repeat: bool = False,
+    most_each: int | None = None,
 ) -> CandidateDeliveryPlan:
     """Filter against successful delivery state, then rank and cap.
 
@@ -144,6 +146,14 @@ def plan_candidates(
     must not occupy the evening cap and hide a lower-scoring new lot. Candidate
     ``change`` is replaced with delivery-relative history so the message says
     what this recipient last received, not merely what the collector last saw.
+
+    Both caps apply, and in the same order the printed report applies them:
+    the best few of each want first, then the overall length. Without the
+    first one a single crowded want spends the whole message -- one day's
+    delivery was 21 car seats out of 75 items, and five other wants had
+    nothing in it at all. It is applied after the delivery filter rather than
+    before, so a want whose best lots were already sent this morning still
+    offers its next best few tonight instead of arriving short.
     """
     if limit is not None and (isinstance(limit, bool) or limit < 1):
         raise ValueError("limit must be at least 1")
@@ -171,7 +181,8 @@ def plan_candidates(
 
     # The configured presentation order must not decide what survives a cap.
     # Quality priority selects the page; each renderer may rearrange that page.
-    selected = tuple(ranked(eligible, limit=limit))
+    page = eligible if most_each is None else best_of_each(eligible, most_each)
+    selected = tuple(ranked(page, limit=limit))
     return CandidateDeliveryPlan(
         candidates=selected,
         receipts=candidate_items(selected),
