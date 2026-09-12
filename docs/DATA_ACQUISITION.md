@@ -232,6 +232,26 @@ already fetched have to be readable from the cache. And raising
 `max_categories_per_run` or `max_searches_per_run` raises the request count
 directly, so either one and the pacing are a single decision, not two.
 
+That second consequence has since been spent. Three searches were added for
+things a category sweep structurally cannot surface, which moved a full run
+from 24 requests to 29. The rate is unchanged -- 10s spacing is still six a
+minute, which is the number the ceiling above is about -- so the prediction is
+that 29 costs roughly five minutes and nothing else. That prediction is not yet
+a measurement: the largest run actually observed is the 24 in the table, and
+partial runs of 14 have gone through clean since. The next scheduled run is the
+first at 29, and if it 429s, the fix is fewer addresses rather than tighter
+pacing, because pacing is already at the measured floor.
+
+Why searches had to be added at all is the more reusable point. A category
+address is sorted by `retail_price_desc`, so a sweep only ever sees the
+expensive end of a category. Anything cheap is invisible to it no matter how
+many categories are swept: a $200 telescope, a $250 water slide, a $200 string
+light run and a $60 slow cooker were each absent from thousands of captured
+titles, and each appeared immediately when asked for by name. The rule of thumb
+that falls out of it is that expensive things are found by sweeping and cheap
+things have to be asked for, and a want whose typical price is low needs a
+search term or the rule that wants it will never fire.
+
 ### Sweeping categories: finding what nobody thought to type
 
 A search term only finds what an operator can name. It cannot find a lot titled
