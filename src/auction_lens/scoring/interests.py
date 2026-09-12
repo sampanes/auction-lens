@@ -19,6 +19,17 @@ from .signals import clamp_score
 # whole word: "for" and not the tail of "comfort".
 HOST_MARKER = " for "
 
+# What a number is counting when "for" is measuring rather than attaching.
+# "Tent for 6 Person" says how big the tent is; "Case for 6 or 12-String" says
+# what the case fits. Only a word from this list turns a number into a size.
+CAPACITY_WORDS = frozenset(
+    {
+        "person", "people", "adult", "kid", "child", "children", "seat",
+        "gallon", "gal", "quart", "qt", "liter", "litre", "cup", "oz", "lb",
+        "pack", "count", "piece", "pc", "pcs", "set",
+    }
+)
+
 # How far from the wanted word an accessory word still counts as attached to it.
 ACCESSORY_WORD_GAP = 2
 
@@ -114,7 +125,7 @@ def _named_after_its_host(searchable: str, rule: InterestRule) -> bool:
     A word appearing on both sides counts as the earlier one, which keeps a lot
     in the report rather than out of it.
     """
-    host_marker = searchable.find(HOST_MARKER)
+    host_marker = _where_a_host_is_named(searchable)
     if host_marker == -1:
         return False
     # A rule that named no wanted words has nothing here to be positioned, and
@@ -122,6 +133,45 @@ def _named_after_its_host(searchable: str, rule: InterestRule) -> bool:
     named = [first_mention(searchable, term) for term in rule.any_terms]
     said = [at for at in named if at != -1]
     return bool(said) and all(at > host_marker for at in said)
+
+
+def _where_a_host_is_named(searchable: str) -> int:
+    """Where "for" introduces a host product, or -1 if it never does.
+
+    Not every "for" names a host. "Tent for 6 Person" and "Stand for 55-75
+    Gallon Tanks" are saying how big the thing is, and a title that repeats
+    itself -- "Camping Tent for 6 Person, Instant Cabin Tents with Rainfly" --
+    then has its wanted word only after a "for" that never introduced anything.
+    Read literally that makes a tent an accessory to itself.
+
+    A number alone is not the tell, and trying it that way let a guitar case
+    through: "Hard-Shell Case for 6 or 12-String Acoustic Guitar" starts with a
+    digit too. What separates them is the word after the number. "6 Person" is
+    a capacity and "6 or 12-String" is a specification of the host, so only a
+    number followed by a word for how much is skipped, and the next "for" is
+    the one worth asking about.
+    """
+    found = searchable.find(HOST_MARKER)
+    while found != -1:
+        after = searchable[found + len(HOST_MARKER) :].lstrip()
+        if not _reads_as_a_capacity(after):
+            return found
+        found = searchable.find(HOST_MARKER, found + 1)
+    return -1
+
+
+def _reads_as_a_capacity(text: str) -> bool:
+    """Whether the text opens with a number and then a word for how much."""
+    digits = 0
+    while digits < len(text) and (text[digits].isdigit() or text[digits] in "-."):
+        digits += 1
+    if digits == 0 or not text[0].isdigit():
+        return False
+    following = text[digits:].lstrip("- ").split(" ")[0]
+    word = following.strip(TITLE_PUNCTUATION).lower()
+    # "6 Person" and "6 Persons" are the same claim, so the list is written
+    # once in the singular and the plural is taken off here.
+    return word.rstrip("s") in CAPACITY_WORDS or word in CAPACITY_WORDS
 
 
 def _sold_as_a_fitting(searchable: str, rule: InterestRule) -> bool:

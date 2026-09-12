@@ -379,6 +379,32 @@ class AccessoryTests(unittest.TestCase):
             ["e-bike"],
         )
 
+    def test_a_capacity_after_for_does_not_make_a_thing_its_own_accessory(self):
+        # Found by diffing the rules against a local model over ten thousand
+        # real titles. This is a camping tent, and the only "for" in it says
+        # how many people fit. Reading that as a host made the tent an
+        # accessory to itself, and the lot was never reported.
+        rule = InterestRule(name="camping tent", any_terms=("instant cabin",))
+        self.assertEqual(
+            self._matches(
+                "Blackout Camping Tent for 6 Person, Instant Cabin Tents with Rainfly",
+                rule=rule,
+            ),
+            ["camping tent"],
+        )
+
+    def test_a_host_named_after_a_capacity_is_still_a_host(self):
+        # The number must not become a way to smuggle an accessory through:
+        # once a real product follows a later "for", the question is asked of
+        # that one instead.
+        rule = InterestRule(name="tools", any_terms=("dewalt",))
+        self.assertEqual(
+            self._matches(
+                "Weed Wacker Kit for 2 Batteries, for DeWalt 20V Cordless", rule=rule
+            ),
+            [],
+        )
+
     def test_a_rule_naming_no_wanted_words_is_left_alone(self):
         # Nothing to be positioned relative to "for", so the question does not
         # arise. Asking it anyway would reject every title containing "for".
