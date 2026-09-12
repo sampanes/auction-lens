@@ -121,6 +121,53 @@ class CandidatePlanTests(unittest.TestCase):
         self.assertEqual(plan.receipts, (DeliveryItem("example", "shared", "10"),))
         self.assertEqual(plan.held_back_matches, 1)
 
+    def test_one_crowded_want_cannot_spend_the_whole_delivery(self):
+        """A delivery caps each want first, exactly as the printed report does.
+
+        Without it the highest-scoring want takes every slot: one real run put
+        21 car seats into a 75-item email and left five other wants out of it.
+        """
+        crowded = [
+            _candidate(f"seat{index}", score=90, rule_id="car seat")
+            for index in range(5)
+        ]
+        lonely = _candidate("scope", score=80, rule_id="science")
+
+        plan = plan_candidates([*crowded, lonely], {}, limit=3, most_each=2)
+
+        sections = [item.rule_name for item in plan.candidates]
+        self.assertEqual(sections.count("Car Seat"), 2)
+        self.assertIn("Science", sections)
+
+    def test_a_want_already_delivered_still_offers_its_next_best_few(self):
+        """The per-want cap counts what is being sent, not what was ever found.
+
+        Capping before the delivery filter would spend a want's allowance on
+        lots this recipient already has, so an evening message would arrive
+        short even though the want had more to show.
+        """
+        already_sent = _candidate("seat1", score=90, rule_id="car seat")
+        still_unsent = _candidate("seat2", score=80, rule_id="car seat")
+
+        plan = plan_candidates(
+            [already_sent, still_unsent],
+            {("example", "seat1"): "10"},
+            most_each=1,
+        )
+
+        self.assertEqual(_ids(plan.candidates), ["seat2"])
+
+    def test_without_a_per_want_cap_the_ranking_alone_decides(self):
+        """The cap is opt-in, so callers that never asked for one are unchanged."""
+        crowded = [
+            _candidate(f"seat{index}", score=90, rule_id="car seat")
+            for index in range(3)
+        ]
+
+        plan = plan_candidates(crowded, {}, limit=3)
+
+        self.assertEqual(len(plan.candidates), 3)
+
     def test_presentation_order_cannot_change_which_match_survives_the_cap(self):
         priority = _candidate("priority", score=90, retail="20")
         expensive = _candidate("expensive", score=40, retail="900")
