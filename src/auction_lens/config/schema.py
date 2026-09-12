@@ -353,6 +353,15 @@ class ScoringConfig:
     anomaly_weight: Decimal = Decimal("0.4")
     minimum_report_score: int = 70
     ending_soon_minutes: int = 20
+    # The most of a thing's stated retail this operator will ever pay at
+    # auction, however much the thing is wanted. An auction lot is used and
+    # unwarranted, so paying most of retail is a loss even on a perfect match:
+    # a $6,000 laptop at $5,176 is a want satisfied and money thrown away.
+    #
+    # Stated once here rather than as a ceiling on each rule, because it is a
+    # fact about buying at auction rather than about any one want. Left out,
+    # nothing is too expensive to report.
+    maximum_retail_ratio: Decimal | None = None
     condition_penalties: dict[str, int] = field(default_factory=dict)
     rejected_conditions: frozenset[str] = frozenset()
     anomaly_condition: ConditionPolicy = field(default_factory=ConditionPolicy)
@@ -368,6 +377,8 @@ class ScoringConfig:
             self.anomaly_minimum_retail, field_name="anomaly_minimum_retail"
         )
         _require_rate(self.anomaly_maximum_ratio, field_name="anomaly_maximum_ratio")
+        if self.maximum_retail_ratio is not None:
+            _require_rate(self.maximum_retail_ratio, field_name="maximum_retail_ratio")
         require_not_negative(self.anomaly_weight, field_name="anomaly_weight")
         require_not_negative(self.ending_soon_minutes, field_name="ending_soon_minutes")
 
