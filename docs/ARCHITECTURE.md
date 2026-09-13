@@ -4,9 +4,9 @@ Auction Lens is a pipeline with a strict direction of dependency. Data moves
 left to right, and no module imports anything to its left.
 
 ```
-acquisition -> ingest -> scoring -> valuation -> reporting
-                  \                              /
-                   \--------- storage ----------/
+acquisition -> ingest -> scoring -> judging -> valuation -> reporting
+                  \                                          /
+                   \---------------- storage ---------------/
 ```
 
 `fields` has no project dependencies. `grading` depends only on `fields`, and
@@ -22,7 +22,7 @@ This is not a description. It is checked on every run by
 | 2 | `env_file`, `file_io`, `http_safety`, `models`, `text_match`, `throttle` | layers 0-1 |
 | 3 | `config` | layers 0-2 |
 | 4 | `logistics`, `notifications`, `outcomes` | layers 0-3 |
-| 5 | `acquisition`, `ingest`, `reporting`, `scoring`, `storage`, `valuation` | layers 0-4 |
+| 5 | `acquisition`, `ingest`, `judging`, `reporting`, `scoring`, `storage`, `valuation` | layers 0-4 |
 | 6 | `pipeline` | layers 0-5 |
 | 7 | `cli` | everything |
 
@@ -49,6 +49,9 @@ keeps `scoring` readable without `valuation` open beside it.
 | `acquisition/` | May we contact the provider right now, and what did it say? |
 | `acquisition/discover` | Which lots exist, asked once per search term? |
 | `scoring/` | Is this listing worth reporting, and why? |
+| `judging/` | Is this lot really the thing the interest asked for? |
+| `judging/questions` | What exactly is the local model asked about one lot? |
+| `judging/model` | How is a locally served model reached, and what if it is not? |
 | `logistics` | Is getting this item home still an open question? |
 | `notifications` | What has this destination not successfully received yet? |
 | `outcomes` | Which finite interests remain active, and which wins still need fulfillment review? |

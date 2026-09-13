@@ -28,6 +28,7 @@ from .schema import (
     EmailSecurity,
     InterestDefaults,
     InterestRule,
+    JudgingConfig,
     LargeItemPolicy,
     LocationPolicy,
     LogisticsConfig,
@@ -76,6 +77,7 @@ def _app_config(root: Section) -> AppConfig:
         webhook=_webhook(root.table("reports").table("webhook")),
         locations=_locations(root.table("locations")),
         reports=_reports(root.table("reports")),
+        judging=_judging(root.table("judging")),
     )
 
 
@@ -187,7 +189,6 @@ def _require_unique_interests(interests: tuple[InterestRule, ...]) -> None:
 def _interest_defaults(section: Section) -> InterestDefaults:
     with in_section(section):
         return InterestDefaults(
-            exclude_terms=section.lowercase_texts("exclude_terms"),
             accessory_nouns=section.lowercase_texts("accessory_nouns"),
         )
 
@@ -206,7 +207,7 @@ def _interest(item: Section, profiles: Section) -> InterestRule:
             purpose=item.text("purpose", "use"),
             any_terms=item.lowercase_texts("any_terms"),
             all_terms=item.lowercase_texts("all_terms"),
-            exclude_terms=item.lowercase_texts("exclude_terms"),
+            wants=item.text("wants"),
             max_total_cost=item.optional_decimal("max_total_cost"),
             minimum_retail=item.optional_decimal("minimum_retail"),
             wanted=wanted,
@@ -271,6 +272,17 @@ def _reports(section: Section) -> ReportsConfig:
             most_per_interest=section.positive_integer(
                 "most_per_interest", DEFAULT_MOST_PER_INTEREST
             ),
+        )
+
+
+def _judging(section: Section) -> JudgingConfig:
+    with in_section(section):
+        return JudgingConfig(
+            enabled=section.flag("enabled", False),
+            endpoint=section.text("endpoint", "http://localhost:11434"),
+            model=section.text("model", "qwen2.5:7b-instruct"),
+            timeout_seconds=section.positive_integer("timeout_seconds", 60),
+            workers=section.positive_integer("workers", 4),
         )
 
 

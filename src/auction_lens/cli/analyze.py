@@ -101,6 +101,7 @@ def _score_and_report(
     _report_skipped(result.listings_from_other_providers, config.provider.provider_id)
     _report_already_closed(result.lots_already_closed)
     _report_capped(result.matches_not_shown, len(result.candidates))
+    _report_vetting(result.vetting)
     additionally_followed, delivery_failures = deliver_findings(
         args,
         config,
@@ -154,6 +155,23 @@ def _report_capped(hidden: int, shown: int) -> None:
         print(
             f"Showing the best {shown}; {hidden} more matched. "
             "Raise reports.max_items to see them."
+        )
+
+
+def _report_vetting(vetting) -> None:
+    """Say what the judge did, because a reordered report is not a quiet day.
+
+    Both facts are worth a line for the same reason the cap is. A reader who
+    does not know the judge ran cannot tell a well-sorted report from a thin
+    one, and a reader who does not know it was unreachable would take an
+    unsorted report for a sorted one.
+    """
+    if vetting.unavailable:
+        print(f"[!] not vetted: {vetting.unavailable}. Nothing was set aside.")
+    elif vetting.ran:
+        print(
+            f"Vetted {vetting.asked} match(es); {vetting.set_aside} sank to the "
+            "bottom as not the thing."
         )
 
 

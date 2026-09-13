@@ -77,8 +77,10 @@ class InterestScoringTests(unittest.TestCase):
         self.assertEqual([item.rule_name for item in candidates], ["square tubing stock"])
         self.assertIn("salvage interest", candidates[0].reasons[0])
 
-    def test_excluded_term_disqualifies_an_otherwise_matching_listing(self):
-        rule = InterestRule(name="soundbar", any_terms=("sound bar",), exclude_terms=("mount",))
+    def test_an_accessory_word_beside_the_wanted_word_disqualifies_it(self):
+        rule = InterestRule(
+            name="soundbar", any_terms=("sound bar",), accessory_nouns=("mount",)
+        )
         config = replace(self.config, interests=(rule,))
         listing = replace(self.listings[SOUNDBAR], title="Sound bar wall mount bracket")
         matches = evaluate(listing, config)
@@ -277,11 +279,16 @@ class MinimumRetailTests(unittest.TestCase):
 
 
 class WarehouseNoteTests(unittest.TestCase):
-    """The one sentence written about this item rather than about the model.
+    """What a warehouse note may and may not do to a match.
 
     A title is the manufacturer's words and is the same on every copy of a
     product. The note is what somebody wrote after looking at this actual lot,
     so it is the only place a missing blower or a leaking seam is ever said.
+
+    Reading a note *against* a lot is the judge's job now, and those tests
+    live in test_judging. What stays here is the half that is a property of
+    matching itself: a note can never put a lot into the report, whoever is
+    reading it.
     """
 
     def setUp(self):
@@ -289,11 +296,7 @@ class WarehouseNoteTests(unittest.TestCase):
         self.listings = example_listings()
 
     def _matches(self, *, notes="", title="Inflatable Water Slide Bounce House"):
-        rule = InterestRule(
-            name="bounce house",
-            any_terms=("water slide",),
-            exclude_terms=("blower not included",),
-        )
+        rule = InterestRule(name="bounce house", any_terms=("water slide",))
         listing = replace(
             self.listings[SOUNDBAR],
             title=title,
@@ -304,19 +307,12 @@ class WarehouseNoteTests(unittest.TestCase):
         scored = evaluate(listing, config)
         return [item.rule_name for item in scored if item.category == "wanted"]
 
-    def test_a_note_can_rule_a_lot_out(self):
-        # The seller said the fan is missing, which no title would ever say.
-        self.assertEqual(self._matches(notes="9/8 blower not included"), [])
-
-    def test_saying_nothing_is_not_the_same_as_saying_no(self):
-        # Almost nobody names the blower, so silence has to stay a pass.
+    def test_a_note_leaves_a_lot_its_title_already_matched_alone(self):
+        # Matching reads the title. Whatever the note says, ruling this lot
+        # out is a judgement, and judgement happens after matching.
         self.assertEqual(self._matches(notes="updated 9/8"), ["bounce house"])
-
-    def test_a_note_written_across_several_lines_is_still_read(self):
-        # People type these into a box over several visits, and where they
-        # pressed Enter must not decide whether the lot is reported.
         self.assertEqual(
-            self._matches(notes="9/8 blower\nnot included\nleaks air"), []
+            self._matches(notes="9/8 blower not included"), ["bounce house"]
         )
 
     def test_a_note_cannot_make_a_lot_match(self):
@@ -447,27 +443,19 @@ class AccessoryTests(unittest.TestCase):
         )
 
     def test_a_rule_that_asks_for_the_word_keeps_it(self):
-        defaults = InterestDefaults(
-            exclude_terms=("replacement",), accessory_nouns=("stand",)
-        )
+        defaults = InterestDefaults(accessory_nouns=("stand",))
         rule = defaults.applied_to(
             InterestRule(name="guitar stand", any_terms=("guitar stand",))
         )
         self.assertEqual(rule.accessory_nouns, ())
         self.assertEqual(self._matches("DIDA Guitar Stand", rule=rule), ["guitar stand"])
 
-    def test_a_rule_inherits_words_it_never_named(self):
-        rule = InterestDefaults(exclude_terms=("compatible with",)).applied_to(
-            InterestRule(name="tools", any_terms=("dewalt",))
+    def test_a_rule_inherits_accessory_words_it_never_named(self):
+        rule = InterestDefaults(accessory_nouns=("hanger",)).applied_to(
+            InterestRule(name="guitar", any_terms=("guitar",))
         )
-        self.assertIn("compatible with", rule.exclude_terms)
-        self.assertEqual(self._matches("Heat Gun Compatible With Dewalt", rule=rule), [])
-
-    def test_a_word_the_rule_already_named_is_not_inherited_twice(self):
-        rule = InterestDefaults(exclude_terms=("adapter",)).applied_to(
-            InterestRule(name="tools", any_terms=("dewalt",), exclude_terms=("adapter",))
-        )
-        self.assertEqual(rule.exclude_terms, ("adapter",))
+        self.assertIn("hanger", rule.accessory_nouns)
+        self.assertEqual(self._matches("Guitar Wall Hanger 3 Pack", rule=rule), [])
 
 
 class InterestWeightTests(unittest.TestCase):

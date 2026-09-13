@@ -614,31 +614,57 @@ must be worth, and what it may cost.
 
 The value floor stops the cheap accessories. It does not stop the expensive
 ones: a set of guitar hangers outsells a beginner guitar, and a differential
-carrying a power-tool brand outsells a drill. `[interest_defaults]` is where you
-say what an accessory looks like, once, for every rule:
+carrying a power-tool brand outsells a drill.
+
+Two different questions hide inside "is this really the thing", and they are
+answered in two different places, because one is about English and the other is
+about the world.
+
+**Where a word sits** is about English, and a rule reads it exactly.
+`[interest_defaults]` says once, for every rule, which words name a fitting:
 
 ```toml
 [interest_defaults]
-exclude_terms = ["compatible with", "replacement", "adapter", "cable"]
 accessory_nouns = ["stand", "case", "cover", "mount", "bracket", "holder"]
 ```
 
-`exclude_terms` are plain phrases that mean "accessory" anywhere in a title.
-`accessory_nouns` are checked only *beside* the words a rule asked for, because
-the same word means opposite things at a distance -- "guitar stand" is not a
-guitar, while a table saw sold "with rolling stand" is still a table saw.
+These are checked only *beside* the words a rule asked for, because the same
+word means opposite things at a distance -- "guitar stand" is not a guitar,
+while a table saw sold "with rolling stand" is still a table saw. Anything a
+rule explicitly asks for is kept, so an interest in `"monitor stand"` is never
+emptied by a shared `stand`.
 
-One more rule needs no configuration, because it is about English rather than
-about you: a title that names the wanted thing only *after* the word "for" is
-describing what the lot attaches to. "Weed Wacker for DeWalt" is not a DeWalt.
-"Electric Bike for Adults" still is an electric bike -- it says what it is
-first, and only then who it suits.
+A second rule of the same kind needs no configuration at all: a title that names
+the wanted thing only *after* the word "for" is describing what the lot attaches
+to. "Weed Wacker for DeWalt" is not a DeWalt. "Electric Bike for Adults" still
+is an electric bike -- it says what it is first, and only then who it suits.
 
-Put only what is true of every interest in `[interest_defaults]`. Audience words
-are the usual mistake: a children's guitar is a toy, but a children's water
-slide is the whole point, so `kids` belongs on the guitar rule rather than in
-the shared list. Anything a rule explicitly asks for is kept, so an interest in
-`"monitor stand"` is never emptied by a shared `stand`.
+**What the thing actually is** is about the world, and no list of words can
+settle it. A fertility monitor, a baby monitor, a blood-pressure monitor and a
+KVM switch all say "monitor" as loudly as a display does, and every one of them
+has to be discovered, one at a time, before a word list can turn it away. That
+is not a list converging on an answer; it is a list of everything that has
+already gone wrong once.
+
+So each interest writes a sentence instead, and a local model reads the lot
+against it. See [judging](#judging), below.
+
+```toml
+[[interests]]
+name = "monitor"
+any_terms = ["monitor"]
+wants = """
+    a computer monitor: a display panel you plug into a PC or laptop. A
+    television is not one. A baby, pet, medical, fertility or air-quality
+    monitor is not one.
+"""
+```
+
+`any_terms` no longer has to be precise, only inclusive: it is a net, and the
+sentence is the judgement. Write one kind of thing per sentence. A sentence
+that lists alternatives -- "a microscope, a telescope, a spectrometer" -- gets
+answered against the first item alone and the others are thrown away, so an
+interest that genuinely covers several things wants several rules.
 
 Each rule also has a `weight`, defaulting to `1`. It decides reading order, not
 eligibility: a wanted item at a fair price ranks above something you never asked
@@ -683,18 +709,134 @@ SnuggleBounce 13FT White Inflatable Bounce House
          leaks air/ needs a patch
 ```
 
-Nothing else on the page says that, so `exclude_terms` are matched against the
-note as well as the title. It is the only place a missing blower, a missing
-power source, or a leaking seam is ever stated.
+Nothing else on the page says that, so the note is shown to the judge along
+with the title. It is the only place a missing blower, a missing power source,
+or a leaking seam is ever stated.
 
 The note can only ever rule a lot **out**. Wanted words are still read from the
 title alone, because a pallet lot's note lists everything on the pallet, and
 reading wants from there would make one pallet match every interest at once. A
-note is evidence against, never for.
+note is evidence against, never for -- and that asymmetry is structural rather
+than a rule anybody has to remember: the net that finds candidates reads the
+title, and only the judge that removes them reads the note.
 
 Notes are typed into a box over several visits, so they arrive with line breaks
 in them. Whitespace is flattened before matching: where somebody pressed Enter
 does not decide whether a lot is reported.
+
+## Judging
+
+A local model reads each wanted lot and says whether it is really the thing the
+interest asked for. It is off by default and needs nothing installed: the model
+is reached over HTTP, the same way the mail server and the webhook are.
+
+It **sinks** the lots it rejects rather than deleting them. Measured against a
+real capture, a small model rejects something good about one time in fifteen --
+a plainly titled metal shed as "wrong material", a hedge trimmer as "not a
+laser level" -- and deleting on that accuracy would reproduce the exact failure
+judging was built to end: a lot gone from the report with nobody able to tell
+it was ever there.
+
+Sinking degrades gently instead. A rejected lot keeps its place in the pile at
+a tenth of its weight, which puts it below every real match. Where a want has
+plenty of real lots, the rejected ones fall past `reports.most_per_interest`
+and are never seen. Where it has almost none, they surface -- which is the case
+where you would rather look at something doubtful than at nothing. And they
+arrive saying what they were accused of:
+
+```
+Miku AI Baby Monitor with App, Data Alerts with No Wearable
+  matches use interest 'monitor'
+  set aside by the judge: baby monitor, not computer
+```
+
+That line is the point. A word list that wrongly excluded something said
+nothing at all, so a mistake and an absence looked identical. This tells you
+which sentence to go and fix.
+
+```toml
+[judging]
+enabled = true
+model = "qwen2.5:7b-instruct"
+endpoint = "http://localhost:11434"
+timeout_seconds = 60
+workers = 6
+```
+
+Run a server that speaks the Ollama chat API and pull the model once:
+
+```
+ollama pull qwen2.5:7b-instruct
+ollama serve
+```
+
+`auction-lens doctor` reports which interests have a `wants` sentence and which
+would therefore go unjudged. It does not contact the endpoint, because that
+command promises to make no network requests.
+
+### It is asked what to discard, and answers with a word
+
+Both halves of that were measured rather than guessed, on 23 lots whose right
+answer was written down by hand first.
+
+The **direction** is the safer half of a bet either way. A lot wrongly shown
+costs a line in an email and can be argued with; a lot wrongly hidden is the
+silent failure that word lists already cause. So the judge is asked what to
+throw away, and told in as many words to keep anything it is unsure of.
+
+The **shape of the answer** turned out to matter far more, which was not
+expected. Asked for `"remove": true or false`, the model has to invert its
+own conclusion before writing it down, and often did not -- lots came back
+with `remove: true` beside a reason reading *"Exact match."* Asked for the
+word `keep` or `discard`, it cannot invert anything by accident:
+
+| answer shape | correct | wrongly hidden | wrongly shown |
+|---|---|---|---|
+| `{"match": true/false}` | 19/23 | 4 | 0 |
+| `{"remove": true/false}` | 6/23 | 15 | 2 |
+| `{"verdict": "keep"/"discard"}` | 20/23 | 3 | 0 |
+
+Any synonym for discarding is understood, because a model told to say
+`discard` sometimes says `remove`, and refusing to understand it would keep
+everything it meant to throw out. Every other answer -- an unknown word, a
+missing field, unparseable text -- keeps the lot.
+
+Everything about the wiring follows from that. An unparseable answer keeps the
+lot. An interest with no `wants` sentence is never asked about. An unreachable
+server keeps every lot and says so:
+
+```
+[!] not vetted: nothing answered at http://localhost:11434. Nothing was set aside.
+```
+
+A quiet report and a well-sorted one look identical, so a run that did vet
+says so too:
+
+```
+Vetted 130 match(es); 40 sank to the bottom as not the thing.
+```
+
+### What it is not for
+
+Condition is not its business. Damage, wear and "for parts only" are already
+scored against each interest's `condition_profile`, and a judge that also
+refused on those terms would be applying a second, unwritten policy that no
+configuration could see or change.
+
+Price is not its business either. What a lot costs against what it is worth is
+`maximum_retail_ratio` and the value floors, which are arithmetic and do not
+need an opinion.
+
+One sentence, one kind of thing. A sentence listing alternatives -- "a
+microscope, a telescope, a spectrometer" -- is answered against its first item
+alone and the rest are thrown out, which is why four real telescopes came back
+"not a microscope". Where an interest genuinely covers several things, give it
+several rules; the report's per-interest cap stops them competing anyway.
+
+The reason the accessory rules above were kept rather than deleted is the
+mirror image of the judge's weakness: its own mistakes run towards keeping a
+monitor arm, which adjacency turns away for free and for certain. Each covers
+what the other is bad at.
 
 ## Contextual logistics
 

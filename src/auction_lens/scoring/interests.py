@@ -90,10 +90,6 @@ def matches_terms(listing: Listing, total_cost: Decimal, rule: InterestRule) -> 
         return False
     if rule.all_terms and not all(mentions(searchable, term) for term in rule.all_terms):
         return False
-    # Against the wider text: a seller's note about this one item is exactly
-    # the kind of thing that should be able to rule it out.
-    if any(mentions(listing.disqualifying_text, term) for term in rule.exclude_terms):
-        return False
     if describes_an_accessory(searchable, rule):
         return False
     if not _worth_at_least(listing, rule.minimum_retail):

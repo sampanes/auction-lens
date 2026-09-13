@@ -37,7 +37,6 @@ class ExampleConfigTests(unittest.TestCase):
     def test_shared_accessory_words_reach_a_rule_that_never_named_them(self):
         # The rule says only what it wants; what it is not comes from one place.
         monitor = next(rule for rule in self.config.interests if rule.name == "monitor")
-        self.assertIn("compatible with", monitor.exclude_terms)
         self.assertIn("mount", monitor.accessory_nouns)
         self.assertIsNone(monitor.wanted)
 

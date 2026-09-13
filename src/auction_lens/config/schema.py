@@ -203,7 +203,11 @@ class InterestRule:
     purpose: str = "use"
     any_terms: tuple[str, ...] = ()
     all_terms: tuple[str, ...] = ()
-    exclude_terms: tuple[str, ...] = ()
+    # What this interest is actually after, in a sentence. The terms above
+    # only have to be inclusive enough to find candidates; this is what
+    # separates the thing from everything else wearing its name, and it is
+    # written in English because that is where the distinctions live.
+    wants: str = ""
     # Words that name an accessory, checked only where they sit beside one of
     # the terms above. Inherited from [interest_defaults]; see InterestDefaults.
     accessory_nouns: tuple[str, ...] = ()
@@ -247,7 +251,7 @@ class InterestRule:
 
 @dataclass(frozen=True)
 class InterestDefaults:
-    """Term filters that every interest rule inherits.
+    """The words that name an accessory, shared by every interest rule.
 
     An accessory borrows the name of whatever it attaches to, so a guitar stand
     says "guitar" exactly as loudly as a guitar does. Every rule therefore needs
@@ -256,30 +260,26 @@ class InterestDefaults:
     partial copy of it: the monitor rule knew about "monitor stand", the guitar
     rule about "wall mount", and neither knew what the other had learned.
 
-    Saying it once here is what keeps each rule below about what the operator
-    wants rather than about what keeps turning up next to it.
+    This is deliberately about *where a word sits* rather than what a lot is.
+    Which product a lot actually is went to the judge in ``judging/``, because
+    a list of forbidden words can only ever name the impostors somebody has
+    already been bitten by. Adjacency is not that kind of list: it is one
+    sentence about English that a judge reads poorly and this reads exactly.
     """
 
-    exclude_terms: tuple[str, ...] = ()
     accessory_nouns: tuple[str, ...] = ()
 
     def applied_to(self, rule: InterestRule) -> InterestRule:
-        """The rule, plus every shared filter it does not contradict.
+        """The rule, plus the shared accessory words it does not contradict.
 
         A rule that explicitly asks for one of these words means it: an interest
-        in "guitar stand" must not be silently emptied by a shared "stand". What
-        a rule asked for outranks what it inherits, so a shared word that
+        in "monitor stand" must not be silently emptied by a shared "stand".
+        What a rule asked for outranks what it inherits, so a shared word that
         appears in the rule's own terms is dropped for that rule alone.
         """
         asked_for = " ".join(rule.any_terms + rule.all_terms)
-        inherited = tuple(
-            term
-            for term in self.exclude_terms
-            if term not in asked_for and term not in rule.exclude_terms
-        )
         return replace(
             rule,
-            exclude_terms=rule.exclude_terms + inherited,
             accessory_nouns=tuple(
                 noun for noun in self.accessory_nouns if noun not in asked_for
             ),
@@ -527,6 +527,28 @@ def _mentions(location: str, names: tuple[str, ...]) -> bool:
 
 
 @dataclass(frozen=True)
+class JudgingConfig:
+    """Where the local judge listens, and whether to ask it anything.
+
+    Off by default. A checkout on a machine with nothing serving a model must
+    behave exactly as it always did rather than fail, so this is opt-in and
+    an unreachable server is survivable rather than fatal.
+    """
+
+    enabled: bool = False
+    endpoint: str = "http://localhost:11434"
+    model: str = "qwen2.5:7b-instruct"
+    timeout_seconds: int = 60
+    # How many questions are in flight at once. The server answers them on one
+    # GPU, so this buys overlap of the waiting rather than more compute.
+    workers: int = 4
+
+    def __post_init__(self) -> None:
+        require_at_least(self.timeout_seconds, 1, field_name="timeout_seconds")
+        require_at_least(self.workers, 1, field_name="workers")
+
+
+@dataclass(frozen=True)
 class AppConfig:
     """Everything one configuration file declares, ready for the pipeline."""
 
@@ -541,6 +563,7 @@ class AppConfig:
     webhook: WebhookConfig = field(default_factory=WebhookConfig)
     locations: LocationPolicy = field(default_factory=LocationPolicy)
     reports: ReportsConfig = field(default_factory=ReportsConfig)
+    judging: JudgingConfig = field(default_factory=JudgingConfig)
 
 
 def _settle(record: Any, field_name: str, options: type[Choice]) -> None:

@@ -43,8 +43,32 @@ def doctor(args: argparse.Namespace) -> int:
         print(f"[OK] {args.delivery_ledger}: delivery receipts are ready.")
     if not any(requested.values()):
         print("[OK] no report destinations are enabled; local output only.")
+    _check_judging(config)
     print("[OK] no network requests were made.")
     return SUCCESS
+
+
+def _check_judging(config: AppConfig) -> None:
+    """Name any interest that would go unjudged, without contacting anything.
+
+    An interest with no sentence is not an error -- it simply passes through
+    unvetted, exactly as it did before there was a judge. But it is now the
+    mistake worth catching: a rule added without one is silently the only
+    rule in the file still deciding by word match alone.
+
+    The endpoint is deliberately not contacted. This command promises to make
+    no network requests, and a reachability check belongs to the run that
+    depends on it, which already survives an unreachable judge.
+    """
+    if not config.judging.enabled:
+        print("[OK] judging is off; interests are matched on their terms alone.")
+        return
+    unwritten = [rule.name for rule in config.interests if not rule.wants.strip()]
+    if unwritten:
+        print(f"[!] no 'wants' sentence, so never vetted: {', '.join(unwritten)}")
+    else:
+        print(f"[OK] all {len(config.interests)} interests have a 'wants' sentence.")
+    print(f"[OK] judging will ask {config.judging.model} at {config.judging.endpoint}.")
 
 
 def _destinations(config: AppConfig, args: argparse.Namespace) -> dict[str, bool]:

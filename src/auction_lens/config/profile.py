@@ -115,8 +115,7 @@ def _interest(number: int, rule: InterestRule, global_minimum_score: int) -> lis
             f"   Wanted: {_wanted_quantity(rule.wanted)}",
             f"   Match any: {_terms(rule.any_terms, empty='not required')}",
             f"   Match all: {_terms(rule.all_terms, empty='not required')}",
-            f"   Exclude: {_terms(rule.exclude_terms, empty=NONE)}",
-            f"   Maximum total cost: "
+                f"   Maximum total cost: "
             f"{_optional_money(rule.max_total_cost, empty=NO_LIMIT)}",
             f"   Minimum stated retail: "
             f"{_optional_money(rule.minimum_retail, empty=NONE)}",
