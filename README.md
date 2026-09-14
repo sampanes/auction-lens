@@ -393,6 +393,33 @@ that selection is non-empty. It names no paths, because every path it would name
 is already a default -- so moving a file is a configuration edit rather than a
 script edit. Webhook delivery remains an explicit, separately configured choice.
 
+`scripts\schedule.cmd` puts it in Task Scheduler and takes it out again:
+
+```
+scripts\schedule.cmd status     what is scheduled, when it next runs, how it ended
+scripts\schedule.cmd install    create or replace every run the file declares
+scripts\schedule.cmd remove     delete them
+```
+
+The times live in one block at the top of that file, so changing the schedule is
+changing that block. `install` replaces rather than duplicates, so running it
+twice leaves one of each.
+
+### When to run
+
+Measure it rather than guess, because the answer depends entirely on when this
+provider's lots close. On the one this was written against, nothing closes
+before 18:00 or after 22:00 and the lots are spread almost evenly across those
+four hours, so there is no peak to aim at. Scoring each candidate time by how
+close it lands to the lots it can still reach -- a run landing on a lot's own
+close counts 1, one four hours early counts 0 -- put a midday run at zero, a
+single evening run at its best at the hour the first lots go, and a second one
+two hours later at half again as much. A third bought little.
+
+The general shape: one run cannot cover a closing window wider than an hour or
+two, the first evening run is worth far more than the third, and a run outside
+the closing window is worth nothing at all however convenient the hour.
+
 ## Getting real listings
 
 One command asks the provider's search and writes listings ready to score:
