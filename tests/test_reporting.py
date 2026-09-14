@@ -207,6 +207,48 @@ class DeliverySummaryTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "item_plural"):
             DeliverySummary(item_plural=" ")
 
+    def test_the_withheld_matches_are_named_and_not_only_counted(self):
+        delivery = DeliverySummary(
+            active=True,
+            unchanged_matches=2,
+            unchanged_titles=("Akai MPK Mini Play MK3", "Yamaha THR30II Wireless"),
+        )
+
+        plain = render_text(build_report([], REPORT_ZONE, delivery=delivery))
+        markup = render_html(build_report([], REPORT_ZONE, delivery=delivery))
+
+        for report in (plain, markup):
+            self.assertIn("2 unchanged matches", report)
+            self.assertIn("Akai MPK Mini Play MK3", report)
+            self.assertIn("Yamaha THR30II Wireless", report)
+
+    def test_a_long_withheld_list_names_a_few_and_counts_the_rest(self):
+        titles = tuple(f"Lot number {number}" for number in range(12))
+        delivery = DeliverySummary(
+            active=True, unchanged_matches=12, unchanged_titles=titles
+        )
+
+        report = render_text(build_report([], REPORT_ZONE, delivery=delivery))
+
+        self.assertIn("Lot number 0", report)
+        self.assertIn("Lot number 7", report)
+        self.assertNotIn("Lot number 8", report)
+        self.assertIn("and 4 more, unchanged since.", report)
+
+    def test_naming_more_than_were_withheld_is_a_contradiction(self):
+        with self.assertRaisesRegex(ValueError, "unchanged_titles"):
+            DeliverySummary(unchanged_matches=1, unchanged_titles=("one", "two"))
+
+    def test_a_count_with_no_names_says_the_count_and_nothing_else(self):
+        # The watchlist route counts without naming. "and 3 more" would be
+        # answering a question the report never started asking.
+        delivery = DeliverySummary(active=True, unchanged_matches=3)
+
+        report = render_text(build_report([], REPORT_ZONE, delivery=delivery))
+
+        self.assertIn("3 unchanged matches", report)
+        self.assertNotIn("more, unchanged since", report)
+
 
 class DestinationFingerprintTests(unittest.TestCase):
     def test_a_destination_is_stable_without_retaining_its_raw_value(self):

@@ -94,6 +94,8 @@ def matches_terms(listing: Listing, total_cost: Decimal, rule: InterestRule) -> 
         return False
     if not _worth_at_least(listing, rule.minimum_retail):
         return False
+    if _asks_too_much_of_retail(listing, total_cost, rule.maximum_retail_ratio):
+        return False
     return rule.max_total_cost is None or total_cost <= rule.max_total_cost
 
 
@@ -228,6 +230,25 @@ def _is_the_word(word: str, noun: str) -> bool:
     """
     bare = word.strip(TITLE_PUNCTUATION)
     return bare in (noun, f"{noun}s", f"{noun}es")
+
+
+def _asks_too_much_of_retail(
+    listing: Listing, total_cost: Decimal, ceiling: Decimal | None
+) -> bool:
+    """Whether the lot costs more of its stated retail than this rule allows.
+
+    For a want that is only worth having as a steal. Some things are wanted at
+    any fair price and some are wanted only when they are nearly free, and a
+    rule had no way to say which it was: every price lever it owned was in
+    dollars, and "cheap for what it is" is a proportion.
+
+    Unlike the value floor above, a lot with no stated retail passes. The floor
+    declines an unproven claim because it is asking whether the thing is worth
+    enough to be real; this is only capping a claim that was actually made.
+    """
+    if ceiling is None or listing.estimated_retail is None:
+        return False
+    return total_cost > ceiling * listing.estimated_retail
 
 
 def _worth_at_least(listing: Listing, floor: Decimal | None) -> bool:

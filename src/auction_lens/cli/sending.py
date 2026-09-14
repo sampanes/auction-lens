@@ -100,6 +100,9 @@ def deliver_findings(
                     active=True,
                     repeated=args.repeat_delivery,
                     unchanged_matches=plan.unchanged_matches,
+                    unchanged_titles=tuple(
+                        candidate.listing.title for candidate in plan.unchanged
+                    ),
                     held_back_matches=plan.held_back_matches,
                 )
                 phase = "transport"

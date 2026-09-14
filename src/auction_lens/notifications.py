@@ -110,8 +110,15 @@ class CandidateDeliveryPlan:
 
     candidates: tuple[Candidate, ...]
     receipts: tuple[DeliveryItem, ...]
-    unchanged_matches: int = 0
+    # The matches this destination already has at this price. Kept rather than
+    # counted: a reader told only "2 unchanged" cannot tell whether the lot
+    # they were waiting on is one of them.
+    unchanged: tuple[Candidate, ...] = ()
     held_back_matches: int = 0
+
+    @property
+    def unchanged_matches(self) -> int:
+        return len(self.unchanged)
 
 
 @dataclass(frozen=True)
@@ -159,14 +166,14 @@ def plan_candidates(
         raise ValueError("limit must be at least 1")
 
     eligible: list[Candidate] = []
-    unchanged = 0
+    unchanged: list[Candidate] = []
     for candidate in candidates:
         item = _candidate_item(candidate)
         previous = delivered.get(item.key)
         unseen = item.key not in delivered
         changed = not unseen and not _same_price(previous, candidate.listing.current_bid)
         if not (unseen or changed or repeat):
-            unchanged += 1
+            unchanged.append(candidate)
             continue
         eligible.append(
             replace(
@@ -186,7 +193,7 @@ def plan_candidates(
     return CandidateDeliveryPlan(
         candidates=selected,
         receipts=candidate_items(selected),
-        unchanged_matches=unchanged,
+        unchanged=tuple(ranked(unchanged)),
         held_back_matches=len(eligible) - len(selected),
     )
 

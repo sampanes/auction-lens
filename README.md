@@ -449,8 +449,9 @@ configuration. Both runs see the same lots, and the email receipts are what
 keep them apart: the later run omits a still-open lot when that recipient
 already accepted it at the same bid. A changed bid remains eligible, and
 unchanged lots are removed before the report cap so they cannot crowd out new
-ones. See [Delivery receipts](docs/DELIVERY.md) for retries and explicit
-resends.
+ones. What was removed is named in the report and not merely counted, because
+"2 unchanged" raises exactly one question and answers none of it. See
+[Delivery receipts](docs/DELIVERY.md) for retries and explicit resends.
 
 The report's first line names when the earliest lot closes, because that is the
 fact that decides whether the rest is worth reading now. The same fact is
@@ -691,6 +692,27 @@ A lot that states no retail states no ratio and is not judged by this. Value
 floors on individual rules are what decline an unproven claim; this judges only
 a claim that was actually made. Leave the key out and nothing is too expensive
 to report.
+
+One rule may be stricter than that, for a want that is only worth having as a
+steal:
+
+```toml
+[[interests]]
+name = "3d printing"
+maximum_retail_ratio = 0.10
+```
+
+It narrows and cannot widen -- the shared ceiling still applies -- and it is a
+share rather than a number of dollars because "cheap for what it is" does not
+survive being written in dollars: a $200 printer and a $1200 one want the same
+sentence and would need two different `max_total_cost` values.
+
+Pair it with a `minimum_score` above `80` to say "and only near the close". A
+wanted match starts at 80 and gains `ENDING_SOON_BONUS` only inside
+`ending_soon_minutes`, so any bar above 80 is unreachable outside that window.
+Together they read "unless it is late and nearly free, do not show me" -- and
+if no scheduled run fires while lots are closing, the honest consequence is
+that such a rule matches nothing at all.
 
 Valuation sources are ordinary `[[valuation.sources]]` TOML entries. Built-in
 adapters support human-reviewed XML catalogs, research-link templates, and

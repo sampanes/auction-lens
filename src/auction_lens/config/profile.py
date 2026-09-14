@@ -115,10 +115,12 @@ def _interest(number: int, rule: InterestRule, global_minimum_score: int) -> lis
             f"   Wanted: {_wanted_quantity(rule.wanted)}",
             f"   Match any: {_terms(rule.any_terms, empty='not required')}",
             f"   Match all: {_terms(rule.all_terms, empty='not required')}",
-                f"   Maximum total cost: "
+            f"   Maximum total cost: "
             f"{_optional_money(rule.max_total_cost, empty=NO_LIMIT)}",
             f"   Minimum stated retail: "
             f"{_optional_money(rule.minimum_retail, empty=NONE)}",
+            f"   Maximum share of retail: "
+            f"{_optional_share(rule.maximum_retail_ratio, empty=NO_LIMIT)}",
             f"   Minimum score: {_minimum_score(threshold)}",
             f"   Relative importance: {_number(rule.weight)}",
             f"   Conditions{policy_name}: {_condition(rule.condition)}",
@@ -229,6 +231,11 @@ def _quoted(value: str) -> str:
 
 def _optional_money(value: Decimal | None, *, empty: str) -> str:
     return empty if value is None else _money(value)
+
+
+def _optional_share(value: Decimal | None, *, empty: str) -> str:
+    """A proportion read back as a percentage, because that is how it was meant."""
+    return empty if value is None else f"{value * 100:.0f}% of stated retail"
 
 
 def _money(value: Decimal) -> str:

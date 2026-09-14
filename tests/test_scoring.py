@@ -278,6 +278,88 @@ class MinimumRetailTests(unittest.TestCase):
             InterestRule(name="x", minimum_retail=Decimal("-1"))
 
 
+class MaximumRetailShareTests(unittest.TestCase):
+    """The per-rule ceiling, for a want only worth having as a steal.
+
+    A cost ceiling in dollars cannot say "cheap for what it is": that is a
+    proportion, and it has to be rewritten every time the thing comes in a
+    different size. This says it once.
+    """
+
+    def setUp(self):
+        self.config = example_config()
+        self.listings = example_listings()
+
+    def _rule(self, **overrides):
+        settings = {
+            "name": "3d printing",
+            "any_terms": ("3d printer",),
+            "maximum_retail_ratio": Decimal("0.10"),
+        }
+        settings.update(overrides)
+        return replace(self.config, interests=(InterestRule(**settings),))
+
+    def _matches(self, config, **listing_overrides):
+        listing = replace(self.listings[SOUNDBAR], **listing_overrides)
+        scored = evaluate(listing, config)
+        return [item.rule_name for item in scored if item.category == "wanted"]
+
+    def test_a_lot_inside_the_share_is_still_wanted(self):
+        # $20 plus the example premium stays under a tenth of $400.
+        self.assertEqual(
+            self._matches(
+                self._rule(),
+                title="Creality 3D Printer",
+                current_bid=Decimal("20"),
+                estimated_retail=Decimal("400"),
+            ),
+            ["3d printing"],
+        )
+
+    def test_a_lot_bid_past_the_share_stops_being_wanted(self):
+        self.assertEqual(
+            self._matches(
+                self._rule(),
+                title="Creality 3D Printer",
+                current_bid=Decimal("120"),
+                estimated_retail=Decimal("400"),
+            ),
+            [],
+        )
+
+    def test_a_lot_stating_no_retail_states_no_share_to_exceed(self):
+        # Unlike the floor above, which declines an unproven claim, this only
+        # caps a claim that was actually made.
+        self.assertEqual(
+            self._matches(
+                self._rule(),
+                title="Creality 3D Printer",
+                current_bid=Decimal("120"),
+                estimated_retail=None,
+            ),
+            ["3d printing"],
+        )
+
+    def test_a_rule_naming_no_share_is_governed_only_by_the_shared_ceiling(self):
+        self.assertEqual(
+            self._matches(
+                self._rule(maximum_retail_ratio=None),
+                title="Creality 3D Printer",
+                current_bid=Decimal("120"),
+                estimated_retail=Decimal("400"),
+            ),
+            ["3d printing"],
+        )
+
+    def test_a_share_above_all_of_retail_is_refused(self):
+        with self.assertRaisesRegex(ValueError, "maximum_retail_ratio"):
+            InterestRule(name="x", maximum_retail_ratio=Decimal("1.5"))
+
+    def test_a_negative_share_is_refused(self):
+        with self.assertRaisesRegex(ValueError, "maximum_retail_ratio"):
+            InterestRule(name="x", maximum_retail_ratio=Decimal("-0.1"))
+
+
 class WarehouseNoteTests(unittest.TestCase):
     """What a warehouse note may and may not do to a match.
 

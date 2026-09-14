@@ -42,6 +42,10 @@ SEEN_LABEL = "Seen"
 NO_LOCATION = "unknown"
 NO_CONDITIONS = "none listed"
 
+# How many withheld titles a report names before it summarises the rest. Enough
+# to recognise what is missing, few enough to stay a footnote.
+NAMED_UNCHANGED = 8
+
 UNREVIEWED_WIN = (
     "Action needed: {count} won {lots} {have} an unreviewed finite-interest "
     "match; review {them} with watchlist --verdict won, then use watch "
@@ -162,6 +166,10 @@ class DeliverySummary:
     repeated: bool = False
     unchanged_matches: int = 0
     held_back_matches: int = 0
+    # Titles of the unchanged matches, so the count can be checked rather than
+    # only believed. Optional: the watchlist route counts without naming, and
+    # a count with no names still reads correctly.
+    unchanged_titles: tuple[str, ...] = ()
     item_singular: str = "match"
     item_plural: str = "matches"
 
@@ -170,6 +178,10 @@ class DeliverySummary:
             value = getattr(self, field_name)
             if isinstance(value, bool) or not isinstance(value, int) or value < 0:
                 raise ValueError(f"{field_name} must be a non-negative integer")
+        if len(self.unchanged_titles) > self.unchanged_matches:
+            raise ValueError(
+                "unchanged_titles cannot name more than unchanged_matches"
+            )
         for field_name in ("item_singular", "item_plural"):
             value = getattr(self, field_name)
             if not isinstance(value, str) or not value.strip():
@@ -194,6 +206,7 @@ class DeliverySummary:
             lines.append(
                 f"{self.unchanged_matches} unchanged {noun} {verb} already delivered here."
             )
+            lines.extend(self._named_unchanged())
         if self.held_back_matches:
             noun = self._noun(self.held_back_matches)
             verb = "was" if self.held_back_matches == 1 else "were"
@@ -202,6 +215,25 @@ class DeliverySummary:
                 "back by this report's limit."
             )
         return tuple(lines)
+
+    def _named_unchanged(self) -> list[str]:
+        """The withheld titles, a few at a time.
+
+        Named rather than merely counted because "2 unchanged" is a fact the
+        reader cannot act on: the only question it raises is which two, and
+        whether the one being waited on is among them.
+
+        Capped because this list rides in every rendering, including a chat
+        card with a hard content limit, and a long one would push out the
+        report it is a footnote to.
+        """
+        if not self.unchanged_titles:
+            return []
+        shown = [f"  - {title}" for title in self.unchanged_titles[:NAMED_UNCHANGED]]
+        remaining = self.unchanged_matches - len(shown)
+        if remaining:
+            shown.append(f"  - and {remaining} more, unchanged since.")
+        return shown
 
     def _noun(self, count: int) -> str:
         return self.item_singular if count == 1 else self.item_plural

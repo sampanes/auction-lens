@@ -216,6 +216,16 @@ class InterestRule:
     # says "guitar" as loudly as a guitar does, and only the value tells them
     # apart. Paired with max_total_cost: what it is worth, what it may cost.
     minimum_retail: Decimal | None = None
+    # The most of stated retail this one rule will pay, for a want that is only
+    # worth having as a steal. The shared scoring.maximum_retail_ratio says what
+    # is never worth paying for anything; this says what is not worth paying for
+    # this. It narrows and cannot widen: the shared ceiling still applies, so a
+    # rule written looser than the shared one changes nothing.
+    #
+    # A cost ceiling in dollars could not say this. "Cheap for what it is" is a
+    # proportion, and max_total_cost would have to be rewritten every time the
+    # thing being wanted came in a different size.
+    maximum_retail_ratio: Decimal | None = None
     # None is an ongoing interest. A positive count plus an explicit stable id
     # lets recorded wins retire it without making the matching rule stateful.
     wanted: int | None = None
@@ -247,6 +257,15 @@ class InterestRule:
             require_not_negative(self.max_total_cost, field_name="max_total_cost")
         if self.minimum_retail is not None:
             require_not_negative(self.minimum_retail, field_name="minimum_retail")
+        if self.maximum_retail_ratio is not None:
+            require_not_negative(
+                self.maximum_retail_ratio, field_name="maximum_retail_ratio"
+            )
+            require_at_most(
+                self.maximum_retail_ratio,
+                HIGHEST_RATE,
+                field_name="maximum_retail_ratio",
+            )
 
 
 @dataclass(frozen=True)

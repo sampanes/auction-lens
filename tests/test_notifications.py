@@ -46,6 +46,16 @@ class CandidatePlanTests(unittest.TestCase):
         self.assertEqual(plan.held_back_matches, 0)
         self.assertTrue(plan.candidates[0].change.is_new)
 
+    def test_the_withheld_matches_are_kept_so_the_report_can_name_them(self):
+        # A count alone cannot answer the only question it raises: which ones.
+        already_sent = _candidate("old", bid="10", score=90)
+        new = _candidate("new", bid="20", score=40)
+
+        plan = plan_candidates([already_sent, new], {("example", "old"): "10.00"})
+
+        self.assertEqual(_ids(plan.unchanged), ["old"])
+        self.assertEqual(plan.unchanged_matches, len(plan.unchanged))
+
     def test_a_changed_price_is_compared_with_the_last_delivered_price(self):
         candidate = replace(
             _candidate("changed", bid="12"),
