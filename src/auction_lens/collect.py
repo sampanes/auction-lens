@@ -1,8 +1,8 @@
 """The commands that get lots out of a provider and into the canonical file.
 
-These are the only commands that touch the network, which is why they are worth
-keeping together and away from everything that scores or reports. Whatever they
-write, ``run`` can read without knowing where it came from, so a parser can be
+Every command that contacts a listing provider comes through this workflow,
+which is why it stays away from everything that scores or reports. Whatever it
+writes, ``run`` can read without knowing where it came from, so a parser can be
 corrected and re-run without asking the provider a second time.
 """
 
@@ -17,8 +17,7 @@ from .config.load import load_config
 from .files import read_json, write_json_atomically
 from .listings.files import dated, unique_lots
 from .providers.http import METADATA_SUFFIX, ResponseCache, fetch_authorized_page
-from .providers.nellis.discover import discover_searches
-from .providers.nellis.parse import read_saved_page, read_search_page
+from .providers.registry import ProviderAdapter, resolve_provider
 from .providers.search_terms import search_terms
 
 PAGE_SUFFIX = ".html"
@@ -42,16 +41,25 @@ def fetch(args: argparse.Namespace) -> int:
 def discover(args: argparse.Namespace) -> int:
     """Ask the provider's search for lots, and write what it lists."""
     config = load_config(args.config)
-    return run_discovery(args, config, search_terms(config, args.search))
+    adapter = resolve_provider(config.provider.provider_id)
+    return run_discovery(
+        args, config, search_terms(config, args.search), adapter=adapter
+    )
 
 
-def run_discovery(args: argparse.Namespace, config: AppConfig, terms: list[str]) -> int:
+def run_discovery(
+    args: argparse.Namespace,
+    config: AppConfig,
+    terms: list[str],
+    *,
+    adapter: ProviderAdapter,
+) -> int:
     """Execute discovery with terms chosen by the calling workflow."""
-    captures = discover_searches(config.provider, config.acquisition, terms)
+    captures = adapter.discover_searches(config.provider, config.acquisition, terms)
 
     found = []
     for capture in captures:
-        listed = read_search_page(
+        listed = adapter.read_search_page(
             capture.path.read_text(encoding="utf-8", errors="replace"),
             source=config.provider.provider_id,
             page_url=capture.url,
@@ -77,11 +85,12 @@ def write_satisfied_discovery(output: str) -> None:
 def pull(args: argparse.Namespace) -> int:
     """Read saved provider pages into the canonical file that `run` analyses."""
     config = load_config(args.config)
+    adapter = resolve_provider(config.provider.provider_id)
     pages = _saved_pages(Path(args.input))
     rows, failures = [], []
     for page in pages:
         try:
-            listed = read_saved_page(
+            listed = adapter.read_saved_page(
                 page.read_text(encoding="utf-8", errors="replace"),
                 source=config.provider.provider_id,
                 page_url=_saved_page_url(page),

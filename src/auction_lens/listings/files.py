@@ -1,8 +1,8 @@
 """Reading the canonical listing files this project analyses.
 
 JSON and CSV are the boundary between acquiring data and analyzing it. Anything
-that can produce these two shapes -- an export, a scraper, a hand-written file --
-can feed the rest of the project without touching it.
+authorized to produce these two shapes -- a collector, an export, or a
+hand-written file -- can feed the rest of the project without touching it.
 """
 
 from __future__ import annotations

@@ -12,14 +12,11 @@ import ssl
 from dataclasses import dataclass
 from email.message import EmailMessage
 from html import escape
-from zoneinfo import ZoneInfo
 
 from ..config.reports import EmailConfig, EmailSecurity
-from ..matching.model import Candidate
 from ..watchlist.model import WatchedItem
 from ..watchlist.report import render_watchlist, render_watchlist_html
 from .destinations import destination_fingerprint
-from .findings import closing_time, soonest_close
 from .html import render_html
 from .records import NO_DELIVERY_FILTER, DeliverySummary, Report
 from .text import render_text
@@ -141,11 +138,10 @@ def _account_from_environment(config: EmailConfig) -> MailAccount:
     return MailAccount(**values)
 
 
-def _subject(template: str, candidates: list[Candidate], zone: ZoneInfo) -> str:
+def _subject(template: str, report: Report) -> str:
     """Fill the operator's subject line, leaving anything it did not ask for."""
-    soonest = soonest_close(candidates)
-    return template.replace(MATCH_COUNT_PLACEHOLDER, str(len(candidates))).replace(
-        FIRST_CLOSE_PLACEHOLDER, closing_time(soonest, zone) if soonest else "no close"
+    return template.replace(MATCH_COUNT_PLACEHOLDER, str(report.match_count)).replace(
+        FIRST_CLOSE_PLACEHOLDER, report.first_close or "no close"
     )
 
 
@@ -153,7 +149,7 @@ def _build_message(
     report: Report, config: EmailConfig, account: MailAccount
 ) -> EmailMessage:
     message = EmailMessage()
-    message["Subject"] = _subject(config.subject, report.candidates, report.zone)
+    message["Subject"] = _subject(config.subject, report)
     message["From"] = account.sender
     message["To"] = account.recipient
     message.set_content(render_text(report))

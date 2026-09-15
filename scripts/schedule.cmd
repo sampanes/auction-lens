@@ -8,17 +8,11 @@ REM
 REM install is idempotent: /f replaces a task of the same name rather than
 REM failing, so running it twice leaves exactly one of each.
 REM
-REM WHY THESE TIMES. Nothing on this provider closes before 18:00 or after
-REM 22:00, and the lots are spread almost evenly across those four hours, so
-REM there is no peak to aim at. Scored over 1009 lots the interests claim --
-REM a run landing on a lot's own close counts 1, one four hours early counts 0
-REM -- 13:00 scores zero, because at 13:00 the nearest close is five hours out.
-REM A single evening run peaks at 18:00 and captures 49% of what is there. A
-REM second at 20:00 takes it to 74%, and a third buys only nine points more.
-REM
-REM 17:55 rather than 18:00 because the run itself takes about six minutes:
-REM searches are paced ten seconds apart, so starting at 17:55 puts the data in
-REM hand as the first lots go rather than after.
+REM DEFAULT TIMES. Midday shows the board before bidding; two evening passes
+REM refresh it around common closing hours. The first evening task starts five
+REM minutes early because paced searches take time. The private delivery ledger
+REM prevents an unchanged lot from repeating across these overlapping passes.
+REM Change only the RUN declarations below when a different cadence fits better.
 setlocal
 
 set "ROOT=%~dp0.."

@@ -19,7 +19,7 @@ from ..config.interests import InterestRule
 from ..listings.model import Listing
 from .model import Candidate, CandidateCategory
 
-DISCARD_WORDS = frozenset({"discard", "remove", "reject", "drop", "no"})
+MODEL_DISCARD_WORDS = frozenset({"discard", "remove", "reject", "drop", "no"})
 KEEP_LOADED = "10m"
 SETTLED = {"temperature": 0, "top_p": 1}
 
@@ -32,25 +32,27 @@ class Verdict:
     why: str = ""
 
     @classmethod
-    def kept(cls, why: str = "") -> Verdict:
+    def matched(cls, why: str = "") -> Verdict:
         return cls(matches=True, why=why)
 
     @classmethod
-    def dropped(cls, why: str) -> Verdict:
+    def set_aside(cls, why: str) -> Verdict:
         return cls(matches=False, why=why)
 
 
 def verdict_from(answer: str) -> Verdict:
-    """Read one reply and keep the lot unless removal is unambiguous."""
+    """Read one model reply, treating only a clear discard as a mismatch."""
     try:
         decided = json.loads(answer)
     except (json.JSONDecodeError, TypeError):
-        return Verdict.kept("the judge did not answer usably")
+        return Verdict.matched("the judge did not answer usably")
     if not isinstance(decided, dict):
-        return Verdict.kept("the judge did not answer usably")
+        return Verdict.matched("the judge did not answer usably")
     why = str(decided.get("why", "")).strip()
     spoken = str(decided.get("verdict", "")).strip().lower()
-    return Verdict.dropped(why) if spoken in DISCARD_WORDS else Verdict.kept(why)
+    if spoken in MODEL_DISCARD_WORDS:
+        return Verdict.set_aside(why)
+    return Verdict.matched(why)
 
 
 class ModelUnavailable(RuntimeError):
@@ -82,7 +84,7 @@ class LocalModel:
             return False
 
     def verdict(self, instructions: str, subject: str) -> Verdict:
-        """Ask one question, treating an unreadable answer as a kept lot."""
+        """Ask one question, treating an unreadable answer as a match."""
         try:
             answer = self._ask(instructions, subject)
         except (urllib.error.URLError, OSError, TimeoutError) as problem:
@@ -113,8 +115,8 @@ class LocalModel:
             return json.load(response)["message"]["content"]
 
 
-# The judge is asked what to discard. An uncertain answer therefore leaves a
-# lot visible, while a confident rejection can lower it without hiding it.
+# Keep/discard is the model's small reply vocabulary. Internally, a confident
+# discard sets a lot aside by lowering its rank; it never deletes the lot.
 SCREENING_RULES = """You are screening auction lots for one buyer. A person
 reads whatever you keep, so keeping something poor is cheap and discarding
 something good is expensive.
@@ -158,31 +160,30 @@ def is_judgeable(rule: InterestRule) -> bool:
 
 # What a set-aside lot's weight is multiplied by.
 #
-# The judge sinks lots rather than deleting them, and the difference is the
-# whole safety of the thing. Measured against a real capture it discards
-# something good about one time in fifteen -- a plainly titled metal shed as
+# The judge sets lots aside by down-weighting rather than deleting them. That
+# distinction is the whole safety of the thing. Measured against a real capture
+# it misclassifies something good about one time in fifteen -- a metal shed as
 # "wrong material", a hedge trimmer as "not a laser level". Deleting on that
 # accuracy would reproduce the exact failure it was built to end: a lot gone
 # from the report with nobody able to tell it was ever there.
 #
-# Sinking degrades gently instead. Where a want has plenty of real lots, the
-# set-aside ones fall below reports.most_per_interest and are never seen. Where
-# it has almost none, they surface -- which is the case where a person would
-# rather look at something doubtful than at nothing.
+# Down-weighting degrades gently instead. Where a want has plenty of real lots,
+# the set-aside ones fall below reports.most_per_interest and are never seen.
+# Where it has almost none, they surface -- which is the case where a person
+# would rather look at something doubtful than at nothing.
 #
-# Small enough that no set-aside lot can outrank any kept one. A reported
+# Small enough that no set-aside lot can outrank any matched one. A reported
 # candidate has already cleared its interest's minimum_score, so the worst
 # real match scores at least 60 at the lightest weight in use (0.4, the
-# catch-all) for a priority of 24, while the best possible sunk lot reaches
-# 100 at the heaviest weight (1.5) for 15. The gap is what keeps sinking a
-# lot indistinguishable from removing it whenever there is anything real to
-# show instead.
-SET_ASIDE = Decimal("0.1")
+# catch-all) for a priority of 24, while the best possible set-aside lot reaches
+# 100 at the heaviest weight (1.5) for 15. The gap makes setting a lot aside
+# behave like exclusion whenever there is anything matched to show instead.
+SET_ASIDE_WEIGHT = Decimal("0.1")
 
 
 @dataclass(frozen=True)
 class Judgement:
-    """One verdict, kept beside enough of the lot to read it later."""
+    """One verdict, stored beside enough of the lot to read it later."""
 
     rule_name: str
     title: str
@@ -191,14 +192,14 @@ class Judgement:
 
 @dataclass(frozen=True)
 class VettingOutcome:
-    """What one pass of judging kept, and what it pushed to the bottom.
+    """Every candidate after judging, and what was pushed to the bottom.
 
     Counted rather than derived, because the report is capped afterwards and a
     reader should still be able to see "asked about 130, set aside 40" once the
     visible list has been cut to a readable length.
     """
 
-    kept: tuple[Candidate, ...] = ()
+    candidates: tuple[Candidate, ...] = ()
     judgements: tuple[Judgement, ...] = ()
     asked: int = 0
     unavailable: str = ""
@@ -221,7 +222,7 @@ def vet(
     *,
     workers: int = 4,
 ) -> VettingOutcome:
-    """Sink the candidates the judge rejects, and say why it rejected them.
+    """Set aside candidates classified as mismatches, without deleting them.
 
     A candidate is left alone when nothing about it can be judged: a lot
     reported on price rather than on want has no sentence to be measured
@@ -230,7 +231,7 @@ def vet(
     wants = {rule.interest_id: rule for rule in rules if is_judgeable(rule)}
     askable = [candidate for candidate in candidates if _is_askable(candidate, wants)]
     if not askable:
-        return VettingOutcome(kept=tuple(candidates))
+        return VettingOutcome(candidates=tuple(candidates))
 
     try:
         verdicts = _ask_about_all(askable, wants, judge, workers)
@@ -238,12 +239,12 @@ def vet(
         # Nothing is touched. A judge that cannot be reached must not be able
         # to reorder a report, because a silently unranked report looks exactly
         # like a ranked one.
-        return VettingOutcome(kept=tuple(candidates), unavailable=str(problem))
+        return VettingOutcome(candidates=tuple(candidates), unavailable=str(problem))
 
     answered = dict(zip((id(c) for c in askable), verdicts, strict=True))
     return VettingOutcome(
-        kept=tuple(
-            _settled(candidate, answered.get(id(candidate)))
+        candidates=tuple(
+            _apply_verdict(candidate, answered.get(id(candidate)))
             for candidate in candidates
         ),
         judgements=tuple(
@@ -254,12 +255,12 @@ def vet(
     )
 
 
-def _settled(candidate: Candidate, verdict: Verdict | None) -> Candidate:
-    """The candidate as the judge left it: untouched, or sunk and labelled.
+def _apply_verdict(candidate: Candidate, verdict: Verdict | None) -> Candidate:
+    """Return a candidate unchanged or set aside and labelled.
 
     The reason travels with the lot. A word list that wrongly excluded
     something said nothing at all, so nobody could tell a mistake from an
-    absence; a sunk lot arrives in the report saying exactly what it was
+    absence; a set-aside lot arrives in the report saying exactly what it was
     accused of, which is what makes the sentence above it fixable.
     """
     if verdict is None or verdict.matches:
@@ -267,7 +268,7 @@ def _settled(candidate: Candidate, verdict: Verdict | None) -> Candidate:
     said = verdict.why or "not the thing this interest asked for"
     return replace(
         candidate,
-        weight=candidate.weight * SET_ASIDE,
+        weight=candidate.weight * SET_ASIDE_WEIGHT,
         reasons=(*candidate.reasons, f"set aside by the judge: {said}"),
     )
 

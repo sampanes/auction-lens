@@ -9,19 +9,7 @@ from pathlib import Path
 
 from ..config.load import load_config
 from ..matching.progress import InterestRef
-from ..reports.delivery import (
-    DeliveryChannel,
-    DeliveryRoute,
-    ReportKind,
-    outcome_fingerprint,
-    plan_watchlist,
-    watchlist_items,
-)
-from ..reports.destinations import destination_fingerprint
-from ..reports.email import send_watchlist_email
-from ..reports.receipts import DeliveryLedger
-from ..reports.records import DeliverySummary
-from ..reports.send import delivery_failure, preflight_reports
+from ..reports.send import deliver_watchlist_email
 from ..values import parse_money
 from ..watchlist.model import Verdict, WatchedItem
 from ..watchlist.report import render_watchlist
@@ -170,60 +158,5 @@ def watchlist(args: argparse.Namespace) -> int:
             print("No selected lots; no email sent.")
             return SUCCESS
         config = load_config(args.config)
-        destinations = preflight_reports(config, args)
-        destination = destinations[DeliveryChannel.EMAIL]
-        # A filtered watchlist is a separate recurring report. Combining its
-        # public selector with the opaque destination keeps the receipt streams
-        # separate without retaining either private destination value.
-        selector = "all" if args.verdict is None else str(args.verdict)
-        route_fingerprint = destination_fingerprint(
-            f"{destination}\0watchlist-selection={selector}"
-        )
-        route = DeliveryRoute(
-            ReportKind.WATCHLIST,
-            DeliveryChannel.EMAIL,
-            route_fingerprint,
-        )
-        accepted = False
-        phase = "receipt planning"
-        try:
-            with DeliveryLedger(Path(args.delivery_ledger)).session(route) as delivery:
-                proposed = watchlist_items(items)
-                plan = plan_watchlist(
-                    items,
-                    delivery.revisions(proposed),
-                    repeat=args.repeat_delivery,
-                )
-                if not plan.items and not args.repeat_delivery:
-                    print(
-                        "Watchlist email is up to date; "
-                        f"{plan.unchanged_items} unchanged selected lot(s) were "
-                        "already delivered."
-                    )
-                    return SUCCESS
-                phase = "transport"
-                send_watchlist_email(
-                    plan.items,
-                    config.email,
-                    DeliverySummary(
-                        active=True,
-                        repeated=args.repeat_delivery,
-                        unchanged_matches=plan.unchanged_items,
-                        item_singular="selected lot",
-                        item_plural="selected lots",
-                    ),
-                )
-                accepted = True
-                phase = "local receipt"
-                delivery.accept(plan.receipts, outcome_fingerprint((), 0))
-            print(f"Emailed {len(plan.items)} selected lot(s).")
-        except (OSError, RuntimeError, ValueError) as error:
-            raise RuntimeError(
-                delivery_failure(
-                    DeliveryChannel.EMAIL,
-                    accepted,
-                    phase,
-                    error,
-                )
-            ) from error
+        deliver_watchlist_email(args, config, items)
     return SUCCESS

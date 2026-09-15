@@ -21,6 +21,8 @@ Read those four in that order for the shortest end-to-end tour.
 
 - [`providers/http.py`](../src/auction_lens/providers/http.py) enforces explicit
   authorization, identification, caching, pacing, redirect safety, and run limits.
+- [`providers/registry.py`](../src/auction_lens/providers/registry.py) maps each
+  configured provider id to the four site-specific collection operations.
 - [`providers/search_terms.py`](../src/auction_lens/providers/search_terms.py)
   decides which configured phrases a discovery run asks for.
 - [`providers/nellis/discover.py`](../src/auction_lens/providers/nellis/discover.py)
@@ -52,7 +54,8 @@ listing is desirable.
 - [`matching/text.py`](../src/auction_lens/matching/text.py) owns literal phrase
   and accessory-context matching.
 - [`matching/judge.py`](../src/auction_lens/matching/judge.py) optionally asks a
-  local model whether a broad word match is actually the requested thing.
+  local model whether a broad word match is actually the requested thing; an
+  explicit mismatch is down-ranked and labelled, never deleted.
 - [`matching/logistics.py`](../src/auction_lens/matching/logistics.py) turns size,
   seller assistance, and saved handling decisions into a practical status.
 - [`matching/model.py`](../src/auction_lens/matching/model.py) defines candidate
@@ -62,7 +65,7 @@ listing is desirable.
 - [`matching/searches.py`](../src/auction_lens/matching/searches.py) finds a few
   provider search phrases for crowded report sections.
 
-[`tests/test_scoring.py`](../tests/test_scoring.py),
+[`tests/test_matching.py`](../tests/test_matching.py),
 [`tests/test_judging.py`](../tests/test_judging.py), and
 [`tests/test_sections.py`](../tests/test_sections.py) are executable examples of
 those decisions.
@@ -117,8 +120,8 @@ pins the important meaning across text, HTML, email, and webhook output.
   what changed between listing observations.
 - [`history/logistics.py`](../src/auction_lens/history/logistics.py) stores
   per-listing handling decisions.
-- [`history/sales.py`](../src/auction_lens/history/sales.py) reads and explains
-  closing-price floors.
+- [`history/closing_prices.py`](../src/auction_lens/history/closing_prices.py)
+  reads and explains closing-price floors.
 - [`watchlist/model.py`](../src/auction_lens/watchlist/model.py) defines human
   verdicts, price trails, and fulfillment evidence.
 - [`watchlist/store.py`](../src/auction_lens/watchlist/store.py) preserves the
@@ -151,7 +154,7 @@ Credentials and contact values belong in ignored `.env`, not in TOML.
 - The large workflows have plain top-level names: `setup.py`, `doctor.py`,
   `collect.py`, and `daily.py`.
 - The remaining [`cli/`](../src/auction_lens/cli/) modules adapt inherently
-  interactive watchlist, logistics, and sales actions.
+  interactive watchlist and logistics actions plus the local `sold` query.
 
 The exact public surface is frozen by
 [`tests/contracts/test_cli_surface.py`](../tests/contracts/test_cli_surface.py).

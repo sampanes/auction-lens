@@ -223,6 +223,7 @@ have rather than memorizing a dependency diagram:
 - [Architecture](docs/ARCHITECTURE.md) - workflow ownership and dependency rules.
 - [Conventions](docs/CONVENTIONS.md) - how code should read and where additions go.
 - [Simplicity](docs/SIMPLICITY.md) - the standard every design change is judged by.
+- [Changelog](CHANGELOG.md) - what each tagged release changed for a person.
 
 Operator guides:
 

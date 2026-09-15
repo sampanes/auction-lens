@@ -58,7 +58,7 @@ class ProfileEditorCommandTests(unittest.TestCase):
             config = _config_copy(directory)
             original = config.read_bytes()
             with patch("auction_lens.cli.load_env_file") as load_env:
-                with patch("auction_lens.collect.discover_searches") as discover:
+                with patch("auction_lens.collect.resolve_provider") as provider:
                     with patch("auction_lens.collect.fetch_authorized_page") as fetch:
                         with patch("auction_lens.daily.load_listings") as listings:
                             with patch("auction_lens.daily.Database") as database:
@@ -72,7 +72,7 @@ class ProfileEditorCommandTests(unittest.TestCase):
             self.assertNotEqual(config.read_bytes(), original)
 
         load_env.assert_not_called()
-        discover.assert_not_called()
+        provider.assert_not_called()
         fetch.assert_not_called()
         listings.assert_not_called()
         database.assert_not_called()

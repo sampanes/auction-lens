@@ -38,7 +38,7 @@ optional delivery.
 | Directory | Owns |
 |---|---|
 | `config/` | Feature-owned records for provider, interests, pricing, reports, logistics, and the assembled app; TOML loading and profile editing |
-| `providers/` | Authorized HTTP behavior plus provider-specific discovery and parsing |
+| `providers/` | Explicit provider registration, authorized HTTP behavior, and site-specific discovery and parsing |
 | `listings/` | The canonical provider-neutral listing, file formats, and condition evidence |
 | `matching/` | Admission gates, interests, optional judging, logistics, ranking, and finite progress |
 | `pricing/` | Configurable value sources, evidence provenance, and aggregation |

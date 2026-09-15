@@ -23,7 +23,8 @@ class Verdict(StrEnum):
     """What a person has decided about a lot they are following.
 
     This is the person's own word, and is nothing to do with the provider's
-    condition tags. Those live in ``grading`` and are the lot's, not theirs.
+    condition tags. Those live in ``listings/conditions.py`` and are the lot's,
+    not theirs.
     """
 
     # Declared in the order a person reads them: what is being chased first,
@@ -57,56 +58,6 @@ class PriceReading:
         require_not_negative(self.current_bid, field_name="current_bid")
         require_not_negative(self.total_cost, field_name="total_cost")
         require_not_negative(self.bid_count, field_name="bid_count")
-
-
-@dataclass(frozen=True)
-class ClosingPrice:
-    """The last bid seen on a lot while it was still open.
-
-    What a lot actually sold for is not knowable here. The provider never
-    publishes a hammer price, and a closed lot drops off the pages this reads,
-    so the final bid is always one look too late. What is knowable is a floor:
-    the lot sold for *at least* this much.
-
-    ``seen_minutes_before_close`` says how tight that floor is, and is the
-    whole value of the record. A bid read three minutes before the close is
-    nearly the sale price; the same bid read six hours before says almost
-    nothing. Every reader has to be able to tell those apart, so the two facts
-    travel together and neither is stored without the other.
-    """
-
-    source: str
-    listing_id: str
-    title: str
-    url: str
-    last_bid: Decimal
-    ends_at: datetime
-    last_seen_at: datetime
-    bid_count: int = 0
-    estimated_retail: Decimal | None = None
-
-    def __post_init__(self) -> None:
-        require_not_negative(self.last_bid, field_name="last_bid")
-        require_not_negative(self.bid_count, field_name="bid_count")
-        if self.last_seen_at > self.ends_at:
-            raise ValueError("last_seen_at must not be later than ends_at")
-
-    @property
-    def key(self) -> str:
-        """The key a person copies to say which lot they mean."""
-        return key_of(self.source, self.listing_id)
-
-    @property
-    def seen_minutes_before_close(self) -> int:
-        """How long before the close this bid was true, rounded down."""
-        return int((self.ends_at - self.last_seen_at).total_seconds() // 60)
-
-    @property
-    def share_of_retail(self) -> Decimal | None:
-        """The floor price against the provider's estimate, when there is one."""
-        if not self.estimated_retail:
-            return None
-        return self.last_bid / self.estimated_retail
 
 
 @dataclass(frozen=True)

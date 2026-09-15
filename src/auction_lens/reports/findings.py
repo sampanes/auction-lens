@@ -11,10 +11,12 @@ Nothing in this module knows about terminals, markup, or escaping.
 
 from __future__ import annotations
 
-from collections import defaultdict
+from collections import defaultdict, deque
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
+from ..listings.conditions import Tag
+from ..listings.model import Listing
 from ..matching.logistics import LogisticsStatus
 from ..matching.model import Candidate, InterestHarvest, ReadingOrder, ranked
 from ..matching.progress import InterestProgress
@@ -23,11 +25,11 @@ from ..pricing.model import ValuationBand, ValuationSummary
 from .records import (
     NO_DELIVERY_FILTER,
     DeliverySummary,
-    Fact,
     Finding,
     Group,
     Handling,
     Link,
+    ListingFacts,
     OutcomeSummary,
     Photo,
     Report,
@@ -45,7 +47,6 @@ NEW_LABEL = "New"
 PRICE_CHANGED_LABEL = "Price changed"
 SEEN_LABEL = "Seen"
 
-NO_LOCATION = "unknown"
 NO_CONDITIONS = "none listed"
 
 UNREVIEWED_WIN = (
@@ -83,21 +84,27 @@ def build_report(
             if delivery.active and not delivery.repeated
             else EMPTY_REPORT
         )
-        return Report(
-            headline=headline, zone=zone, order=order,
-            outcomes=outcomes, delivery=delivery,
-        )
-    sections = _by_section(candidates, order)
+        return Report(headline=headline, outcomes=outcomes, delivery=delivery)
+
+    ordered = ranked(candidates, order=order)
+    priority_ranks: dict[int, deque[int]] = defaultdict(deque)
+    for position, candidate in enumerate(ranked(candidates)):
+        priority_ranks[id(candidate)].append(position)
+    findings = tuple(
+        _finding(candidate, zone, priority_ranks[id(candidate)].popleft())
+        for candidate in ordered
+    )
+    sections = _by_section(ordered, findings)
+    first_close = closing_time(soonest_close(candidates), zone)
     return Report(
-        headline=_headline(candidates, zone),
-        zone=zone,
-        candidates=tuple(candidates),
-        order=order,
+        headline=_headline(len(findings), first_close),
+        findings=findings,
+        first_close=first_close,
         searches=_hints_without_a_section(searches, set(sections)),
         outcomes=outcomes,
         delivery=delivery,
         groups=tuple(
-            _group(name, items, zone, harvest, searches)
+            _group(name, items, harvest, searches)
             for name, items in sections.items()
         ),
     )
@@ -105,8 +112,7 @@ def build_report(
 
 def _group(
     name: str,
-    items: list[Candidate],
-    zone: ZoneInfo,
+    items: list[Finding],
     harvest: tuple[InterestHarvest, ...],
     searches: tuple[SearchHint, ...],
 ) -> Group:
@@ -114,7 +120,7 @@ def _group(
     withheld = next((tally.withheld for tally in harvest if tally.name == name), 0)
     return Group(
         title=readable(name),
-        findings=tuple(_finding(item, zone) for item in items),
+        findings=tuple(items),
         withheld=withheld,
         # A phrase is only a shortcut when there is something to reach with it.
         searches=tuple(hint for hint in searches if hint.rule == name) if withheld else (),
@@ -171,18 +177,17 @@ def _progress_line(progress: InterestProgress) -> str:
     )
 
 
-def _headline(candidates: list[Candidate], zone: ZoneInfo) -> str:
+def _headline(match_count: int, first_close: str) -> str:
     """How many, and how long there is before the first one is gone.
 
     The deadline belongs in the first line because it is the only fact that
     decides whether the rest is worth reading now or after dinner.
     """
-    soonest = soonest_close(candidates)
-    if soonest is None:
-        return f"Auction Lens found {len(candidates)} match(es)."
+    if not first_close:
+        return f"Auction Lens found {match_count} match(es)."
     return (
-        f"Auction Lens found {len(candidates)} match(es); "
-        f"the first closes {closing_time(soonest, zone)}."
+        f"Auction Lens found {match_count} match(es); "
+        f"the first closes {first_close}."
     )
 
 
@@ -199,10 +204,9 @@ def soonest_close(candidates: list[Candidate]) -> datetime | None:
 def closing_time(ends_at: datetime | None, zone: ZoneInfo) -> str:
     """When bidding ends, in the provider's local time, or "" if unstated.
 
-    Shared with the webhook so that both reports say a closing time the same
-    way. Every lot seen so far states one, so an empty answer means the page
-    changed shape rather than that this lot runs forever -- which is why
-    nothing here invents a substitute for a time it was not given.
+    Every lot seen so far states one, so an empty answer means the page changed
+    shape rather than that this lot runs forever. The projection retains that
+    absence so each medium can say or omit it honestly.
     """
     if ends_at is None:
         return ""
@@ -215,9 +219,9 @@ def readable(identifier: str) -> str:
 
 
 def _by_section(
-    candidates: list[Candidate], order: ReadingOrder
-) -> dict[str, list[Candidate]]:
-    """Group findings by what they are one of, ordering the groups to read.
+    candidates: list[Candidate], findings: tuple[Finding, ...]
+) -> dict[str, list[Finding]]:
+    """Group an already ordered projection by what each finding is one of.
 
     Ordering only, never selection: which lots are worth reporting was
     already decided against the bars, and a reader preferring to see the
@@ -226,18 +230,19 @@ def _by_section(
     Sections arrive in the order their best lot did, so the strongest thing
     found today is still the first thing read.
     """
-    grouped: dict[str, list[Candidate]] = defaultdict(list)
-    for candidate in ranked(candidates, order=order):
-        grouped[candidate.section].append(candidate)
+    grouped: dict[str, list[Finding]] = defaultdict(list)
+    for candidate, finding in zip(candidates, findings, strict=True):
+        grouped[candidate.section].append(finding)
     return grouped
 
 
-def _finding(candidate: Candidate, zone: ZoneInfo) -> Finding:
+def _finding(candidate: Candidate, zone: ZoneInfo, priority_rank: int) -> Finding:
     return Finding(
         title=candidate.listing.title,
         change=_change(candidate),
         score=candidate.score,
-        facts=_facts(candidate, zone),
+        priority_rank=priority_rank,
+        facts=_listing_facts(candidate, zone),
         reasons=candidate.reasons,
         url=candidate.listing.url,
         photos=_photos(candidate),
@@ -278,22 +283,36 @@ def _change(candidate: Candidate) -> str:
     return SEEN_LABEL
 
 
-def _facts(candidate: Candidate, zone: ZoneInfo) -> tuple[Fact, ...]:
-    """The money first, then where and when the lot has to be dealt with."""
+def _listing_facts(candidate: Candidate, zone: ZoneInfo) -> ListingFacts:
+    """Project every listing value a report medium may need exactly once."""
     listing = candidate.listing
-    facts = [
-        Fact("Bid", f"${listing.current_bid}"),
-        Fact("Estimated total", f"${candidate.total_cost}"),
-    ]
-    if listing.estimated_retail:
-        facts.append(Fact("Retail", f"${listing.estimated_retail}"))
-    closes = closing_time(listing.ends_at, zone)
-    if closes:
-        facts.append(Fact("Closes", closes))
-    facts.append(Fact("Location", listing.location or NO_LOCATION))
-    facts.append(Fact("Conditions", ", ".join(listing.conditions) or NO_CONDITIONS))
-    facts.append(Fact("Watch key", candidate.listing.key))
-    return tuple(facts)
+    return ListingFacts(
+        bid=f"${listing.current_bid}",
+        total_cost=f"${candidate.total_cost}",
+        retail=f"${listing.estimated_retail}" if listing.estimated_retail else "",
+        retail_ratio=(
+            f"{candidate.retail_ratio:.0%}" if candidate.retail_ratio is not None else ""
+        ),
+        closes=closing_time(listing.ends_at, zone),
+        location=listing.location,
+        conditions=_conditions(listing),
+        condition_severity=_condition_severity(listing),
+        watch_key=listing.key,
+    )
+
+
+def _conditions(listing: Listing) -> str:
+    """One condition sentence shared by full reports and compact cards."""
+    return ", ".join(listing.conditions) or NO_CONDITIONS
+
+
+def _condition_severity(listing: Listing) -> Tag:
+    """The most concerning provider tag, used only to colour compact cards."""
+    tags = {tag.tag for tag in listing.grade.tags} if listing.grade else set()
+    for severity in (Tag.RED, Tag.AMBER):
+        if severity in tags:
+            return severity
+    return Tag.GREEN
 
 
 def _handling(candidate: Candidate) -> Handling:

@@ -44,7 +44,7 @@ class FollowedListing:
     """One reportable lot and the interests that caused it to be followed.
 
     This small named record keeps the storage boundary readable. A bare tuple
-    made it too easy for the pipeline and the watchlist to disagree as the
+    made it too easy for analysis and the watchlist to disagree as the
     information remembered about a match grew.
     """
 

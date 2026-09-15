@@ -142,6 +142,37 @@ class MessageShapeTests(unittest.TestCase):
         )
         self.assertEqual([card["title"] for card in capped["embeds"]], ["Priority first"])
 
+    def test_a_cap_selects_by_priority_before_ordering_across_sections(self):
+        template = _candidates()[0]
+
+        def candidate(identifier, title, section, retail, score):
+            return replace(
+                template,
+                listing=replace(
+                    template.listing,
+                    listing_id=identifier,
+                    title=title,
+                    estimated_retail=Decimal(retail),
+                ),
+                rule_name=section,
+                score=score,
+            )
+
+        candidates = [
+            candidate("retail", "Retail leader", "alpha", "900", 40),
+            candidate("priority", "Priority leader", "beta", "500", 90),
+            candidate("runner-up", "Priority runner-up", "alpha", "100", 80),
+        ]
+        message = build_message(
+            build_report(candidates, REPORT_ZONE, order=ReadingOrder.RETAIL),
+            replace(self.config, max_items=2),
+        )
+
+        self.assertEqual(
+            [card["title"] for card in message["embeds"]],
+            ["Priority leader", "Priority runner-up"],
+        )
+
     def test_finding_nothing_still_says_so(self):
         message = build_message(build_report([], REPORT_ZONE), self.config)
         self.assertEqual(message["embeds"], [])

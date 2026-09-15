@@ -92,7 +92,7 @@ def _hint_note(hint: SearchHint) -> str:
 def _finding_lines(finding: Finding) -> Iterator[str]:
     yield f"[{finding.change.upper()}] {finding.title}"
     yield f"Score {finding.score}"
-    yield from _fact_lines(finding.facts)
+    yield from _fact_lines(finding.facts.full_report)
     yield f"Why: {'; '.join(finding.reasons)}"
     yield from _handling_lines(finding.handling)
     yield finding.url

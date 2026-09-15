@@ -24,6 +24,7 @@ from .listings.files import load_listings
 from .matching.analyze import analyze_listings
 from .matching.progress import plan_interests
 from .pricing.value import ValuationEngine
+from .providers.registry import resolve_provider
 from .providers.search_terms import daily_search_terms
 from .reports.delivery import DeliveryChannel
 from .reports.findings import build_report
@@ -40,6 +41,7 @@ def daily(args: argparse.Namespace) -> int:
     but nobody wants to type both every morning.
     """
     config = _with_todays_trips(load_config(args.config), args.visiting)
+    adapter = resolve_provider(config.provider.provider_id)
     destinations = preflight_reports(config, args)
     watchlist = WatchlistStore(Path(args.watchlist))
     plan = plan_interests(config.interests, watchlist.items())
@@ -52,7 +54,7 @@ def daily(args: argparse.Namespace) -> int:
     ):
         write_satisfied_discovery(args.output)
     else:
-        run_discovery(args, config, terms)
+        run_discovery(args, config, terms, adapter=adapter)
     run_args = argparse.Namespace(**{**vars(args), "input": args.output})
     return _score_and_report(run_args, config, watchlist, destinations)
 

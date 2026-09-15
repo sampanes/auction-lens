@@ -9,11 +9,15 @@ reasoning lives here once rather than in each command.
 from __future__ import annotations
 
 import argparse
+from collections.abc import Iterator
+from contextlib import contextmanager
+from dataclasses import dataclass
 from pathlib import Path
 
 from ..config.app import AppConfig
 from ..matching.analyze import AnalysisResult, follow_candidates
 from ..matching.model import Candidate, harvest_of
+from ..watchlist.model import WatchedItem
 from ..watchlist.store import WatchlistStore
 from .delivery import (
     DeliveryChannel,
@@ -22,8 +26,11 @@ from .delivery import (
     candidate_items,
     outcome_fingerprint,
     plan_candidates,
+    plan_watchlist,
+    watchlist_items,
 )
-from .email import email_destination, send_email
+from .destinations import destination_fingerprint
+from .email import email_destination, send_email, send_watchlist_email
 from .findings import build_report
 from .receipts import DeliveryLedger
 from .records import DeliverySummary
@@ -32,6 +39,27 @@ from .webhook import (
     webhook_destination,
     webhook_item_limit,
 )
+
+
+@dataclass
+class _DeliveryAttempt:
+    """Remember which side of the remote/local ambiguity an attempt reached."""
+
+    channel: DeliveryChannel
+    accepted: bool = False
+    phase: str = "receipt planning"
+
+    @contextmanager
+    def transport(self) -> Iterator[None]:
+        """Cross the remote boundary, then mark later failures as local."""
+        self.phase = "transport"
+        yield
+        self.accepted = True
+        self.phase = "local receipt"
+
+    def failure(self, error: BaseException) -> str:
+        """Describe the safe recovery for the furthest completed phase."""
+        return _delivery_failure(self.channel, self.accepted, self.phase, error)
 
 
 def preflight_reports(
@@ -78,8 +106,7 @@ def deliver_findings(
     additionally_followed = 0
     failures = []
     for channel, fingerprint in destinations.items():
-        accepted = False
-        phase = "receipt planning"
+        attempt = _DeliveryAttempt(channel)
         try:
             route = DeliveryRoute(ReportKind.FINDINGS, channel, fingerprint)
             with ledger.session(route) as delivery:
@@ -105,10 +132,14 @@ def deliver_findings(
                     ),
                     held_back_matches=plan.held_back_matches,
                 )
-                phase = "transport"
-                _send_findings(channel, plan.candidates, config, result, note)
-                accepted = True
-                phase = "local receipt"
+                with attempt.transport():
+                    _send_findings(
+                        channel,
+                        plan.candidates,
+                        config,
+                        result,
+                        note,
+                    )
                 additionally_followed += follow_candidates(
                     plan.candidates,
                     result.all_candidates,
@@ -117,8 +148,59 @@ def deliver_findings(
                 delivery.accept(plan.receipts, summary)
             _report_delivery_sent(channel, len(plan.candidates), config)
         except (OSError, RuntimeError, ValueError) as error:
-            failures.append(delivery_failure(channel, accepted, phase, error))
+            failures.append(attempt.failure(error))
     return additionally_followed, failures
+
+
+def deliver_watchlist_email(
+    args: argparse.Namespace,
+    config: AppConfig,
+    items: tuple[WatchedItem, ...],
+) -> None:
+    """Email one selected watchlist and save its receipt after acceptance."""
+    destination = preflight_reports(config, args)[DeliveryChannel.EMAIL]
+    selector = "all" if args.verdict is None else str(args.verdict)
+    # Each public selector is a separate recurring report. Combining it with
+    # the opaque destination keeps those receipt streams separate without
+    # retaining either private destination value.
+    route = DeliveryRoute(
+        ReportKind.WATCHLIST,
+        DeliveryChannel.EMAIL,
+        destination_fingerprint(
+            f"{destination}\0watchlist-selection={selector}"
+        ),
+    )
+    attempt = _DeliveryAttempt(DeliveryChannel.EMAIL)
+    try:
+        ledger = DeliveryLedger(Path(args.delivery_ledger))
+        with ledger.session(route) as delivery:
+            proposed = watchlist_items(items)
+            plan = plan_watchlist(
+                items,
+                delivery.revisions(proposed),
+                repeat=args.repeat_delivery,
+            )
+            if not plan.items and not args.repeat_delivery:
+                print(
+                    "Watchlist email is up to date; "
+                    f"{plan.unchanged_items} unchanged selected lot(s) were "
+                    "already delivered."
+                )
+                return
+
+            note = DeliverySummary(
+                active=True,
+                repeated=args.repeat_delivery,
+                unchanged_matches=plan.unchanged_items,
+                item_singular="selected lot",
+                item_plural="selected lots",
+            )
+            with attempt.transport():
+                send_watchlist_email(plan.items, config.email, note)
+            delivery.accept(plan.receipts, outcome_fingerprint((), 0))
+        print(f"Emailed {len(plan.items)} selected lot(s).")
+    except (OSError, RuntimeError, ValueError) as error:
+        raise RuntimeError(attempt.failure(error)) from error
 
 
 def _delivery_limit(channel: DeliveryChannel, config: AppConfig) -> int | None:
@@ -175,7 +257,7 @@ def _report_delivery_sent(
         print(f"Posted {count} match(es) to the webhook.")
 
 
-def delivery_failure(
+def _delivery_failure(
     channel: DeliveryChannel,
     accepted: bool,
     phase: str,

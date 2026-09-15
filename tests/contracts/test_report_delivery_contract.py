@@ -24,7 +24,7 @@ from auction_lens.reports.findings import build_report
 from auction_lens.reports.html import render_html
 from auction_lens.reports.records import DeliverySummary
 from auction_lens.reports.text import render_text
-from auction_lens.reports.webhook import send_webhook
+from auction_lens.reports.webhook import build_message, send_webhook
 
 ROOT = Path(__file__).resolve().parents[2]
 EXAMPLE_CONFIG = ROOT / "config" / "providers" / "nellis.example.toml"
@@ -150,6 +150,7 @@ class DailyReportDeliveryContract(unittest.TestCase):
                 errors=("synthetic guide: temporarily unavailable",),
             ),
         )
+        self.candidate = wanted
         self.config = config
         self.report = build_report(
             [wanted],
@@ -266,7 +267,7 @@ class DailyReportDeliveryContract(unittest.TestCase):
                         {"name": "Closes", "value": "Mon 19:30 MST", "inline": True},
                         {
                             "name": "Condition",
-                            "value": "Used, Missing Parts Unknown",
+                            "value": "used, missing parts unknown",
                             "inline": False,
                         },
                         {
@@ -283,6 +284,28 @@ class DailyReportDeliveryContract(unittest.TestCase):
                 }
             ],
         )
+
+    def test_provider_condition_words_are_identical_in_every_channel(self):
+        candidate = replace(
+            self.candidate,
+            listing=replace(
+                self.candidate.listing,
+                conditions=("Used", "No Damage"),
+            ),
+        )
+        report = build_report([candidate], REPORT_ZONE)
+        plain = render_text(report)
+        markup = unescape(render_html(report))
+        payload = build_message(report, WebhookConfig(enabled=True))
+        condition = next(
+            field["value"]
+            for field in payload["embeds"][0]["fields"]
+            if field["name"] == "Condition"
+        )
+
+        self.assertEqual(condition, "Used, No Damage")
+        self.assertIn("Conditions: Used, No Damage", plain)
+        self.assertIn("Conditions: Used, No Damage", markup)
 
 
 if __name__ == "__main__":

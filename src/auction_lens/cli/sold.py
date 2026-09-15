@@ -6,8 +6,8 @@ import argparse
 from datetime import UTC, datetime
 
 from ..config.load import load_config
+from ..history.closing_prices import ClosingPriceStore, render_closing_prices
 from ..history.database import Database
-from ..history.sales import ClosingPriceStore, render_closing_prices
 from ..matching.text import mentions
 from .exit_codes import SUCCESS
 

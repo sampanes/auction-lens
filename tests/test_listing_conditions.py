@@ -18,7 +18,7 @@ def _samples() -> list[dict]:
 
 
 def _canonical_grade(sample: dict) -> dict[str, str]:
-    """Rename a recorded sample's axes the same way the ingest adapter does."""
+    """Rename a recorded sample's axes the same way the provider parser does."""
     return canonical_grade(sample["grade"])
 
 

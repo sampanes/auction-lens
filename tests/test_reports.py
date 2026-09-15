@@ -335,7 +335,7 @@ class ReadingOrderTests(unittest.TestCase):
             fact.value
             for group in report.groups
             for finding in group.findings
-            for fact in finding.facts
+            for fact in finding.facts.full_report
             if fact.label == "Retail"
         ]
         self.assertEqual(shown, ["$900", "$300", "$120"])
@@ -661,15 +661,25 @@ class BothRenderingsSayTheSameThingTests(unittest.TestCase):
         self.report = build_report(self.candidates, REPORT_ZONE)
 
     def _findings(self):
-        return [finding for group in self.report.groups for finding in group.findings]
+        return list(self.report.findings)
 
     def test_every_fact_reaches_both_renderings(self):
         plain = render_text(build_report(self.candidates, REPORT_ZONE))
         markup = render_html(build_report(self.candidates, REPORT_ZONE))
         for finding in self._findings():
-            for fact in finding.facts:
+            for fact in finding.facts.full_report:
                 self.assertIn(fact.value, plain, f"{fact.label} missing from text")
                 self.assertIn(fact.value, markup, f"{fact.label} missing from HTML")
+
+    def test_report_keeps_one_projection_not_the_candidates_behind_it(self):
+        grouped = tuple(
+            finding for group in self.report.groups for finding in group.findings
+        )
+
+        self.assertNotIn("candidates", vars(self.report))
+        self.assertEqual(grouped, self.report.findings)
+        for projected, grouped_finding in zip(self.report.findings, grouped, strict=True):
+            self.assertIs(projected, grouped_finding)
 
     def test_every_open_handling_question_reaches_both_renderings(self):
         plain = render_text(build_report(self.candidates, REPORT_ZONE))
@@ -777,22 +787,25 @@ class SubjectPlaceholderTests(unittest.TestCase):
         ]
 
     def test_both_placeholders_are_filled(self):
+        report = build_report(self.candidates, REPORT_ZONE)
         subject = _subject(
             "{{ match_count }} lots, first closes {{ first_close }}",
-            self.candidates,
-            REPORT_ZONE,
+            report,
         )
         self.assertEqual(
             subject, f"{len(self.candidates)} lots, first closes Mon 19:30 MST"
         )
 
     def test_a_subject_asking_for_neither_is_left_exactly_as_written(self):
-        self.assertEqual(_subject("Auction Lens", self.candidates, REPORT_ZONE), "Auction Lens")
+        report = build_report(self.candidates, REPORT_ZONE)
+        self.assertEqual(_subject("Auction Lens", report), "Auction Lens")
 
     def test_a_close_nobody_stated_does_not_leave_the_placeholder_showing(self):
         silent = [
             replace(item, listing=replace(item.listing, ends_at=None))
             for item in self.candidates
         ]
-        subject = _subject("first closes {{ first_close }}", silent, REPORT_ZONE)
+        subject = _subject(
+            "first closes {{ first_close }}", build_report(silent, REPORT_ZONE)
+        )
         self.assertNotIn("{{", subject)

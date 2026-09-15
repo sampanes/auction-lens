@@ -12,7 +12,7 @@ import argparse
 from .config.app import AppConfig
 from .config.load import load_config
 from .config.provider import RunMode
-from .providers.nellis.discover import check_discovery_ready
+from .providers.registry import resolve_provider
 from .providers.search_terms import search_terms
 from .reports.send import preflight_reports
 
@@ -20,11 +20,14 @@ from .reports.send import preflight_reports
 def doctor(args: argparse.Namespace) -> int:
     """Check a daily run's local prerequisites without changing state or using network."""
     config = load_config(args.config)
+    adapter = resolve_provider(config.provider.provider_id)
     if config.acquisition.run_mode != RunMode.PRODUCTION:
         raise RuntimeError(
             "scheduled runs require [provider.acquisition] run_mode = \"production\""
         )
-    check_discovery_ready(config.provider, config.acquisition, search_terms(config, []))
+    adapter.check_discovery_ready(
+        config.provider, config.acquisition, search_terms(config, [])
+    )
     print(f"[OK] {args.config}: discovery is configured and authorized.")
 
     requested = _destinations(config, args)

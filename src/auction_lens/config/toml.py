@@ -5,7 +5,8 @@ reader reports the full key path that has to change.
 
 TOML is already typed, so this module never coerces: a value written as the
 wrong kind of thing is an operator mistake worth reporting, not something to be
-quietly converted. Whole-record rules live in ``schema``; reusable primitive
+quietly converted. Whole-record rules live in the feature configuration
+records; reusable primitive
 checks live in ``values`` alongside the checks applied to listing input.
 """
 

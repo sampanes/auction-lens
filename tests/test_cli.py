@@ -24,6 +24,7 @@ from auction_lens.history.observations import ObservationStore
 from auction_lens.listings.files import load_listings
 from auction_lens.matching.progress import InterestRef
 from auction_lens.providers.nellis.discover import SearchCapture
+from auction_lens.providers.registry import resolve_provider
 from auction_lens.watchlist.model import Verdict, WatchedItem
 from auction_lens.watchlist.store import WatchlistStore
 from support import EXAMPLE_CONFIG, ROOT, SYNTHETIC_LISTINGS, temporary_directory
@@ -268,7 +269,7 @@ class DeliveryLedgerCommandTests(unittest.TestCase):
             second = run_cli([*argv, "--email"])
 
         self.assertEqual(send_email.call_count, 1)
-        self.assertEqual(_emailed(send_email).candidates, ())
+        self.assertEqual(_emailed(send_email).match_count, 0)
         self.assertIn("Emailed 0 match", first)
         self.assertIn("outcome summary is unchanged", second)
 
@@ -384,14 +385,13 @@ class DeliveryLedgerCommandTests(unittest.TestCase):
             run_cli([*argv, "--email"])
 
         self.assertEqual(send_email.call_count, 2)
-        resent = _emailed(send_email).candidates
+        resent = _emailed(send_email).findings
         self.assertEqual(
-            {candidate.listing.listing_id for candidate in resent},
-            {"synthetic-001"},
+            {finding.facts.watch_key for finding in resent},
+            {"nellis/synthetic-001"},
         )
-        self.assertTrue(all(candidate.change.price_changed for candidate in resent))
         self.assertTrue(
-            all(candidate.change.previous_bid == Decimal("18") for candidate in resent)
+            all(finding.change.startswith("Price changed from $18") for finding in resent)
         )
 
     @patch("auction_lens.reports.send.email_destination", return_value="a" * 64)
@@ -422,7 +422,7 @@ class DeliveryLedgerCommandTests(unittest.TestCase):
 
         self.assertEqual(send_email.call_count, 2)
         report = _emailed(send_email)
-        self.assertEqual(report.candidates, ())
+        self.assertEqual(report.match_count, 0)
         # Asserted on the worded line rather than the record behind it: what
         # matters is that the reader is told the want is finished.
         self.assertIn("soundbar: 1/1 fulfilled; retired", report.outcomes.progress)
@@ -822,8 +822,8 @@ class WatchlistCommandTests(unittest.TestCase):
                     ]
                 )
 
-    @patch("auction_lens.cli.watchlist.send_watchlist_email")
-    def test_an_empty_selection_does_not_send_an_email(self, send_watchlist_email):
+    @patch("auction_lens.cli.watchlist.deliver_watchlist_email")
+    def test_an_empty_selection_does_not_send_an_email(self, deliver_watchlist_email):
         with temporary_directory() as directory:
             message = run_cli(
                 [
@@ -841,11 +841,11 @@ class WatchlistCommandTests(unittest.TestCase):
                     "--email",
                 ]
             )
-        send_watchlist_email.assert_not_called()
+        deliver_watchlist_email.assert_not_called()
         self.assertIn("No selected lots; no email sent", message)
 
     @patch("auction_lens.reports.send.email_destination", return_value="0" * 64)
-    @patch("auction_lens.cli.watchlist.send_watchlist_email")
+    @patch("auction_lens.reports.send.send_watchlist_email")
     def test_email_sends_only_the_selected_verdict(
         self, send_watchlist_email, email_destination
     ):
@@ -885,7 +885,7 @@ class WatchlistCommandTests(unittest.TestCase):
         email_destination.assert_called_once()
 
     @patch("auction_lens.reports.send.email_destination", return_value="a" * 64)
-    @patch("auction_lens.cli.watchlist.send_watchlist_email")
+    @patch("auction_lens.reports.send.send_watchlist_email")
     def test_watchlist_email_suppresses_unchanged_items_and_repeat_overrides_it(
         self, send_watchlist_email, _email_destination
     ):
@@ -918,6 +918,76 @@ class WatchlistCommandTests(unittest.TestCase):
         self.assertIn("already delivered", unchanged)
         self.assertIn("Emailed 1 selected lot", repeated)
         self.assertTrue(send_watchlist_email.call_args.args[-1].repeated)
+
+    @patch("auction_lens.reports.send.email_destination", return_value="a" * 64)
+    @patch(
+        "auction_lens.reports.send.send_watchlist_email",
+        side_effect=(OSError("private SMTP detail"), None),
+    )
+    def test_watchlist_transport_failure_warns_that_retry_may_repeat(
+        self, send_watchlist_email, _email_destination
+    ):
+        with temporary_directory() as directory:
+            watchlist = directory / "watchlist.json"
+            WatchlistStore(watchlist).save(
+                WatchedItem(source="synthetic", listing_id="one")
+            )
+            config = _config_copy(directory, email_enabled=True)
+            argv = self._email_argv(directory, watchlist, config)
+
+            with self.assertRaises(RuntimeError) as failed:
+                run_cli(argv)
+            retry = run_cli(argv)
+
+        message = str(failed.exception)
+        self.assertIn("no receipt was saved", message)
+        self.assertIn("retry may repeat", message)
+        self.assertNotIn("private SMTP detail", message)
+        self.assertEqual(send_watchlist_email.call_count, 2)
+        self.assertIn("Emailed 1 selected lot", retry)
+
+    @patch("auction_lens.reports.send.email_destination", return_value="a" * 64)
+    @patch(
+        "auction_lens.reports.receipts.DeliverySession.accept",
+        side_effect=(OSError("private ledger detail"), None),
+    )
+    @patch("auction_lens.reports.send.send_watchlist_email")
+    def test_watchlist_acceptance_without_a_receipt_warns_that_retry_may_repeat(
+        self, send_watchlist_email, _accept, _email_destination
+    ):
+        with temporary_directory() as directory:
+            watchlist = directory / "watchlist.json"
+            WatchlistStore(watchlist).save(
+                WatchedItem(source="synthetic", listing_id="one")
+            )
+            config = _config_copy(directory, email_enabled=True)
+            argv = self._email_argv(directory, watchlist, config)
+
+            with self.assertRaises(RuntimeError) as failed:
+                run_cli(argv)
+            retry = run_cli(argv)
+
+        message = str(failed.exception)
+        self.assertIn("was accepted", message)
+        self.assertIn("retry may repeat", message)
+        self.assertNotIn("private ledger detail", message)
+        self.assertEqual(send_watchlist_email.call_count, 2)
+        self.assertIn("Emailed 1 selected lot", retry)
+
+    @staticmethod
+    def _email_argv(directory, watchlist, config) -> list[str]:
+        return [
+            "watchlist",
+            "--watchlist",
+            str(watchlist),
+            "--config",
+            str(config),
+            "--env-file",
+            str(directory / "absent.env"),
+            "--delivery-ledger",
+            str(directory / "deliveries.sqlite3"),
+            "--email",
+        ]
 
 
 class LogisticsCommandTests(unittest.TestCase):
@@ -1020,14 +1090,14 @@ class ProfileCommandTests(unittest.TestCase):
             before = config.read_bytes()
             files_before = tuple(directory.iterdir())
             with patch("auction_lens.cli.load_env_file") as load_env:
-                with patch("auction_lens.collect.discover_searches") as discover:
+                with patch("auction_lens.collect.resolve_provider") as provider:
                     with patch("auction_lens.collect.fetch_authorized_page") as fetch:
                         message = run_cli(["profile", "--config", str(config)])
 
             self.assertEqual(config.read_bytes(), before)
             self.assertEqual(tuple(directory.iterdir()), files_before)
         load_env.assert_not_called()
-        discover.assert_not_called()
+        provider.assert_not_called()
         fetch.assert_not_called()
         self.assertIn("Auction Lens profile", message)
         self.assertIn("TEMPORARY CIRCUMSTANCES", message)
@@ -1291,9 +1361,9 @@ class DailyCommandTests(unittest.TestCase):
         self.assertEqual(asked, ["one-off phrase"])
         _run.assert_called_once()
 
-    @patch("auction_lens.collect.discover_searches")
+    @patch("auction_lens.daily.resolve_provider")
     def test_all_satisfied_interests_make_a_quiet_report_without_a_request(
-        self, discover_searches
+        self, provider
     ):
         with temporary_directory() as directory:
             config = self._daily_config(directory)
@@ -1324,7 +1394,7 @@ class DailyCommandTests(unittest.TestCase):
             )
             payload = json.loads((directory / "listings.json").read_text("utf-8"))
 
-        discover_searches.assert_not_called()
+        provider.return_value.discover_searches.assert_not_called()
         self.assertEqual(payload, {"listings": []})
         self.assertIn("no provider request was needed", message)
         self.assertIn("soundbar: 1/1 fulfilled; retired", message)
@@ -1390,7 +1460,10 @@ class DailyCommandTests(unittest.TestCase):
         ]
         for term in requested:
             argv.extend(("--search", term))
-        with patch("auction_lens.collect.discover_searches", fake_discovery):
+        adapter = replace(
+            resolve_provider("nellis"), discover_searches=fake_discovery
+        )
+        with patch("auction_lens.daily.resolve_provider", return_value=adapter):
             run_cli(argv)
         return asked
 
@@ -1499,9 +1572,11 @@ class DiscoverCommandTests(unittest.TestCase):
                 fetched_at=fetched_at,
             )
             output = directory / "listings.json"
-            with patch(
-                "auction_lens.collect.discover_searches", return_value=[capture]
-            ):
+            adapter = replace(
+                resolve_provider("nellis"),
+                discover_searches=lambda *_: [capture],
+            )
+            with patch("auction_lens.collect.resolve_provider", return_value=adapter):
                 run_cli(
                     ["discover", "--config", str(EXAMPLE_CONFIG), "--output",
                      str(output), "--search", "soundbar"]
@@ -1587,7 +1662,7 @@ class DefaultsTests(unittest.TestCase):
             build_parser().parse_args(["--version"])
 
         self.assertEqual(stopped.exception.code, 0)
-        self.assertEqual(output.getvalue(), "auction-lens 0.6.0\n")
+        self.assertEqual(output.getvalue(), "auction-lens 0.7.0\n")
 
     def test_package_metadata_and_runtime_use_the_same_version(self):
         with (ROOT / "pyproject.toml").open("rb") as project_file:

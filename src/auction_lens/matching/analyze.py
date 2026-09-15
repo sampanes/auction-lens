@@ -58,7 +58,7 @@ class AnalysisResult:
     # configured interest was intentionally silent.
     interest_progress: tuple[InterestProgress, ...] = ()
     unreviewed_wins: int = 0
-    # What the judge was asked and what it turned away, so a report can say so
+    # What the judge was asked and what it set aside, so a report can say so
     # rather than leaving a quieter list looking like a quieter day.
     vetting: VettingOutcome = field(default_factory=VettingOutcome)
 
@@ -122,12 +122,11 @@ def analyze_listings(
         )
         candidates.extend(_with_valuation(matches, listing, valuation_engine))
 
-    # Word matching found these; the judge decides which of them are really
-    # the thing. It runs before the caps so that a rejected lot gives up its
-    # place to the next real one, rather than taking a slot into the report
-    # and being removed from it.
+    # Word matching found these; the judge marks which are really the thing.
+    # It runs before the caps so a set-aside lot ranks below a matched one.
+    # Every candidate remains available when a sparse section has no better fit.
     vetting = vet_wanted(candidates, active_config, plan.active_rules)
-    candidates = list(vetting.kept)
+    candidates = list(vetting.candidates)
 
     # The local report is ranked and capped here. Every pre-cap match is also
     # retained: destination-specific delivery can first remove receipts that
@@ -168,7 +167,7 @@ def vet_wanted(
     judging off gives the same report it always gave.
     """
     if not config.judging.enabled:
-        return VettingOutcome(kept=tuple(candidates))
+        return VettingOutcome(candidates=tuple(candidates))
     judge = LocalModel(
         endpoint=config.judging.endpoint,
         model=config.judging.model,
@@ -176,7 +175,7 @@ def vet_wanted(
     )
     if not judge.reachable():
         return VettingOutcome(
-            kept=tuple(candidates),
+            candidates=tuple(candidates),
             unavailable=f"nothing answered at {config.judging.endpoint}",
         )
     return vet(candidates, rules, judge, workers=config.judging.workers)

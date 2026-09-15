@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 
 from .. import __version__
-from ..history.sales import DEFAULT_WITHIN_MINUTES
+from ..history.closing_prices import DEFAULT_WITHIN_MINUTES
 from ..local_files import (
     DEFAULT_CONFIG,
     DEFAULT_DATABASE,
@@ -155,7 +155,7 @@ def _add_daily(subparsers) -> None:
 
 
 def _add_run(subparsers) -> None:
-    run = subparsers.add_parser(RUN, help="ingest listings, evaluate them, and render a report")
+    run = subparsers.add_parser(RUN, help="read listings, evaluate them, and render a report")
     run.add_argument("--input", required=True, help="canonical .json or .csv listing file")
     _add_config(run)
     _add_database(run)

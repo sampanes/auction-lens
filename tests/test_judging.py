@@ -37,7 +37,7 @@ class RecordingJudge:
 
     def __init__(self, answers=None, default=None):
         self.answers = answers or {}
-        self.default = default or Verdict.kept()
+        self.default = default or Verdict.matched()
         self.asked = []
 
     def verdict(self, instructions: str, subject: str) -> Verdict:
@@ -106,21 +106,21 @@ class AnswerTests(unittest.TestCase):
         self.assertFalse(answer.matches)
         self.assertEqual(answer.why, "baby monitor")
 
-    def test_a_lot_the_judge_leaves_alone_is_kept(self):
+    def test_a_keep_reply_is_a_match(self):
         self.assertTrue(verdict_from('{"verdict": "keep", "why": "a monitor"}').matches)
 
     def test_a_synonym_for_discarding_is_understood(self):
         # A model told to say "discard" sometimes says "remove". Refusing to
-        # understand that would silently keep everything it meant to throw out.
+        # understand that would treat everything it meant to set aside as a match.
         self.assertFalse(verdict_from('{"verdict": "remove"}').matches)
 
-    def test_a_word_nobody_recognises_keeps_the_lot(self):
+    def test_an_unknown_reply_defaults_to_a_match(self):
         self.assertTrue(verdict_from('{"verdict": "perhaps"}').matches)
 
-    def test_an_unreadable_answer_keeps_the_lot(self):
+    def test_an_unreadable_answer_defaults_to_a_match(self):
         self.assertTrue(verdict_from("I think maybe?").matches)
 
-    def test_an_answer_missing_the_decision_keeps_the_lot(self):
+    def test_an_answer_missing_the_decision_defaults_to_a_match(self):
         self.assertTrue(verdict_from('{"why": "unsure"}').matches)
 
     def test_the_judge_is_asked_what_to_discard_not_what_to_keep(self):
@@ -130,37 +130,41 @@ class AnswerTests(unittest.TestCase):
 
 
 class VettingTests(unittest.TestCase):
-    def test_a_lot_the_judge_accepts_survives(self):
-        kept = vet([a_candidate("LG 32in 4K Monitor")], (MONITOR,), RecordingJudge())
-        self.assertEqual(len(kept.kept), 1)
+    def test_a_matched_lot_remains_a_candidate(self):
+        outcome = vet(
+            [a_candidate("LG 32in 4K Monitor")], (MONITOR,), RecordingJudge()
+        )
+        self.assertEqual(len(outcome.candidates), 1)
 
-    def test_a_lot_the_judge_refuses_sinks_rather_than_vanishing(self):
-        judge = RecordingJudge({"baby": Verdict.dropped("a baby monitor")})
+    def test_a_mismatch_is_set_aside_rather_than_deleted(self):
+        judge = RecordingJudge({"baby": Verdict.set_aside("a baby monitor")})
         outcome = vet([a_candidate("VTech Baby Monitor")], (MONITOR,), judge)
-        self.assertEqual(len(outcome.kept), 1)
+        self.assertEqual(len(outcome.candidates), 1)
         self.assertEqual(outcome.set_aside, 1)
-        self.assertLess(outcome.kept[0].weight, Decimal("1"))
+        self.assertLess(outcome.candidates[0].weight, Decimal("1"))
 
-    def test_a_sunk_lot_says_what_it_was_accused_of(self):
-        judge = RecordingJudge({"baby": Verdict.dropped("a baby monitor")})
+    def test_a_set_aside_lot_says_what_it_was_accused_of(self):
+        judge = RecordingJudge({"baby": Verdict.set_aside("a baby monitor")})
         outcome = vet([a_candidate("VTech Baby Monitor")], (MONITOR,), judge)
-        self.assertIn("set aside by the judge: a baby monitor", outcome.kept[0].reasons)
+        self.assertIn(
+            "set aside by the judge: a baby monitor", outcome.candidates[0].reasons
+        )
 
-    def test_a_sunk_lot_can_never_outrank_a_kept_one(self):
-        judge = RecordingJudge({"baby": Verdict.dropped("a baby monitor")})
-        # The worst real lot that can reach a report against the best sunk
+    def test_a_set_aside_lot_can_never_outrank_a_matched_one(self):
+        judge = RecordingJudge({"baby": Verdict.set_aside("a baby monitor")})
+        # The worst real lot that can reach a report against the best set-aside
         # one. A candidate has cleared its minimum_score to get here, so 60
         # at the lightest weight in use is the floor of what is possible.
         real = a_candidate("LG Monitor", score=60, weight=Decimal("0.4"))
-        sunk = a_candidate("VTech Baby Monitor", score=100, weight=Decimal("1.5"))
-        outcome = vet([real, sunk], (MONITOR,), judge)
-        by_title = {c.listing.title: c for c in outcome.kept}
+        set_aside = a_candidate("VTech Baby Monitor", score=100, weight=Decimal("1.5"))
+        outcome = vet([real, set_aside], (MONITOR,), judge)
+        by_title = {c.listing.title: c for c in outcome.candidates}
         self.assertGreater(
             by_title["LG Monitor"].priority, by_title["VTech Baby Monitor"].priority
         )
 
-    def test_the_reason_for_a_refusal_is_kept_so_a_mistake_can_be_read(self):
-        judge = RecordingJudge({"baby": Verdict.dropped("a baby monitor")})
+    def test_the_reason_for_setting_aside_is_stored_so_a_mistake_can_be_read(self):
+        judge = RecordingJudge({"baby": Verdict.set_aside("a baby monitor")})
         outcome = vet([a_candidate("VTech Baby Monitor")], (MONITOR,), judge)
         self.assertEqual(outcome.judgements[0].verdict.why, "a baby monitor")
 
@@ -169,18 +173,18 @@ class VettingTests(unittest.TestCase):
         judge = RecordingJudge()
         outcome = vet([priced], (MONITOR,), judge)
         self.assertEqual(judge.asked, [])
-        self.assertEqual(len(outcome.kept), 1)
+        self.assertEqual(len(outcome.candidates), 1)
 
     def test_an_interest_that_wrote_no_sentence_is_never_asked_about(self):
         silent = replace(MONITOR, wants="")
         judge = RecordingJudge()
         outcome = vet([a_candidate("LG Monitor", silent)], (silent,), judge)
         self.assertEqual(judge.asked, [])
-        self.assertEqual(len(outcome.kept), 1)
+        self.assertEqual(len(outcome.candidates), 1)
 
-    def test_an_unreachable_judge_keeps_everything_rather_than_emptying_the_report(self):
+    def test_an_unreachable_judge_returns_every_candidate(self):
         outcome = vet([a_candidate("LG Monitor")], (MONITOR,), RefusingJudge())
-        self.assertEqual(len(outcome.kept), 1)
+        self.assertEqual(len(outcome.candidates), 1)
         self.assertFalse(outcome.ran)
         self.assertIn("refused", outcome.unavailable)
 
@@ -189,13 +193,15 @@ class VettingTests(unittest.TestCase):
         same = [a_candidate("Dell 27 QHD Monitor") for _ in range(3)]
         outcome = vet(same, (MONITOR,), judge)
         self.assertEqual(len(judge.asked), 1)
-        self.assertEqual(len(outcome.kept), 3)
+        self.assertEqual(len(outcome.candidates), 3)
         self.assertEqual(outcome.asked, 3)
 
-    def test_a_note_can_rule_a_lot_out_because_the_judge_reads_it(self):
+    def test_a_note_can_set_a_lot_aside_because_the_judge_reads_it(self):
         # The seller said the fan is missing, which no title would ever say.
         # This is what the warehouse-note exclusions used to do by keyword.
-        judge = RecordingJudge({"blower not included": Verdict.dropped("no blower")})
+        judge = RecordingJudge(
+            {"blower not included": Verdict.set_aside("no blower")}
+        )
         candidate = a_candidate("Inflatable Water Slide Bounce House")
         candidate = replace(
             candidate,

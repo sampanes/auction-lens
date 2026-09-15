@@ -131,7 +131,7 @@ def _card(finding: Finding) -> str:
             f"<article style='{CARD_STYLE}'>",
             f"<h4 style='{HEADING_STYLE}'>{escape(finding.title)}</h4>",
             f"<p><strong>Score {finding.score}{SEPARATOR}{escape(finding.change)}</strong></p>",
-            f"<p>{_facts(finding.facts)}</p>",
+            f"<p>{_facts(finding.facts.full_report)}</p>",
             f"<p>{escape('; '.join(finding.reasons))}</p>",
             _photos(finding),
             _handling(finding.handling),

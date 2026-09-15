@@ -8,9 +8,8 @@ the meaning of the shared facts.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from zoneinfo import ZoneInfo
 
-from ..matching.model import Candidate, ReadingOrder
+from ..listings.conditions import Tag
 from ..matching.searches import SearchHint
 
 # How many withheld titles a report names before it summarises the rest. Enough
@@ -24,6 +23,41 @@ class Fact:
 
     label: str
     value: str
+
+
+@dataclass(frozen=True)
+class ListingFacts:
+    """The listing values every report medium receives from one projection."""
+
+    bid: str
+    total_cost: str
+    retail: str
+    retail_ratio: str
+    closes: str
+    location: str
+    conditions: str
+    condition_severity: Tag
+    watch_key: str
+
+    @property
+    def full_report(self) -> tuple[Fact, ...]:
+        """The complete labelled row used by text and HTML reports."""
+        facts = [
+            Fact("Bid", self.bid),
+            Fact("Estimated total", self.total_cost),
+        ]
+        if self.retail:
+            facts.append(Fact("Retail", self.retail))
+        if self.closes:
+            facts.append(Fact("Closes", self.closes))
+        facts.extend(
+            (
+                Fact("Location", self.location or "unknown"),
+                Fact("Conditions", self.conditions),
+                Fact("Watch key", self.watch_key),
+            )
+        )
+        return tuple(facts)
 
 
 @dataclass(frozen=True)
@@ -77,7 +111,8 @@ class Finding:
     title: str
     change: str
     score: int
-    facts: tuple[Fact, ...]
+    priority_rank: int
+    facts: ListingFacts
     reasons: tuple[str, ...]
     url: str
     photos: tuple[Photo, ...]
@@ -204,22 +239,25 @@ NO_DELIVERY_FILTER = DeliverySummary()
 
 @dataclass(frozen=True)
 class Report:
-    """One rendering-independent report, and what it was built from.
+    """One rendering-independent report built from a single set of findings.
 
-    The text and HTML renderers use the worded groups. The webhook arranges its
-    own compact cards and therefore also needs the scored candidates. Keeping
-    both in one record prevents callers from passing mismatched inputs.
+    ``findings`` is the configured reading order used by compact reports.
+    ``groups`` references those same immutable objects when a full report needs
+    section headings. No renderer receives the scored candidates they came from.
     """
 
     headline: str
-    zone: ZoneInfo
-    candidates: tuple[Candidate, ...] = ()
-    order: ReadingOrder = ReadingOrder.PRIORITY
+    findings: tuple[Finding, ...] = ()
+    first_close: str = ""
     groups: tuple[Group, ...] = ()
     searches: tuple[SearchHint, ...] = ()
     outcomes: OutcomeSummary = OutcomeSummary()
     delivery: DeliverySummary = NO_DELIVERY_FILTER
 
     @property
+    def match_count(self) -> int:
+        return len(self.findings)
+
+    @property
     def is_empty(self) -> bool:
-        return not self.groups
+        return not self.findings

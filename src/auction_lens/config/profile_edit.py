@@ -30,7 +30,7 @@ _LOGISTICS_HEADER = re.compile(r"[ \t]*\[logistics\][ \t]*(?:#.*)?")
 
 
 class _Remove:
-    """The explicit request to use a field's schema default again."""
+    """The explicit request to use a field's configuration default again."""
 
     __slots__ = ()
 
@@ -43,8 +43,8 @@ class ProfileEdits:
     """Optional handling answers; ``None`` means preserve the source exactly.
 
     ``REMOVE`` is deliberately different from ``None``.  It deletes an
-    explicit assignment so the existing schema default becomes authoritative;
-    this is what a guided answer of ``default`` means.
+    explicit assignment so the existing configuration default becomes
+    authoritative; this is what a guided answer of ``default`` means.
     """
 
     large_item_policy: LargeItemPolicy | str | _Remove | None = None

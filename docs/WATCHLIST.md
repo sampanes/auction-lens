@@ -45,8 +45,8 @@ Two things about these are worth knowing, because both are easy to get backwards
 
 **The polarity belongs to the axis, not to the word.** The provider answers most
 axes with `Yes` or `No`, and `Yes` is good news about packaging and bad news
-about assembly. `grading.py` holds that table once so nothing downstream has to
-remember it.
+about assembly. `listings/conditions.py` holds that table once; downstream code
+does not have to reconstruct it.
 
 **An unanswered axis is amber, not silent.** The provider's own page renders
 *nothing at all* where it has no answer, so on the site a lot nobody checked

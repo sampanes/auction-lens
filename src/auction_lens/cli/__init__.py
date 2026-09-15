@@ -7,7 +7,7 @@ import sys
 from .. import collect, daily, doctor, setup
 from ..config.environment import load_env_file
 from ..config.profile_wizard import profile
-from . import logistics, sales, watchlist
+from . import logistics, sold, watchlist
 from .exit_codes import OPERATOR_ERROR
 from .parser import (
     DAILY,
@@ -40,7 +40,7 @@ COMMANDS = {
     LOGISTICS: logistics.logistics,
     WATCH: watchlist.watch,
     WATCHLIST: watchlist.watchlist,
-    SOLD: sales.sold,
+    SOLD: sold.sold,
 }
 
 # Commands that validate or use provider and delivery settings load the ignored
