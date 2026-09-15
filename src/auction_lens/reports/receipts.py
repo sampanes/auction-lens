@@ -18,7 +18,7 @@ from contextlib import closing, contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 
-from ..notifications import (
+from .delivery import (
     LOWERCASE_HEX,
     SHA256_HEX_LENGTH,
     DeliveryChannel,

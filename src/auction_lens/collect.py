@@ -12,7 +12,8 @@ import argparse
 from datetime import UTC, datetime
 from pathlib import Path
 
-from .config import AppConfig, load_config
+from .config.load import load_config
+from .config.schema import AppConfig
 from .files import read_json, write_json_atomically
 from .listings.files import dated, unique_lots
 from .providers.http import METADATA_SUFFIX, ResponseCache, fetch_authorized_page

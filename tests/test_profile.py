@@ -5,9 +5,12 @@ from __future__ import annotations
 import unittest
 from dataclasses import replace
 
-from auction_lens.config import LocationPolicy, ReportsConfig, render_profile
-from auction_lens.config.profile import _minimum_score
-from auction_lens.config.schema import DEFAULT_FAR_MINIMUM_SCORE
+from auction_lens.config.profile import _minimum_score, render_profile
+from auction_lens.config.schema import (
+    DEFAULT_FAR_MINIMUM_SCORE,
+    LocationPolicy,
+    ReportsConfig,
+)
 from auction_lens.matching.model import (
     BASE_INTEREST_SCORE,
     HIGHEST_INTEREST_SCORE,

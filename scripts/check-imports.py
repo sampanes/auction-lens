@@ -22,13 +22,12 @@ PACKAGE_NAME = "auction_lens"
 PACKAGE = Path("src") / PACKAGE_NAME
 
 # An __init__ file is a signpost, not a second place to discover an API.
-# Config and storage remain temporary legacy facades during the staged
-# refactor and will join this set when their callers use explicit modules.
 EMPTY_PACKAGE_MARKERS = {
+    "config",
+    "history",
     "listings",
     "matching",
     "pricing",
-    "pricing.adapters",
     "providers",
     "providers.nellis",
     "reports",
@@ -36,14 +35,16 @@ EMPTY_PACKAGE_MARKERS = {
 }
 
 IO_OWNERS = {
-    "acquisition",
     "cli",
+    "collect",
     "config",
-    "notifications",
-    "pipeline",
+    "daily",
+    "doctor",
+    "history",
     "providers",
     "reports",
-    "storage",
+    "setup",
+    "watchlist",
 }
 PURE_RECORD_MODULES = {
     "listings.conditions",
@@ -55,11 +56,14 @@ PURE_RECORD_MODULES = {
 }
 PROVIDER_FORBIDDEN = {
     "cli",
+    "collect",
+    "daily",
+    "doctor",
+    "history",
     "matching",
-    "notifications",
-    "pipeline",
+    "pricing",
     "reports",
-    "storage",
+    "setup",
     "watchlist",
 }
 

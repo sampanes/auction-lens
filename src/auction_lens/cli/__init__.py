@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import sys
 
-from .. import collect
+from .. import collect, daily, doctor, setup
 from ..config.environment import load_env_file
-from . import analyze, doctor, setup, track
+from ..config.profile_wizard import profile
+from . import logistics, sales, watchlist
 from .exit_codes import OPERATOR_ERROR
 from .parser import (
     DAILY,
@@ -29,17 +30,17 @@ from .parser import (
 # types, and this is the only place that knows which is which.
 COMMANDS = {
     SETUP: setup.setup,
-    PROFILE: setup.profile,
+    PROFILE: profile,
     DOCTOR: doctor.doctor,
-    DAILY: analyze.daily,
-    RUN: analyze.run,
+    DAILY: daily.daily,
+    RUN: daily.run,
     FETCH: collect.fetch,
     PULL: collect.pull,
     DISCOVER: collect.discover,
-    LOGISTICS: track.logistics,
-    WATCH: track.watch,
-    WATCHLIST: track.watchlist,
-    SOLD: track.sold,
+    LOGISTICS: logistics.logistics,
+    WATCH: watchlist.watch,
+    WATCHLIST: watchlist.watchlist,
+    SOLD: sales.sold,
 }
 
 # Commands that validate or use provider and delivery settings load the ignored

@@ -14,23 +14,22 @@ import argparse
 from dataclasses import replace
 from pathlib import Path
 
-from ..collect import run_discovery, write_satisfied_discovery
-from ..config.load import load_config
-from ..config.schema import AppConfig
-from ..history.database import Database
-from ..history.logistics import LogisticsDecisionStore
-from ..history.observations import ObservationStore
-from ..listings.files import load_listings
-from ..matching.analyze import analyze_listings
-from ..matching.progress import plan_interests
-from ..notifications import DeliveryChannel
-from ..pricing.value import ValuationEngine
-from ..providers.search_terms import daily_search_terms
-from ..reports.findings import build_report
-from ..reports.text import render_text
-from ..watchlist.store import WatchlistStore
-from .exit_codes import SUCCESS
-from .sending import deliver_findings, preflight_reports
+from .collect import run_discovery, write_satisfied_discovery
+from .config.load import load_config
+from .config.schema import AppConfig
+from .history.database import Database
+from .history.logistics import LogisticsDecisionStore
+from .history.observations import ObservationStore
+from .listings.files import load_listings
+from .matching.analyze import analyze_listings
+from .matching.progress import plan_interests
+from .pricing.value import ValuationEngine
+from .providers.search_terms import daily_search_terms
+from .reports.delivery import DeliveryChannel
+from .reports.findings import build_report
+from .reports.send import deliver_findings, preflight_reports
+from .reports.text import render_text
+from .watchlist.store import WatchlistStore
 
 
 def daily(args: argparse.Namespace) -> int:
@@ -112,7 +111,7 @@ def _score_and_report(
     _report_followed(result.lots_followed + additionally_followed, args.watchlist)
     if delivery_failures:
         raise RuntimeError("; ".join(delivery_failures))
-    return SUCCESS
+    return 0
 
 
 def _with_todays_trips(config: AppConfig, visiting: list[str]) -> AppConfig:

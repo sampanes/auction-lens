@@ -7,7 +7,7 @@ from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
-from auction_lens.config import (
+from auction_lens.config.schema import (
     ConditionPolicy,
     InterestDefaults,
     InterestRule,

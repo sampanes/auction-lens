@@ -17,13 +17,15 @@ from unittest.mock import patch
 
 from auction_lens import __version__
 from auction_lens.cli import build_parser, console, main
-from auction_lens.config import load_config
 from auction_lens.config.environment import load_env_file
+from auction_lens.config.load import load_config
+from auction_lens.history.database import Database
+from auction_lens.history.observations import ObservationStore
 from auction_lens.listings.files import load_listings
 from auction_lens.matching.progress import InterestRef
 from auction_lens.providers.nellis.discover import SearchCapture
-from auction_lens.storage import Database, ObservationStore, WatchlistStore
 from auction_lens.watchlist.model import Verdict, WatchedItem
+from auction_lens.watchlist.store import WatchlistStore
 from support import EXAMPLE_CONFIG, ROOT, SYNTHETIC_LISTINGS, temporary_directory
 
 NELLIS_PRODUCT_PAGE = ROOT / "fixtures" / "nellis" / "product-page.html"
@@ -231,8 +233,8 @@ class RunCommandTests(unittest.TestCase):
 class DeliveryLedgerCommandTests(unittest.TestCase):
     """The CLI records accepted destinations, not merely attempted reports."""
 
-    @patch("auction_lens.cli.sending.email_destination", return_value="a" * 64)
-    @patch("auction_lens.cli.sending.send_email")
+    @patch("auction_lens.reports.send.email_destination", return_value="a" * 64)
+    @patch("auction_lens.reports.send.send_email")
     def test_first_email_sends_and_an_unchanged_run_is_suppressed(
         self, send_email, email_destination
     ):
@@ -251,8 +253,8 @@ class DeliveryLedgerCommandTests(unittest.TestCase):
         self.assertIn("Email report is up to date", second)
         self.assertIn("already delivered", second)
 
-    @patch("auction_lens.cli.sending.email_destination", return_value="a" * 64)
-    @patch("auction_lens.cli.sending.send_email")
+    @patch("auction_lens.reports.send.email_destination", return_value="a" * 64)
+    @patch("auction_lens.reports.send.send_email")
     def test_an_empty_first_report_establishes_one_quiet_baseline(
         self, send_email, _email_destination
     ):
@@ -270,9 +272,9 @@ class DeliveryLedgerCommandTests(unittest.TestCase):
         self.assertIn("Emailed 0 match", first)
         self.assertIn("outcome summary is unchanged", second)
 
-    @patch("auction_lens.cli.sending.email_destination", return_value="a" * 64)
+    @patch("auction_lens.reports.send.email_destination", return_value="a" * 64)
     @patch(
-        "auction_lens.cli.sending.send_email",
+        "auction_lens.reports.send.send_email",
         side_effect=(OSError("synthetic SMTP failure"), None),
     )
     def test_failed_email_records_nothing_and_the_retry_sends(
@@ -291,9 +293,9 @@ class DeliveryLedgerCommandTests(unittest.TestCase):
         self.assertEqual(send_email.call_count, 2)
         self.assertIn("Emailed", retry)
 
-    @patch("auction_lens.cli.sending.email_destination", return_value="a" * 64)
+    @patch("auction_lens.reports.send.email_destination", return_value="a" * 64)
     @patch(
-        "auction_lens.cli.sending.send_email",
+        "auction_lens.reports.send.send_email",
         side_effect=OSError(
             "synthetic transport leaked recipient@example.invalid and secret-token"
         ),
@@ -315,9 +317,9 @@ class DeliveryLedgerCommandTests(unittest.TestCase):
         self.assertNotIn("recipient@example.invalid", message)
         self.assertNotIn("secret-token", message)
 
-    @patch("auction_lens.cli.sending.email_destination", return_value="a" * 64)
-    @patch("auction_lens.cli.sending.follow_candidates", side_effect=(OSError(), 0))
-    @patch("auction_lens.cli.sending.send_email")
+    @patch("auction_lens.reports.send.email_destination", return_value="a" * 64)
+    @patch("auction_lens.reports.send.follow_candidates", side_effect=(OSError(), 0))
+    @patch("auction_lens.reports.send.send_email")
     def test_acceptance_without_a_saved_receipt_warns_that_retry_can_repeat(
         self, send_email, _follow_candidates, _email_destination
     ):
@@ -331,13 +333,13 @@ class DeliveryLedgerCommandTests(unittest.TestCase):
 
         self.assertEqual(send_email.call_count, 2)
 
-    @patch("auction_lens.cli.sending.webhook_destination", return_value="b" * 64)
-    @patch("auction_lens.cli.sending.email_destination", return_value="a" * 64)
+    @patch("auction_lens.reports.send.webhook_destination", return_value="b" * 64)
+    @patch("auction_lens.reports.send.email_destination", return_value="a" * 64)
     @patch(
-        "auction_lens.cli.sending.send_webhook",
+        "auction_lens.reports.send.send_webhook",
         side_effect=(OSError("synthetic webhook failure"), None),
     )
-    @patch("auction_lens.cli.sending.send_email")
+    @patch("auction_lens.reports.send.send_email")
     def test_each_destination_retries_independently(
         self,
         send_email,
@@ -364,8 +366,8 @@ class DeliveryLedgerCommandTests(unittest.TestCase):
         self.assertIn("Email report is up to date", retry)
         self.assertIn("Posted", retry)
 
-    @patch("auction_lens.cli.sending.email_destination", return_value="a" * 64)
-    @patch("auction_lens.cli.sending.send_email")
+    @patch("auction_lens.reports.send.email_destination", return_value="a" * 64)
+    @patch("auction_lens.reports.send.send_email")
     def test_a_price_change_is_delivered_again_with_delivery_relative_context(
         self, send_email, _email_destination
     ):
@@ -392,8 +394,8 @@ class DeliveryLedgerCommandTests(unittest.TestCase):
             all(candidate.change.previous_bid == Decimal("18") for candidate in resent)
         )
 
-    @patch("auction_lens.cli.sending.email_destination", return_value="a" * 64)
-    @patch("auction_lens.cli.sending.send_email")
+    @patch("auction_lens.reports.send.email_destination", return_value="a" * 64)
+    @patch("auction_lens.reports.send.send_email")
     def test_changed_interest_progress_sends_even_when_every_listing_is_unchanged(
         self, send_email, _email_destination
     ):
@@ -425,8 +427,8 @@ class DeliveryLedgerCommandTests(unittest.TestCase):
         # matters is that the reader is told the want is finished.
         self.assertIn("soundbar: 1/1 fulfilled; retired", report.outcomes.progress)
 
-    @patch("auction_lens.cli.sending.email_destination", return_value="a" * 64)
-    @patch("auction_lens.cli.sending.send_email")
+    @patch("auction_lens.reports.send.email_destination", return_value="a" * 64)
+    @patch("auction_lens.reports.send.send_email")
     def test_repeat_delivery_forces_an_unchanged_email(
         self, send_email, _email_destination
     ):
@@ -820,7 +822,7 @@ class WatchlistCommandTests(unittest.TestCase):
                     ]
                 )
 
-    @patch("auction_lens.cli.track.send_watchlist_email")
+    @patch("auction_lens.cli.watchlist.send_watchlist_email")
     def test_an_empty_selection_does_not_send_an_email(self, send_watchlist_email):
         with temporary_directory() as directory:
             message = run_cli(
@@ -842,8 +844,8 @@ class WatchlistCommandTests(unittest.TestCase):
         send_watchlist_email.assert_not_called()
         self.assertIn("No selected lots; no email sent", message)
 
-    @patch("auction_lens.cli.sending.email_destination", return_value="0" * 64)
-    @patch("auction_lens.cli.track.send_watchlist_email")
+    @patch("auction_lens.reports.send.email_destination", return_value="0" * 64)
+    @patch("auction_lens.cli.watchlist.send_watchlist_email")
     def test_email_sends_only_the_selected_verdict(
         self, send_watchlist_email, email_destination
     ):
@@ -882,8 +884,8 @@ class WatchlistCommandTests(unittest.TestCase):
         self.assertEqual([item.listing_id for item in selected], ["1"])
         email_destination.assert_called_once()
 
-    @patch("auction_lens.cli.sending.email_destination", return_value="a" * 64)
-    @patch("auction_lens.cli.track.send_watchlist_email")
+    @patch("auction_lens.reports.send.email_destination", return_value="a" * 64)
+    @patch("auction_lens.cli.watchlist.send_watchlist_email")
     def test_watchlist_email_suppresses_unchanged_items_and_repeat_overrides_it(
         self, send_watchlist_email, _email_destination
     ):
@@ -1049,7 +1051,7 @@ class MailSetupTests(unittest.TestCase):
         if email_enabled:
             _enable_email(config)
         with patch("builtins.input", side_effect=lambda _: typed.pop(0)):
-            with patch("auction_lens.cli.prompts.getpass", side_effect=lambda _: typed.pop(0)):
+            with patch("auction_lens.setup.getpass", side_effect=lambda _: typed.pop(0)):
                 with patch("sys.stdin.isatty", return_value=True):
                     buffer = io.StringIO()
                     with redirect_stdout(buffer):
@@ -1143,7 +1145,7 @@ class MailSetupTests(unittest.TestCase):
     def _setup_existing_email(self, config, env_file):
         typed = list(self.ANSWERS)
         with patch("builtins.input", side_effect=lambda _: typed.pop(0)):
-            with patch("auction_lens.cli.prompts.getpass", side_effect=lambda _: typed.pop(0)):
+            with patch("auction_lens.setup.getpass", side_effect=lambda _: typed.pop(0)):
                 with patch("sys.stdin.isatty", return_value=True):
                     buffer = io.StringIO()
                     with redirect_stdout(buffer):
@@ -1179,7 +1181,7 @@ class MailSetupTests(unittest.TestCase):
             errors = io.StringIO()
             with patch("builtins.input", side_effect=lambda _: next(answers)):
                 with patch("sys.stdin.isatty", return_value=False):
-                    with patch("auction_lens.cli.prompts.getpass") as hidden_prompt:
+                    with patch("auction_lens.setup.getpass") as hidden_prompt:
                         with redirect_stdout(io.StringIO()):
                             with redirect_stderr(errors):
                                 exit_code = console(
@@ -1205,7 +1207,7 @@ class MailSetupTests(unittest.TestCase):
 
             with patch("builtins.input", side_effect=lambda _: next(answers)):
                 with patch("sys.stdin.isatty", return_value=True):
-                    with patch("auction_lens.cli.prompts.getpass", insecure_prompt):
+                    with patch("auction_lens.setup.getpass", insecure_prompt):
                         with redirect_stdout(io.StringIO()):
                             with redirect_stderr(errors):
                                 exit_code = console(
@@ -1246,7 +1248,7 @@ class DailyCommandTests(unittest.TestCase):
         discover.assert_not_called()
         self.assertFalse(output.exists())
 
-    @patch("auction_lens.cli.analyze._score_and_report", return_value=0)
+    @patch("auction_lens.daily._score_and_report", return_value=0)
     def test_a_retired_fallback_cannot_use_the_search_cap_before_an_active_one(
         self, _run
     ):
@@ -1262,7 +1264,7 @@ class DailyCommandTests(unittest.TestCase):
         self.assertEqual(asked, ["monitor"])
         _run.assert_called_once()
 
-    @patch("auction_lens.cli.analyze._score_and_report", return_value=0)
+    @patch("auction_lens.daily._score_and_report", return_value=0)
     def test_configured_searches_remain_an_operator_override(self, _run):
         with temporary_directory() as directory:
             config = self._daily_config(directory, searches=("operator phrase",))
@@ -1273,7 +1275,7 @@ class DailyCommandTests(unittest.TestCase):
         self.assertEqual(asked, ["operator phrase"])
         _run.assert_called_once()
 
-    @patch("auction_lens.cli.analyze._score_and_report", return_value=0)
+    @patch("auction_lens.daily._score_and_report", return_value=0)
     def test_command_line_searches_remain_an_operator_override(self, _run):
         with temporary_directory() as directory:
             config = self._daily_config(directory, searches=("configured phrase",))
@@ -1425,7 +1427,7 @@ class DoctorCommandTests(unittest.TestCase):
         self.assertIn("email is enabled", message)
         self.assertIn("no network requests were made", message)
 
-    @patch("auction_lens.cli.sending.email_destination", return_value="a" * 64)
+    @patch("auction_lens.reports.send.email_destination", return_value="a" * 64)
     def test_it_validates_a_missing_ledger_without_creating_it(
         self, email_destination
     ):

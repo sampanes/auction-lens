@@ -8,7 +8,7 @@ from dataclasses import replace
 from decimal import Decimal
 from unittest.mock import MagicMock, patch
 
-from auction_lens.config import WebhookConfig
+from auction_lens.config.schema import WebhookConfig
 from auction_lens.listings.conditions import read_grade
 from auction_lens.matching.evaluate import evaluate
 from auction_lens.matching.model import ReadingOrder

@@ -6,7 +6,7 @@ import unittest
 from dataclasses import replace
 from decimal import Decimal
 
-from auction_lens.config import InterestRule
+from auction_lens.config.schema import InterestRule
 from auction_lens.matching.evaluate import evaluate
 from auction_lens.matching.searches import (
     FEWEST_LOTS_WORTH_A_PHRASE,

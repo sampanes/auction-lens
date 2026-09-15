@@ -43,6 +43,8 @@ features, but it does not define a second version of their rules.
 | `reports/text.py`, `reports/html.py` | What do those facts look like? |
 | `reports/email.py` | How is a report submitted securely over SMTP? |
 | `reports/webhook.py` | How does the same report fit a compact chat message? |
+| `reports/delivery.py` | Which report revisions has one destination not received? |
+| `reports/receipts.py` | Which successful private deliveries should later runs remember? |
 | `history/database.py` | Which SQLite tables and transaction boundary hold local history? |
 | `history/observations.py` | What changed since a listing was last observed? |
 | `history/logistics.py` | Which handling decisions has the operator recorded? |
@@ -57,12 +59,13 @@ features, but it does not define a second version of their rules.
 | `config/profile_wizard.py` | How does a terminal walk a person through that edit? |
 | `cli/parser.py` | Which commands and flags exist, and what are their defaults? |
 | `cli/__init__.py` | Which command name calls which function? |
+| `cli/logistics.py` | How does the logistics command record a handling decision? |
+| `cli/watchlist.py` | How do watch and watchlist record, show, and email followed lots? |
+| `cli/sales.py` | How does sold answer the closing-price question? |
 
-The few remaining files under `cli/` are command workflows still being moved
-to their named features. `notifications.py` and `storage/deliveries.py` are the
-same kind of visible migration seam: together they decide what a destination
-has not received and remember successful delivery. They are deliberately named
-here until that move is complete, so no contributor has to guess.
+The remaining files under `cli/` are the terminal adapter: argument parsing,
+dispatch, exit codes, and the small commands whose subject is inherently an
+operator action.
 
 ## Enforced boundaries
 

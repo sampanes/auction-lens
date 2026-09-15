@@ -9,13 +9,13 @@ import unittest
 from contextlib import closing
 from datetime import UTC, datetime
 
-from auction_lens.notifications import (
+from auction_lens.reports.delivery import (
     DeliveryChannel,
     DeliveryItem,
     DeliveryRoute,
     ReportKind,
 )
-from auction_lens.storage import (
+from auction_lens.reports.receipts import (
     DELIVERY_LOCK_TIMEOUT_SECONDS,
     DeliveryLedger,
 )

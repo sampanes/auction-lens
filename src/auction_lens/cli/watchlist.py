@@ -1,27 +1,15 @@
-"""Everything a person records about one particular lot, and reads back later.
-
-A report is what the tool thinks. These are what the operator thinks: whether a
-lot is worth chasing, what they would pay, whether it can even be carried home,
-and what it eventually went for. All of it is kept beside the lot rather than
-in anyone's memory, which is the only reason a want can ever be finished.
-"""
+"""Record, display, and optionally email the lots a person follows."""
 
 from __future__ import annotations
 
 import argparse
 import sys
 from dataclasses import replace
-from datetime import UTC, datetime
 from pathlib import Path
 
 from ..config.load import load_config
-from ..history.database import Database
-from ..history.logistics import LogisticsDecisionStore
-from ..history.sales import ClosingPriceStore, render_closing_prices
-from ..matching.logistics import LogisticsDecision, LogisticsStatus
 from ..matching.progress import InterestRef
-from ..matching.text import mentions
-from ..notifications import (
+from ..reports.delivery import (
     DeliveryChannel,
     DeliveryRoute,
     ReportKind,
@@ -31,40 +19,16 @@ from ..notifications import (
 )
 from ..reports.destinations import destination_fingerprint
 from ..reports.email import send_watchlist_email
+from ..reports.receipts import DeliveryLedger
 from ..reports.records import DeliverySummary
-from ..storage.deliveries import DeliveryLedger
+from ..reports.send import delivery_failure, preflight_reports
 from ..values import parse_money
 from ..watchlist.model import Verdict, WatchedItem
 from ..watchlist.report import render_watchlist
 from ..watchlist.store import WatchlistStore
 from .exit_codes import SUCCESS
-from .parser import CLEAR, DROP
-from .sending import delivery_failure, preflight_reports
-
-
-def logistics(args: argparse.Namespace) -> int:
-    """Save or clear one listing's handling decision."""
-    source, listing_id = lot_identity(args)
-    database = Database.at(args.database)
-    database.initialize()
-    decisions = LogisticsDecisionStore(database)
-
-    if args.status == CLEAR:
-        decisions.clear(source, listing_id)
-        print("Logistics decision cleared.")
-        return SUCCESS
-
-    decision = LogisticsDecision(
-        status=LogisticsStatus(args.status),
-        added_cost=parse_money(args.added_cost, field_name="added_cost"),
-        note=args.note.strip(),
-    )
-    decisions.save(source, listing_id, decision)
-    print(
-        f"Logistics decision saved as {decision.status} "
-        f"with ${decision.added_cost} added cost."
-    )
-    return SUCCESS
+from .lot_key import lot_identity
+from .parser import DROP
 
 
 def watch(args: argparse.Namespace) -> int:
@@ -113,31 +77,8 @@ def watch(args: argparse.Namespace) -> int:
     return SUCCESS
 
 
-def lot_identity(args: argparse.Namespace) -> tuple[str, str]:
-    """Which lot a command was asked about, however the operator spelled it.
-
-    Both commands that act on a single lot read it through here, so the key
-    printed in every report works at either of them and neither has to grow its
-    own idea of what names a lot.
-    """
-    if args.key:
-        if args.source or args.listing_id:
-            raise ValueError("--key cannot be combined with --source or --listing-id")
-        source, separator, listing_id = args.key.strip().partition("/")
-        if not separator or not source or not listing_id:
-            raise ValueError("--key must be the SOURCE/LISTING-ID shown in the report")
-        return source, listing_id
-    if not args.source or not args.listing_id:
-        raise ValueError("use --key SOURCE/LISTING-ID, or both --source and --listing-id")
-    return args.source, args.listing_id
-
-
 def _stated_opinions(args: argparse.Namespace) -> dict:
-    """Change only the fields the person actually named on the command line.
-
-    An unnamed field keeps whatever the file already said, so adding one star
-    never silently erases the estimate written last week.
-    """
+    """Change only fields the person actually named on the command line."""
     changes = {}
     if args.verdict is not None:
         changes["verdict"] = args.verdict
@@ -151,11 +92,10 @@ def _stated_opinions(args: argparse.Namespace) -> dict:
 def _resolve_fulfillments(
     requested: list[str], recorded: tuple[InterestRef, ...]
 ) -> tuple[InterestRef, ...]:
-    """Resolve human-friendly names without making renamed config a dependency.
+    """Resolve names against the matches recorded with this historical lot.
 
-    The recorded matches are the authority for this historical lot. Stable ids
-    win over names so an unfortunate display-name collision can never make an
-    id unusable; display names must identify exactly one recorded match.
+    Stable ids win over names, so a display-name collision cannot make an id
+    unusable. A name must identify exactly one recorded match.
     """
     resolved = []
     for entered in requested:
@@ -183,7 +123,7 @@ def _resolve_fulfillments(
 
 
 def _recorded_matches(references: tuple[InterestRef, ...]) -> str:
-    """A copyable list for a correction after an unknown or ambiguous name."""
+    """Return a copyable list after an unknown or ambiguous fulfillment name."""
     if not references:
         return "none (run this listing through Auction Lens before assigning it)"
     return ", ".join(
@@ -214,7 +154,7 @@ def _watch_confirmation(item: WatchedItem) -> str:
 
 
 def watchlist(args: argparse.Namespace) -> int:
-    """Show the followed lots, keenest first."""
+    """Show the followed lots, keenest first, and optionally email them."""
     if args.repeat_delivery and not args.email:
         raise ValueError("--repeat-delivery requires --email")
     items = WatchlistStore(Path(args.watchlist)).items()
@@ -232,9 +172,9 @@ def watchlist(args: argparse.Namespace) -> int:
         config = load_config(args.config)
         destinations = preflight_reports(config, args)
         destination = destinations[DeliveryChannel.EMAIL]
-        # A filtered watchlist is a different recurring report from the full
-        # list. Hashing the already-opaque destination with the public selector
-        # keeps those receipt streams separate without retaining either value.
+        # A filtered watchlist is a separate recurring report. Combining its
+        # public selector with the opaque destination keeps the receipt streams
+        # separate without retaining either private destination value.
         selector = "all" if args.verdict is None else str(args.verdict)
         route_fingerprint = destination_fingerprint(
             f"{destination}\0watchlist-selection={selector}"
@@ -286,26 +226,4 @@ def watchlist(args: argparse.Namespace) -> int:
                     error,
                 )
             ) from error
-    return SUCCESS
-
-
-def sold(args: argparse.Namespace) -> int:
-    """Show what closed lots were last seen going for, tightest reading first."""
-    config = load_config(args.config)
-    database = Database.at(args.database)
-    database.initialize()
-    prices = ClosingPriceStore(database).closed_by(datetime.now(UTC))
-    if args.match:
-        prices = tuple(
-            price for price in prices if mentions(price.title.lower(), args.match.lower())
-        )
-    print(
-        render_closing_prices(
-            prices,
-            config.acquisition.zone,
-            within_minutes=args.within_minutes,
-            limit=args.limit,
-        ),
-        end="",
-    )
     return SUCCESS

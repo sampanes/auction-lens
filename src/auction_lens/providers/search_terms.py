@@ -7,7 +7,7 @@ about it, or a search typed on the command line would mean one thing to
 
 from __future__ import annotations
 
-from ..config import AppConfig, InterestRule
+from ..config.schema import AppConfig, InterestRule
 
 
 def search_terms(config: AppConfig, requested: list[str]) -> list[str]:

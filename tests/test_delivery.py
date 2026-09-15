@@ -10,7 +10,7 @@ from decimal import Decimal
 from auction_lens.listings.model import Listing, ObservationChange
 from auction_lens.matching.model import Candidate, CandidateCategory
 from auction_lens.matching.progress import InterestProgress, InterestRef
-from auction_lens.notifications import (
+from auction_lens.reports.delivery import (
     DeliveryChannel,
     DeliveryItem,
     DeliveryRoute,

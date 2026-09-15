@@ -6,7 +6,8 @@ import tomllib
 import unittest
 from decimal import Decimal
 
-from auction_lens.config import InterestRule, load_config
+from auction_lens.config.load import load_config
+from auction_lens.config.schema import InterestRule
 from support import EXAMPLE_CONFIG, example_config, temporary_directory
 
 

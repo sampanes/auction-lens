@@ -4,6 +4,10 @@ Auction Lens keeps a private record of what each report destination has
 successfully received. This stops overlapping scheduled runs and ordinary
 retries from repeating an unchanged listing.
 
+The policy is in `reports/delivery.py`: it plans what a route has not received.
+The private SQLite ledger is in `reports/receipts.py`: it remembers only
+successful attempts. Email and webhook transports do neither job themselves.
+
 The default ledger is `private/deliveries.sqlite3`. It is a local SQLite file
 under an ignored directory; it does not belong in Git. The ledger stores a
 SHA-256 fingerprint of each destination, never an email address or webhook URL,

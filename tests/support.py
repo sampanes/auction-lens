@@ -12,7 +12,8 @@ from contextlib import contextmanager
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from auction_lens.config import AppConfig, load_config
+from auction_lens.config.load import load_config
+from auction_lens.config.schema import AppConfig
 from auction_lens.history.database import Database
 from auction_lens.listings.files import load_listings
 from auction_lens.listings.model import Listing

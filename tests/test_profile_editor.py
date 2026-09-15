@@ -6,11 +6,10 @@ import unittest
 from decimal import Decimal
 from unittest.mock import patch
 
-from auction_lens.config import (
+from auction_lens.config.load import load_config, parse_config
+from auction_lens.config.profile_edit import (
     REMOVE,
     ProfileEdits,
-    load_config,
-    parse_config,
     profile_restore_recovery_path,
     profile_snapshot_path,
     recover_profile_restore,

@@ -1,29 +1,26 @@
-"""First-run commands: the two files a fresh clone cannot carry, and the profile.
+"""Create the private configuration and settings a fresh clone cannot carry.
 
 A public repository cannot hold what a person wants or what their password is,
-so a new machine starts unable to run. These commands are the cure, and they
-are the only ones that write to configuration rather than reading it.
+so a new machine starts unable to run. This command creates safe starting files
+without overwriting an answer already written there.
 """
 
 from __future__ import annotations
 
 import argparse
+import sys
+import warnings
+from getpass import GetPassWarning, getpass
 from pathlib import Path
 
-from ..config.environment import write_settings
-from ..config.load import load_config
-from ..config.profile import render_profile
-from ..config.profile_wizard import edit_profile, restore_profile
-from ..config.schema import EmailConfig
-from .exit_codes import SUCCESS
-from .parser import DEFAULT_CONFIG, DEFAULT_INBOX, EXAMPLE_CONFIG, PROGRAM
-from .prompts import (
-    ask,
-    ask_for_address,
-    ask_for_secret,
-    ask_until_answered,
-    looks_like_address,
-    require_interactive_terminal,
+from .config.environment import write_settings
+from .config.load import load_config
+from .config.schema import EmailConfig
+from .local_files import (
+    DEFAULT_CONFIG,
+    DEFAULT_INBOX,
+    EXAMPLE_CONFIG,
+    PROGRAM,
 )
 
 # The host most people setting this up are reaching for; compatible hosts are accepted.
@@ -68,19 +65,7 @@ def setup(args: argparse.Namespace) -> int:
         return _ask_for_mail_settings(config, env_file)
     print(f"Then: {PROGRAM} daily")
     print(f"To be emailed the report: {PROGRAM} setup --email")
-    return SUCCESS
-
-
-def profile(args: argparse.Namespace) -> int:
-    """Explain the stable operator choices without consulting any runtime state."""
-    if args.edit:
-        edit_profile(args.config)
-        return SUCCESS
-    if args.restore:
-        restore_profile(args.config)
-        return SUCCESS
-    print(render_profile(load_config(args.config)), end="")
-    return SUCCESS
+    return 0
 
 
 def _created(path: Path, contents: str) -> str:
@@ -170,10 +155,69 @@ def _report_email_switch(config: Path, email: EmailConfig) -> int:
         print()
         print(f"Check local readiness: {PROGRAM} doctor --email")
         print(f"Send one now: {PROGRAM} run --input {DEFAULT_INBOX} --email")
-        return SUCCESS
+        return 0
     print(f"[!] {config} still has [reports.email] enabled = false.")
     print("    Mail settings were saved, but delivery is not ready.")
     print("    Set it to true and confirm that port and security suit your SMTP host.")
     print()
     print(f"Then check it: {PROGRAM} doctor --email")
-    return SUCCESS
+    return 0
+
+
+def require_interactive_terminal() -> None:
+    """Never fall back to a password prompt that may echo its input."""
+    if not sys.stdin.isatty():
+        raise RuntimeError(
+            "mail setup needs an interactive terminal so the password stays hidden"
+        )
+
+
+def ask(question: str, default: str) -> str:
+    """Read one line, accepting the displayed default when Enter is pressed."""
+    shown = f"{question} [{default}]: " if default else f"{question}: "
+    return input(shown).strip() or default
+
+
+def ask_until_answered(question: str, default: str) -> str:
+    """Keep asking until a non-empty one-line answer is available."""
+    while True:
+        answer = ask(question, default)
+        if answer:
+            return answer
+        print("    Nothing entered. Try again.")
+
+
+def ask_for_address(question: str, default: str) -> str:
+    """Ask for the small amount of address structure every SMTP host needs."""
+    while True:
+        answer = ask(question, default)
+        if looks_like_address(answer):
+            return answer
+        print("    That is not an email address. Try again.")
+
+
+def looks_like_address(value: str) -> bool:
+    """Recognize one non-empty local part and one non-empty domain."""
+    return value.count("@") == 1 and all(part.strip() for part in value.split("@"))
+
+
+def ask_for_secret(question: str, *, remove_display_spaces: bool) -> str:
+    """Read a password without echoing it or changing non-Gmail credentials."""
+    while True:
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", GetPassWarning)
+            try:
+                typed = getpass(f"{question}: ")
+            except GetPassWarning as error:
+                raise RuntimeError(
+                    "secure password input is unavailable in this terminal"
+                ) from error
+            except (EOFError, KeyboardInterrupt) as error:
+                raise RuntimeError(
+                    "mail setup stopped before a password was entered"
+                ) from error
+        if remove_display_spaces:
+            typed = "".join(typed.split())
+        if typed:
+            return typed
+        print("    Nothing entered. Try again.")

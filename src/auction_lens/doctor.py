@@ -9,11 +9,11 @@ from __future__ import annotations
 
 import argparse
 
-from ..config import AppConfig, RunMode, load_config
-from ..providers.nellis.discover import check_discovery_ready
-from ..providers.search_terms import search_terms
-from .exit_codes import SUCCESS
-from .sending import preflight_reports
+from .config.load import load_config
+from .config.schema import AppConfig, RunMode
+from .providers.nellis.discover import check_discovery_ready
+from .providers.search_terms import search_terms
+from .reports.send import preflight_reports
 
 
 def doctor(args: argparse.Namespace) -> int:
@@ -45,7 +45,7 @@ def doctor(args: argparse.Namespace) -> int:
         print("[OK] no report destinations are enabled; local output only.")
     _check_judging(config)
     print("[OK] no network requests were made.")
-    return SUCCESS
+    return 0
 
 
 def _check_judging(config: AppConfig) -> None:

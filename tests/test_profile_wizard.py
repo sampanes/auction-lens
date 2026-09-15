@@ -9,8 +9,9 @@ from decimal import Decimal
 from unittest.mock import patch
 
 from auction_lens.cli import build_parser, console, main
-from auction_lens.config import LargeItemPolicy, load_config
+from auction_lens.config.load import load_config
 from auction_lens.config.profile_edit import profile_snapshot_path
+from auction_lens.config.schema import LargeItemPolicy
 from support import EXAMPLE_CONFIG, temporary_directory
 
 PRIVATE_MARKER = "PRIVATE-SENTINEL-DO-NOT-PRINT"
@@ -59,8 +60,8 @@ class ProfileEditorCommandTests(unittest.TestCase):
             with patch("auction_lens.cli.load_env_file") as load_env:
                 with patch("auction_lens.collect.discover_searches") as discover:
                     with patch("auction_lens.collect.fetch_authorized_page") as fetch:
-                        with patch("auction_lens.cli.analyze.load_listings") as listings:
-                            with patch("auction_lens.cli.analyze.Database") as database:
+                        with patch("auction_lens.daily.load_listings") as listings:
+                            with patch("auction_lens.daily.Database") as database:
                                 output, prompts = _run_profile(
                                     config, ["allow", "80.5", "70", "y"]
                                 )
@@ -329,7 +330,7 @@ class SetupProfileSuggestionTests(unittest.TestCase):
             config = directory / "custom folder" / "local.toml"
             env_file = directory / ".env"
             output = io.StringIO()
-            with patch("auction_lens.cli.setup.edit_profile") as edit_profile:
+            with patch("auction_lens.config.profile_wizard.edit_profile") as edit_profile:
                 with redirect_stdout(output):
                     exit_code = main(
                         [

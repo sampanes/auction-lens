@@ -16,10 +16,10 @@ from decimal import Decimal, InvalidOperation
 from enum import StrEnum
 from typing import TypeVar
 
-from .listings.model import ObservationChange
-from .matching.model import Candidate, best_of_each, ranked
-from .matching.progress import InterestProgress
-from .watchlist.model import WatchedItem
+from ..listings.model import ObservationChange
+from ..matching.model import Candidate, best_of_each, ranked
+from ..matching.progress import InterestProgress
+from ..watchlist.model import WatchedItem
 
 UNKNOWN_REVISION = "unknown"
 SHA256_HEX_LENGTH = 64

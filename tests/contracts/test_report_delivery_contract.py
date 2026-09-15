@@ -12,7 +12,8 @@ from pathlib import Path
 from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
-from auction_lens.config import WebhookConfig, load_config
+from auction_lens.config.load import load_config
+from auction_lens.config.schema import WebhookConfig
 from auction_lens.listings.files import load_listings
 from auction_lens.listings.model import ObservationChange
 from auction_lens.matching.evaluate import evaluate

@@ -13,7 +13,7 @@ from difflib import unified_diff
 from pathlib import Path
 
 from ..values import parse_decimal
-from .load import parse_config
+from .load import load_config, parse_config
 from .profile import render_profile
 from .profile_edit import (
     REMOVE,
@@ -29,6 +29,17 @@ from .schema import AppConfig, LargeItemPolicy, LogisticsConfig
 CANCELLED = "Cancelled; no files changed."
 NO_CHANGES = "No changes requested; no files changed."
 RECOVERED = "Recovered an interrupted profile restore before continuing."
+
+
+def profile(args) -> int:
+    """Read, edit, or restore the selected human-owned configuration profile."""
+    if args.edit:
+        edit_profile(args.config)
+    elif args.restore:
+        restore_profile(args.config)
+    else:
+        print(render_profile(load_config(args.config)), end="")
+    return 0
 
 
 def edit_profile(path: str | Path) -> None:

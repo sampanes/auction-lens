@@ -14,7 +14,8 @@ from pathlib import Path
 from ..config.schema import AppConfig
 from ..matching.analyze import AnalysisResult, follow_candidates
 from ..matching.model import Candidate, harvest_of
-from ..notifications import (
+from ..watchlist.store import WatchlistStore
+from .delivery import (
     DeliveryChannel,
     DeliveryRoute,
     ReportKind,
@@ -22,16 +23,15 @@ from ..notifications import (
     outcome_fingerprint,
     plan_candidates,
 )
-from ..reports.email import email_destination, send_email
-from ..reports.findings import build_report
-from ..reports.records import DeliverySummary
-from ..reports.webhook import (
+from .email import email_destination, send_email
+from .findings import build_report
+from .receipts import DeliveryLedger
+from .records import DeliverySummary
+from .webhook import (
     send_webhook,
     webhook_destination,
     webhook_item_limit,
 )
-from ..storage.deliveries import DeliveryLedger
-from ..watchlist.store import WatchlistStore
 
 
 def preflight_reports(

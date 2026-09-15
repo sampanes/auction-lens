@@ -10,7 +10,7 @@ import unittest
 from dataclasses import replace
 from decimal import Decimal
 
-from auction_lens.config import InterestRule
+from auction_lens.config.schema import InterestRule
 from auction_lens.listings.model import ObservationChange
 from auction_lens.matching.judge import (
     LocalModel,

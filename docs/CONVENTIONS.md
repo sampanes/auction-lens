@@ -96,6 +96,11 @@ format-neutral records from `reports/records.py`. `reports/text.py` and
 back into a `Candidate`, and report construction does not know about escaping or
 terminal presentation.
 
+`reports/delivery.py` selects the revisions one destination has not received;
+`reports/receipts.py` records them only after that destination accepts the
+report. This separation keeps retry policy independent from transport and
+persistence.
+
 The cross-channel contract tests require text, HTML, SMTP, and webhook output to
 retain the same important facts. A new output format should be one renderer
 against the report records, not another analysis workflow.
