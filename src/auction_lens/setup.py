@@ -15,7 +15,7 @@ from pathlib import Path
 
 from .config.environment import write_settings
 from .config.load import load_config
-from .config.schema import EmailConfig
+from .config.reports import EmailConfig
 from .local_files import (
     DEFAULT_CONFIG,
     DEFAULT_INBOX,

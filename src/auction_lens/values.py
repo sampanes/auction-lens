@@ -14,9 +14,13 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
+from enum import StrEnum
 from typing import Any, TypeVar
 
 CENTS = Decimal("0.01")
+
+# A rate is a proportion, so anything above 1 is a misplaced percentage.
+HIGHEST_RATE = Decimal("1")
 
 # Sources write dimensions as "70x31x45" or with a U+00D7 multiplication sign.
 DIMENSION_SEPARATOR = "x"
@@ -26,12 +30,28 @@ MULTIPLICATION_SIGN = "\u00d7"
 LABEL_SEPARATOR = "|"
 
 Number = TypeVar("Number", int, Decimal)
+Choice = TypeVar("Choice", bound=StrEnum)
 
 
 # --------------------------------------------------------------------------
 # Requirements. These check a value that is already the right type, and return
 # it so they can be chained onto a parse or used alone in a __post_init__.
 # --------------------------------------------------------------------------
+
+
+def settle_choice(record: Any, field_name: str, options: type[Choice]) -> None:
+    """Replace a settings word with the enum member it names on a frozen record.
+
+    TOML supplies text while tests and callers may supply an existing member.
+    Settling once in ``__post_init__`` lets every consumer receive one type.
+    """
+    written = getattr(record, field_name)
+    try:
+        settled = options(str(written).strip().lower())
+    except ValueError as error:
+        allowed = ", ".join(option.value for option in options)
+        raise ValueError(f"{field_name} must be one of: {allowed}") from error
+    object.__setattr__(record, field_name, settled)
 
 
 def require_finite(value: Decimal, *, field_name: str) -> Decimal:
@@ -68,6 +88,12 @@ def require_within(value: Number, *, low: Number, high: Number, field_name: str)
     if not low <= value <= high:
         raise ValueError(f"{field_name} must be between {low} and {high}")
     return value
+
+
+def require_rate(value: Decimal, *, field_name: str) -> None:
+    """Require a proportion written between zero and one."""
+    require_not_negative(value, field_name=field_name)
+    require_at_most(value, HIGHEST_RATE, field_name=field_name)
 
 
 def _require_finite_if_decimal(value: Number, *, field_name: str) -> None:

@@ -19,7 +19,7 @@ from typing import Any
 from urllib.request import Request
 from zoneinfo import ZoneInfo
 
-from ..config.schema import WebhookConfig
+from ..config.reports import WebhookConfig
 from ..http_safety import public_https_opener, require_public_https
 from ..listings.conditions import Tag
 from ..listings.model import Listing

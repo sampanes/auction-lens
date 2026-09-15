@@ -1,4 +1,4 @@
-"""Turning one saved Nellis product page into a canonical listing row.
+"""Turning saved Nellis search and product pages into canonical listing rows.
 
 The page is a server-rendered shell whose data arrives in a streamed payload at
 the bottom of the HTML. That payload is the authoritative copy: it is typed,

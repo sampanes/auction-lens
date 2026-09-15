@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Any
 from urllib.request import Request
 
-from ..config.schema import ValuationSourceConfig
+from ..config.pricing import ValuationSourceConfig
 from ..config.toml import Section
 from ..files import write_bytes_atomically
 from ..http_safety import public_https_opener, require_public_https

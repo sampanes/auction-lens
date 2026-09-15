@@ -115,14 +115,3 @@ for retry. A remote can accept a report immediately before the connection,
 process, or local commit fails, so the guarantee is deliberately at-least-once,
 not exactly-once.
 See [Delivery receipts](DELIVERY.md) for the operator contract.
-
-## Open questions
-
-These are decisions, not features. They are written down so they stop being
-rediscovered.
-
-- **Should `AGENTS.md` be tracked?** It is in `.gitignore` today, which means a
-  clone carries no instructions for the coding agents that work on it, and each
-  session reconstructs them. Tracking it would make those conventions
-  reviewable in the same place as the code they govern. The argument against is
-  that it is a personal working file rather than part of the project.

@@ -12,7 +12,7 @@ from dataclasses import dataclass, replace
 from decimal import Decimal
 from importlib import import_module
 
-from ..config.schema import ValuationConfig, ValuationSourceConfig
+from ..config.pricing import ValuationConfig, ValuationSourceConfig
 from ..listings.model import Listing
 from .http_json import HttpJsonAdapter
 from .model import (

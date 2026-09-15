@@ -9,7 +9,7 @@ from decimal import Decimal
 from unittest.mock import patch
 from urllib.request import Request
 
-from auction_lens.config.schema import ValuationSourceConfig
+from auction_lens.config.pricing import ValuationSourceConfig
 from auction_lens.http_safety import PublicHttpsRedirectHandler
 from auction_lens.matching.evaluate import evaluate
 from auction_lens.pricing.http_json import HttpJsonAdapter, read_path

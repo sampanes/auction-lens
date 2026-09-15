@@ -17,7 +17,7 @@ from urllib.error import HTTPError
 from urllib.request import Request
 from zoneinfo import ZoneInfo
 
-from ..config.schema import AcquisitionConfig, AcquisitionMode, ProviderConfig, RunMode
+from ..config.provider import AcquisitionConfig, AcquisitionMode, ProviderConfig, RunMode
 from ..files import read_json, write_bytes_atomically, write_json_atomically
 from ..http_safety import public_https_opener, require_public_https
 

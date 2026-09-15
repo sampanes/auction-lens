@@ -15,8 +15,8 @@ from dataclasses import replace
 from pathlib import Path
 
 from .collect import run_discovery, write_satisfied_discovery
+from .config.app import AppConfig
 from .config.load import load_config
-from .config.schema import AppConfig
 from .history.database import Database
 from .history.logistics import LogisticsDecisionStore
 from .history.observations import ObservationStore

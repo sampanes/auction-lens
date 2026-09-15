@@ -11,7 +11,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from ..config.schema import AppConfig
+from ..config.app import AppConfig
 from ..matching.analyze import AnalysisResult, follow_candidates
 from ..matching.model import Candidate, harvest_of
 from ..watchlist.store import WatchlistStore

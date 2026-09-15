@@ -1,34 +1,31 @@
 # Auction Lens
 
-Auction Lens is a provider-agnostic toolkit for normalizing local-auction
-listings, estimating acquisition costs, ranking potentially interesting deals,
-and delivering configurable reports.
+Auction Lens is a provider-agnostic, read-only toolkit for local-auction
+listings. It collects authorized public listings, estimates total acquisition
+cost, finds configurable interests and unusual bargains, remembers what
+changed, and delivers a report a person can act on.
 
-It is deliberately **read-only**: Auction Lens does not place bids. It works from
-canonical JSON or CSV, live HTTP sources, or a combination of both.
+It never bids, logs in, bypasses access controls, or treats a provider's stated
+retail value as verified market value.
 
 ## What it does
 
-- Normalizes listings into a small, documented domain model.
-- Estimates total cost from bid, buyer premium, tax, and processing fees.
-- Separates explicit interest rules from broad retail-ratio anomalies.
-- Applies condition policy per intended use, so broken salvage is not treated
-  like broken ready-to-use equipment.
-- Fans listings out to any number of TOML-declared valuation sources.
-- Keeps MSRP, asking prices, sold prices, and replacement value separate.
-- Filters pickup locations with case-insensitive configured names.
-- Enforces configurable HTTP request limits to avoid unnecessary load.
-- Remembers observations and price changes in SQLite.
-- Remembers successful deliveries separately, so unchanged listings do not
-  repeat across overlapping runs.
-- Retires finite interests after an explicitly assigned win, and can reopen them.
-- Renders plain-text and photo-backed HTML reports and can send them over SMTP.
+- Turns provider pages, canonical JSON, or CSV into one listing model.
+- Calculates all-in cost from bid, premium, tax, fees, and known handling cost.
+- Keeps ready-to-use, repair, and salvage condition policies separate.
+- Counts capped and unchanged matches instead of making a short report look quiet.
+- Fans price research out to any number of TOML-configured sources.
+- Remembers observations, price changes, handling decisions, and followed lots.
+- Retires finite interests only after an explicit human-confirmed purchase.
+- Renders matching text and HTML reports, with optional email and webhook delivery.
+- Caches and paces authorized requests and identifies them with a contact address.
 
-## Start here
+## Quick start
 
-Python 3.11 or newer. The application uses only the standard library; on Windows,
-installation also supplies the IANA time-zone database used for provider-local
-request limits.
+Auction Lens requires Python 3.11 or newer and keeps runtime dependencies
+minimal; Windows installations may add the timezone-data package. These
+examples use Windows `cmd`; on macOS or Linux, use the equivalent executables
+under `.venv/bin`.
 
 ```cmd
 python -m venv .venv
@@ -36,28 +33,37 @@ python -m venv .venv
 .venv\Scripts\auction-lens.exe setup
 ```
 
-`setup` writes the two files git cannot carry, because one holds what you want
-and the other holds your secrets:
+`setup` creates the two ignored files a public repository cannot supply:
 
-| file | what it is | what you must edit |
-| --- | --- | --- |
-| `.env` | ignored settings and credentials | `AUCTION_LENS_HTTP_USER_AGENT` must contain a real contact address. Nothing will make a request without it. Mail and webhook secrets live here too, never in the config. |
-| `config\local.toml` | ignored personal configuration | `[locations] allowed`, and the `[[interests]]` describing what you actually want |
+| Local file | What belongs there |
+|---|---|
+| `config\local.toml` | Provider settings, interests, locations, and limits |
+| `.env` | The identifying HTTP contact and optional delivery credentials |
 
-Neither is ever overwritten, so `setup` is safe to re-run.
+Neither file is overwritten when setup is run again. Before making a live
+request, edit the local configuration, supply a real contact address in `.env`,
+and record only authorization that actually applies to you.
 
-Then one command does the day's work -- find lots, score them, report what
-matters:
+Read the effective human-owned choices without using the network:
 
 ```cmd
-.venv\Scripts\auction-lens.exe daily
+.venv\Scripts\auction-lens.exe profile
 ```
 
-Add `--email` to send it. Every command defaults to `config\local.toml`, so the
-`--config` flag is only needed when pointing somewhere else.
+The focused questionnaire for durable large-item handling choices is:
 
-To try the scoring without contacting any provider, the bundled records are
-synthetic and use `example.invalid` addresses:
+```cmd
+.venv\Scripts\auction-lens.exe profile --edit
+```
+
+It previews both the plain-language result and exact TOML diff, requires an
+explicit confirmation, writes atomically, and keeps an ignored rollback copy.
+See [Profile editing](docs/PROFILE.md).
+
+## Try it without contacting a provider
+
+The repository includes synthetic listings and prices using `example.invalid`
+addresses:
 
 ```cmd
 .venv\Scripts\auction-lens.exe run ^
@@ -65,954 +71,186 @@ synthetic and use `example.invalid` addresses:
   --config config\providers\nellis.example.toml
 ```
 
-### The other commands
+This exercises canonical loading, matching, pricing, history, the watchlist,
+and report rendering without a network request.
 
-`daily` is `discover` followed by `run`. Both remain separate because each is
-useful alone -- a parser can be corrected and re-run without asking the provider
-again -- but neither has to be typed day to day.
+## A normal day
 
-| command | when you want it |
-| --- | --- |
-| `setup` | first run on a new machine |
-| `profile` | read or safely edit practical limits in plain language |
-| `doctor` | check authorization, configuration, and delivery settings without network access |
-| `daily` | every day: find, score, report |
-| `discover` | find lots and write them, without scoring |
-| `fetch` / `pull` | save one page; read saved pages back |
-| `run` | score a listing file you already have |
-| `watch` / `watchlist` | record what you think of a lot; read what you are following |
-| `sold` | see what closed lots were last going for |
-| `logistics` | record how a bulky lot would be collected |
-
-## Read or edit your profile
-
-The TOML is the source of truth, but it does not have to be read like source
-code. One command translates its stable operator choices into plain language:
+Once local configuration and authorization are ready, one command performs the
+ordinary workflow:
 
 ```cmd
-.venv\Scripts\auction-lens.exe profile
+.venv\Scripts\auction-lens.exe daily
 ```
 
-It explains each interest, whether it is ongoing or finite, its effective
-condition rules, the general bargain rule, locations, large-item handling,
-report length, and whether valuation is active. Empty settings are stated rather
-than skipped. The command
-does not read credentials, listings, history, or the network, and it never
-writes the configuration.
+The path is intentionally easy to follow:
 
-Temporary circumstances remain temporary. For example, a branch already on
-today's route is supplied to `daily --visiting`; it is not silently saved into
-the stable profile.
-
-The guided editor starts with the three durable answers that settle how large
-lots are treated:
-
-```cmd
-.venv\Scripts\auction-lens.exe profile --edit
+```text
+daily
+  -> collect authorized public listings
+  -> normalize them
+  -> match, optionally judge, price, and rank them
+  -> remember observations and followed lots
+  -> build and optionally deliver reports
 ```
 
-It asks whether large lots should be kept with a handling question, kept
-without one, or rejected, plus the published weight and dimension at which
-special planning begins. It does not ask whether you own a truck or can call a
-friend: those are changing circumstances, while the action Auction Lens should
-take is the useful configuration.
+Use `--email` or `--webhook` only for a configured destination. Use
+`--visiting BRANCH` for a branch already on today's route; that temporary fact
+does not rewrite the stable profile.
 
-Before writing, the command shows the resulting plain-language profile and the
-exact TOML lines that would change. Only an explicit `y` or `yes` applies them.
-The original file is kept beside it as an ignored `.previous` snapshot, and can
-be previewed and restored with:
-
-```cmd
-.venv\Scripts\auction-lens.exe profile --restore
-```
-
-The editor never reads `.env`, runtime history, listings, or the network. More
-advanced rules remain ordinary, human-editable TOML. See
-[Profile editing](docs/PROFILE.md) for the full safety contract.
-
-## How long the report is
-
-A sweep can match hundreds of lots and be right about all of them. The scoring
-bars decide what is worth reporting; this decides how much of it a person is
-going to read:
-
-```toml
-[reports]
-max_items = 30
-```
-
-The best 30 by priority, so the weights on your interests choose what survives
-the cut rather than the cap choosing for them. Leave the key out for all of
-them. Whatever is held back is counted out loud, because a short report and a
-quiet day should never look alike:
-
-```
-Showing the best 30; 766 more matched. Raise reports.max_items to see them.
-```
-
-The local report applies the caps to today's ranking. Each outbound destination
-first removes unchanged listings it has already received, then applies the same
-two caps in the same order -- `most_per_interest`, then `max_items` (or any
-smaller transport limit). That keeps an old top result
-from occupying a slot that could carry a lower-ranked new one. The delivered
-report counts both kinds of omission; the exact rules are in
-[Delivery receipts](docs/DELIVERY.md).
-
-## When there are many of one thing
-
-A cap on its own is not enough. On a day with eleven car seats, the best
-thirty lots can be ten car seats and little else -- ten answers to the same
-question, crowding out the one telescope. So each interest contributes only
-its best few:
-
-```toml
-[reports]
-most_per_interest = 3
-```
-
-The report is then grouped by what things *are*, one section per interest,
-strongest section first. A section that is holding lots back closes by
-saying so and offering the phrase that reaches the rest at the provider's
-end, so the shortcut sits beside the lots it is about rather than in a
-footer:
-
-```
-CAR SEAT
-  ... three cards ...
-
-  7 more not shown.
-  Search: chicco | finds 1, plus 2 other lot(s)
-  Search: car seat | finds 9, plus 32 other lot(s)
-```
-
-A section showing everything it found offers no phrase, because there is no
-list to get past. Lots reported on price alone form their own section the
-same way, and are capped the same way -- that is usually the biggest pile.
-
-This is a fairness rule, not a length rule. `max_items` still decides how
-long the report is; this decides that no single want can spend it.
-
-## What gets read first
-
-```toml
-[reports]
-order = "retail"
-```
-
-`priority` is the default: how good a lot is, scaled by how much you said you
-wanted it. `retail` answers the other question -- what is the most valuable
-thing here -- which is the one you ask when you are about to drive out and
-collect, and it ignores how well the lot scored.
-
-Reading order only. Which lots are worth reporting was already settled by the
-scoring bars, and preferring to see the dearest thing first must not quietly
-change what reached the page. A lot with no stated retail reads last, because
-an unknown value is not a large one.
-
-## When a lot closes
-
-Every report line says when bidding on that lot ends:
-
-```
-Bid: $8.00 | Estimated total: $9.20 | Retail: $301.15
-Closes: Wed 21:57 MST | Location: Mesa | Conditions: none listed
-```
-
-The time is the provider's, not yours. A lot closes at the auction house, so
-the clock that matters is the one hanging there, and it is named on every line
-because a report gets read on a phone in some other state. Which zone that is
-comes from the one place that already had to know:
-
-```toml
-[provider.acquisition]
-timezone = "America/Phoenix"
-```
-
-That key already decided which local day a request quota falls in. Reusing it
-means there is no second timezone setting to disagree with the first.
-
-A lot that publishes no closing time simply says nothing about one, rather than
-being given an invented deadline. Every lot seen so far publishes one, so if
-that line goes missing across the board, the page shape changed.
-
-## What things actually go for
-
-Every judgement so far has been made against the provider's own estimated
-retail, which is not a price anyone paid. What a lot really sold for is harder
-to come by than it sounds: no hammer price is published, and a closed lot drops
-off the pages this reads, so the last look is always one look too early.
-
-That leaves a floor rather than a sale price, and `sold` says exactly that:
-
-```
-$ auction-lens sold --match "miter saw"
-1 lot(s) were last looked at within 30 minute(s) of closing.
-Each price is a floor: the lot sold for at least this much.
-
-  at least $159 of $739 estimated retail (22%), 18 bid(s), seen 1m before it closed
-    closed Wed 09 Sep 18:00
-    nellis/127315681  Makita LS1019L 10" Dual-Bevel Sliding Compound Miter Saw
-```
-
-Nothing new is collected for this. The observation database already recorded
-what every lot cost each time it was looked at, and already knew when each lot
-closed; `sold` is the read that puts the two together. Its answers therefore
-get better on their own as more looks accumulate.
-
-How good an answer is depends entirely on *when* the last look happened. A bid
-read a minute before the close is nearly the sale price; the same bid read six
-hours before says almost nothing, so readings older than `--within-minutes`
-are counted and set aside rather than quoted:
-
-```
-41 closed lot(s) left out: last looked at more than 30 minute(s) before
-closing, which says little about what they sold for.
-```
-
-That line is usually a schedule problem rather than a missing feature. Lots
-close in a narrow band in the evening, so a run timed near the end of it turns
-a whole night's inventory into closing prices at the cost of one request.
-
-This is also why a lot carries the moment it was seen rather than the moment it
-was read. A page revalidated from the cache was downloaded by an earlier run,
-and a saved page can be pulled weeks later; dating either of them "now" would
-turn a stale reading into an apparently fresh one.
-
-## Reaching a whole category
-
-When a rule finds more lots than anyone will click through, its section closes
-with a way to see the same thing at the provider's end:
-
-```
-BOUNCE HOUSE
-  ... three cards ...
-
-  11 more not shown.
-  Search: splash pool | finds 3, plus 1 other lot(s)
-  Search: water slide | finds 7, plus 7 other lot(s)
-  Search: water park | finds 1, plus 3 other lot(s)
-```
-
-Several phrases rather than one, because the provider's search has no OR and a
-single query cannot cover a set of unlike titles. These are chosen greedily,
-cheapest first, where cheapest means the most wanted lots per unwanted lot the
-same phrase surfaces -- which is the trade you actually make when you paste one
-in and look at what comes back. Every phrase is one the interest rule already
-asks for, so nothing here invents vocabulary you did not choose.
-
-The counts are the point. A phrase that finds one lot and brings thirty-seven
-strangers is not a shortcut, and is left out rather than offered: that lot
-keeps its link. Rules matching only a handful get no phrases at all, since the
-links are the shorter path.
-
-The phrases are built from everything that matched, not from the few that
-fitted in the section, because reaching what the caps held back is the whole
-reason to offer one. A phrase appears in the footer instead of a section only
-when that kind of thing did not make the report at all -- otherwise those lots
-would be both unreachable and unmentioned.
-
-## Chat webhook
-
-Email is the scheduled digest; it arrives whether or not anybody asked. A
-webhook is the other errand -- you ran the command and want the answer on your
-phone within seconds -- so it posts one message rather than a document.
-
-```cmd
-.venv\Scripts\auction-lens.exe daily --webhook
-```
-
-Turn it on with `[reports.webhook] enabled = true` and put the address in
-`AUCTION_LENS_WEBHOOK_URL`. The address is a secret and is read only from the
-environment, exactly as the mail password is: anyone holding it can post into
-the channel, so it must never reach the configuration file or a commit.
-
-Each lot becomes a card titled with the listing and linked to it. A provider
-that publishes app links serves that same address into its own app on a phone,
-so tapping a card opens the listing where you would want it and no second,
-app-flavoured address is needed. The card is coloured by the provider's own
-worst condition tag, and carries cost, stated retail and the share of it, the
-branch, the conditions, and which rule matched.
-
-`max_items` caps how many cards a message carries. The service accepts at most
-ten embeds and rejects the whole message if given more, so ten is a ceiling
-rather than a preference.
-
-## Email reports
-
-The command that prepares a new machine also asks for the mail settings:
-
-```cmd
-.venv\Scripts\auction-lens.exe setup --email
-```
-
-It asks for the host, SMTP username, From address, recipient, and password,
-which is never echoed. The five values use the environment-variable names from
-your configuration and go into the ignored `.env`, leaving its comments alone;
-then it says whether
-`[reports.email]` is on. It reports that rather than editing it, because
-`enabled = true` is one line you own and a helper that rewrites TOML is how a
-configuration quietly gets corrupted. Saving the settings is a success either
-way; whether delivery is switched on is `doctor --email`'s question, and that is
-the one a scheduler should ask.
-
-Other SMTP hosts are supported when the configured port and security mode suit
-the service. Gmail additionally needs 2-Step Verification and an app password
-rather than the account password, and the command says so for `smtp.gmail.com`;
-the full walk-through is in
-[Gmail setup and delivery test](docs/GMAIL.md).
-
-By default the CLI loads non-empty values from an ignored `.env` file in the
-working directory. Existing process environment variables take precedence. Gmail
-accounts normally require an app password rather than the ordinary account password.
-
-```cmd
-.venv\Scripts\auction-lens.exe run --input listings.json --config config\local.toml --email
-```
-
-Run that command from Windows Task Scheduler, cron, or another scheduler to send
-a periodic digest. Successful deliveries are retained separately from
-observations, so an unchanged listing is not repeated merely because two runs'
-closing windows overlap. A changed bid and a relisting under a new auction id
-remain eligible.
-
-Before scheduling, check the local prerequisites without contacting the
-provider or mail server:
+Before an unattended run, check everything local without contacting the
+provider, SMTP server, or webhook:
 
 ```cmd
 .venv\Scripts\auction-lens.exe doctor --email
 ```
 
-`doctor` is the unattended-run gate: it also requires
-`[provider.acquisition] run_mode = "production"`, so development pacing cannot
-accidentally become a scheduled polling policy.
+## Commands
 
-For Windows, `scripts\run-daily.cmd` is the ready-to-schedule entry point. Point
-Task Scheduler at it directly: it runs the local preflight, finds today's lots,
-scores and emails the findings, then emails the lots you marked `hunting` when
-that selection is non-empty. It names no paths, because every path it would name
-is already a default -- so moving a file is a configuration edit rather than a
-script edit. Webhook delivery remains an explicit, separately configured choice.
+| Command | Use it when |
+|---|---|
+| `setup` | A new machine needs its ignored config and `.env` |
+| `profile` | You want to read or safely edit stable personal choices |
+| `doctor` | You want an offline readiness check |
+| `daily` | You want the whole find-to-report workflow |
+| `discover` | You want canonical listings without analysis |
+| `run` | You already have a canonical JSON or CSV listing file |
+| `fetch` | You want to cache one authorized public page |
+| `pull` | You want to reparse saved pages without another request |
+| `logistics` | You want to save or clear one handling decision |
+| `watch` | You want to record an opinion, estimate, or fulfillment |
+| `watchlist` | You want to read or email followed lots |
+| `sold` | You want closing-price floors from observation history |
 
-`scripts\schedule.cmd` puts it in Task Scheduler and takes it out again:
+Run `auction-lens COMMAND --help` for flags and defaults. The command parser is
+the sole authority for that public surface.
 
-```
-scripts\schedule.cmd status     what is scheduled, when it next runs, how it ended
-scripts\schedule.cmd install    create or replace every run the file declares
-scripts\schedule.cmd remove     delete them
-```
+## Configuration, without hidden rules
 
-The times live in one block at the top of that file, so changing the schedule is
-changing that block. `install` replaces rather than duplicates, so running it
-twice leaves one of each.
+`config\local.toml` is the source of truth. The guided profile editor changes
+only the small set it can explain and reverse safely; everything advanced stays
+ordinary TOML.
 
-### When to run
+The public [Nellis example](config/providers/nellis.example.toml) documents the
+available sections in context:
 
-Measure it rather than guess, because the answer depends entirely on when this
-provider's lots close. On the one this was written against, nothing closes
-before 18:00 or after 22:00 and the lots are spread almost evenly across those
-four hours, so there is no peak to aim at. Scoring each candidate time by how
-close it lands to the lots it can still reach -- a run landing on a lot's own
-close counts 1, one four hours early counts 0 -- put a midday run at zero, a
-single evening run at its best at the hour the first lots go, and a second one
-two hours later at half again as much. A third bought little.
+- provider identity, authorization, caching, and pacing;
+- auction economics and acceptable pickup locations;
+- general and purpose-specific condition policy;
+- interests, including finite quantities and salvage uses;
+- optional local judging and configurable price sources;
+- report length, email, and webhook choices.
 
-The general shape: one run cannot cover a closing window wider than an hour or
-two, the first evening run is worth far more than the third, and a run outside
-the closing window is worth nothing at all however convenient the hour.
+Defaults live in the configuration records and command parser, not in this
+README. Use `profile` to see what the selected file means after defaults and
+condition profiles are applied.
 
-## Getting real listings
+## Reports and local memory
 
-One command asks the provider's search and writes listings ready to score:
+Report construction decides what to say once. Plain text and HTML then render
+the same facts, including omissions, open logistics questions, value evidence,
+and finite-interest progress. HTML email can show product and actual-lot images;
+the images remain remote links rather than becoming large attachments.
 
-```cmd
-.venv\Scripts\auction-lens.exe discover ^
-  --config config\local.toml ^
-  --output data\inbox\listings.json
-```
+Local runtime state is ignored by Git:
 
-A search page carries the complete data for every lot it lists, so one request
-describes a whole page of them rather than one. Terms come from `--search`, or
-from `[provider.acquisition] searches`, or failing both from the `any_terms` of
-your `[[interests]]` -- so what you want is written down once. In the one-door
-`daily` flow, that fallback omits finite interests already satisfied by recorded
-fulfillments. Explicit search lists remain explicit and are never silently pruned.
+- SQLite history records observations, price movements, and handling decisions.
+- The JSON watchlist keeps followed lots, price trails, verdicts, and explicit
+  fulfillment decisions in a hand-readable format.
+- A separate SQLite delivery ledger remembers which revision each opaque
+  destination fingerprint accepted.
 
-A term only finds what you can name. `[provider.acquisition] categories` sweeps
-the provider's own categories as well, which is how a misspelled listing or a
-thing you never thought to type still turns up. Searches and the sweep are
-capped separately, so a long list of terms cannot starve the sweep.
+Observation history and delivery history answer different questions. A listing
+can be old to the collector but new to an email recipient. Unchanged revisions
+are removed before a destination's report cap; failed deliveries remain
+eligible, and `--repeat-delivery` is the explicit resend override. See
+[Delivery receipts](docs/DELIVERY.md).
 
-A whole discovery run counts as a single attempt against the configured daily
-limit, and the requests inside it are spaced apart. Each term's page is cached
-and revalidated, so an unchanged page costs nothing.
+Closing-price output is deliberately a floor, not a claimed sale price: it can
+only report the last bid observed before a listing disappeared. The `sold`
+command names how close that observation was to closing.
 
-Some providers scope their catalogue to one branch and choose it by session
-rather than by URL, so `[provider.acquisition] session_url` and `session_fields`
-say which branch a run is shopping. Without it the site serves its default city,
-and the results look perfectly real while being hundreds of miles away.
+## Email and Windows scheduling
 
-### Closed lots, and a digest in two parts
-
-A report is a list of things you can still bid on. A lot that has already
-closed never reaches scoring, however well it would have scored, because it is
-no longer a bargain -- it is history. Those are counted out loud, so a short
-report is never mistaken for a quiet day.
-
-Nothing else is set aside for its closing time. A lot closing further out is
-not hidden, it is ranked lower: one closing within `ending_soon_minutes` earns
-a bonus and sorts above an otherwise equal lot closing later.
-
-There was once a `closing_within_hours` setting that cut the rest, and it is
-worth saying why it is gone, because it reads like a sensible preference. It is
-measured from the moment a run starts, so the same number means something
-different at every hour. On real data a 14-hour window cut nothing at all from
-an evening run and 794 of 1406 lots from a morning one -- and the lots it hid
-that morning closed that same evening. A setting whose effect depends on what
-time you got up is not a preference.
-
-A digest in two parts needs no window anyway. Schedule
-`scripts\run-daily.cmd` twice -- say 09:00 and 17:00 -- with the same
-configuration. Both runs see the same lots, and the email receipts are what
-keep them apart: the later run omits a still-open lot when that recipient
-already accepted it at the same bid. A changed bid remains eligible, and
-unchanged lots are removed before the report cap so they cannot crowd out new
-ones. What was removed is named in the report and not merely counted, because
-"2 unchanged" raises exactly one question and answers none of it. See
-[Delivery receipts](docs/DELIVERY.md) for retries and explicit resends.
-
-The report's first line names when the earliest lot closes, because that is the
-fact that decides whether the rest is worth reading now. The same fact is
-offered to the subject line as `{{ first_close }}`, alongside
-`{{ match_count }}`:
-
-```toml
-subject = "Auction Lens: {{ match_count }} lots, first closes {{ first_close }}"
-```
-
-Naming the close there keeps two digests on the same day from sharing a
-subject, which is what makes a mail client thread one into the other.
-
-### Near and far branches
-
-Distance is a fact about you, not about a lot, so it is not scored. A branch you
-pass anyway and one half an hour in the wrong direction are both acceptable, but
-not on the same terms:
-
-```toml
-[locations]
-allowed = ["phoenix", "mesa"]
-far = ["phoenix"]
-far_minimum_score = 85
-```
-
-Everything at a near branch is reported as usual. A lot at a far branch is
-reported only if it scores at least `far_minimum_score` -- good enough to
-justify the drive rather than merely good.
-
-That number does not behave smoothly, because the two scoring paths do not
-reach the same heights. An interest match starts at 80 and can add at most 7
-for closing within `ending_soon_minutes`, so its **quality score tops out at
-87**, and only for a lot carrying no condition penalty. A retail-ratio match
-starts from the discount itself -- a lot at 13% of stated retail starts at 87
--- so it clears a high bar easily.
-
-So `far_minimum_score` works in bands. At 80 or below, any want reaches a far
-branch. Between 81 and 87, only a want that is *also* about to close does. At
-88 or more, none do: it means "at far branches, show me deep discounts but
-never the things I actually asked for", which is usually the opposite of what
-the interest weights are for.
-
-You do not have to remember which band a number falls in, because the profile
-readback says it:
-
-```
-LOCATIONS
-- Far locations: "phoenix".
-- A far location needs a minimum score of 85 (above the 80 a want starts at,
-  so only one also ending soon clears it).
-```
-
-Freshness is a reading-order signal rather than a quality one: a new listing
-can add 3 to unweighted priority, bringing the maximum to 90, but it cannot
-make a lot clear a quality bar.
-
-That bar assumes the drive is a cost. Some days it is not, because you have to
-be over there anyway, and on those days a far branch is simply a branch:
+Guided SMTP setup keeps the password hidden and writes credentials only to the
+ignored `.env` file:
 
 ```cmd
-.venv\Scripts\auction-lens.exe daily --visiting phoenix
+.venv\Scripts\auction-lens.exe setup --email
+.venv\Scripts\auction-lens.exe doctor --email
 ```
 
-The named branches are held to the ordinary bar for that run only. It is a flag
-rather than a setting because it is true today and wrong next week, and a saved
-answer to that question is one nobody remembers to change back. Repeat it for
-more than one branch, and name the branch however you like -- `phoenix` and
-`Phoenix, AZ` both match a `far` entry of `phoenix`.
+Gmail requires 2-Step Verification and an App Password. Follow the exact
+[Gmail setup and proof](docs/GMAIL.md), including removing display spaces from
+the App Password before saving it.
 
-Fetching and pulling are separate steps. `fetch` saves a provider page; `pull`
-reads saved pages into the canonical file `run` analyses. Keeping them apart
-means a parser can be corrected and re-run over pages already on disk without
-asking the provider again.
+On Windows, `scripts\run-daily.cmd` is the unattended runner. The schedule is
+owned in exactly one place: the declarations at the top of
+`scripts\schedule.cmd`.
 
 ```cmd
-.venv\Scripts\auction-lens.exe pull ^
-  --config config\local.toml ^
-  --input private\cache\pages ^
-  --output data\inbox\listings.json
+scripts\schedule.cmd status
+scripts\schedule.cmd install
+scripts\schedule.cmd remove
 ```
 
-A pulled lot carries everything the page states: the six condition tags, the
-provider's quality rating, and the photo gallery. It is then indistinguishable
-from a hand-written listing, so scoring, valuation, and the watchlist need to
-know nothing about where it came from.
-
-## Canonical input
-
-JSON input is either a list or an object with a `listings` list. CSV remains
-supported for imports, while editable valuation catalogs use XML. Required fields
-are `source`, `listing_id`, `title`, `url`, and `current_bid`. Common optional
-fields include:
-
-```json
-{
-  "source": "provider-id",
-  "listing_id": "stable-id",
-  "title": "Example listing",
-  "brand": "Example",
-  "model": "Model 100",
-  "category": "guitar",
-  "handling_weight_lb": "148",
-  "package_dimensions_in": ["70", "31", "45"],
-  "loading_assistance": ["forklift"],
-  "url": "https://example.invalid/listing/1",
-  "current_bid": "12.00",
-  "estimated_retail": "100.00",
-  "bid_count": 3,
-  "ends_at": "2026-09-04T23:30:00Z",
-  "location": "Example Warehouse",
-  "conditions": ["used"],
-  "image_url": "https://example.invalid/image.jpg",
-  "buyer_premium_rate": "0.15",
-  "observed_at": "2026-09-04T22:00:00Z"
-}
-```
-
-Money enters through decimal strings and is stored without binary floating-point
-rounding. Provider-reported retail values are treated as ranking signals, not as
-verified market value.
-
-## Interests and valuation
-
-Interests describe *why* an item is useful. Each `[[interests]]` rule has its own
-condition policy, allowing one known-broken listing to fail a `purpose = "use"`
-rule while matching a carefully constrained `purpose = "salvage"` rule. Broad
-anomaly discovery has a separate condition policy as well.
-
-Some wants end. A positive `wanted` count says how many confirmed purchases
-satisfy a rule before it stops matching:
-
-```toml
-[[interests]]
-name = "metal shed"
-id = "yard-shed"
-wanted = 1
-any_terms = ["metal shed"]
-```
-
-Omit `wanted` for an ongoing interest. Auction Lens never decrements the file or
-writes a hidden retired switch; it derives progress from explicit fulfillments
-on won lots in the ignored watchlist. Raising `wanted`, changing a verdict away
-from `won`, or clearing its allocations makes the rule active again on the next
-run. Clearing also records that you reviewed the purchase and it fulfilled none,
-so the report does not keep asking the same question.
-If every fallback interest is satisfied and no explicit search or category sweep
-is configured, `daily` makes no provider request and sends the quiet progress
-report instead of failing for lack of terms.
-
-Finite interests require a stable `id`, so improving a display name later
-cannot detach it from recorded fulfillments. Ongoing interests may omit it and
-use the rule name as their identity.
-
-Each rule also has a `minimum_retail`, the floor that separates a thing from its
-accessories: a guitar cable says "guitar" as loudly as a guitar does, and only
-the stated value tells them apart. It pairs with `max_total_cost` -- what a lot
-must be worth, and what it may cost.
-
-### What a thing is not
-
-The value floor stops the cheap accessories. It does not stop the expensive
-ones: a set of guitar hangers outsells a beginner guitar, and a differential
-carrying a power-tool brand outsells a drill.
-
-Two different questions hide inside "is this really the thing", and they are
-answered in two different places, because one is about English and the other is
-about the world.
-
-**Where a word sits** is about English, and a rule reads it exactly.
-`[interest_defaults]` says once, for every rule, which words name a fitting:
-
-```toml
-[interest_defaults]
-accessory_nouns = ["stand", "case", "cover", "mount", "bracket", "holder"]
-```
-
-These are checked only *beside* the words a rule asked for, because the same
-word means opposite things at a distance -- "guitar stand" is not a guitar,
-while a table saw sold "with rolling stand" is still a table saw. Anything a
-rule explicitly asks for is kept, so an interest in `"monitor stand"` is never
-emptied by a shared `stand`.
-
-A second rule of the same kind needs no configuration at all: a title that names
-the wanted thing only *after* the word "for" is describing what the lot attaches
-to. "Weed Wacker for DeWalt" is not a DeWalt. "Electric Bike for Adults" still
-is an electric bike -- it says what it is first, and only then who it suits.
-
-**What the thing actually is** is about the world, and no list of words can
-settle it. A fertility monitor, a baby monitor, a blood-pressure monitor and a
-KVM switch all say "monitor" as loudly as a display does, and every one of them
-has to be discovered, one at a time, before a word list can turn it away. That
-is not a list converging on an answer; it is a list of everything that has
-already gone wrong once.
-
-So each interest writes a sentence instead, and a local model reads the lot
-against it. See [judging](#judging), below.
-
-```toml
-[[interests]]
-name = "monitor"
-any_terms = ["monitor"]
-wants = """
-    a computer monitor: a display panel you plug into a PC or laptop. A
-    television is not one. A baby, pet, medical, fertility or air-quality
-    monitor is not one.
-"""
-```
-
-`any_terms` no longer has to be precise, only inclusive: it is a net, and the
-sentence is the judgement. Write one kind of thing per sentence. A sentence
-that lists alternatives -- "a microscope, a telescope, a spectrometer" -- gets
-answered against the first item alone and the others are thrown away, so an
-interest that genuinely covers several things wants several rules.
-
-Each rule also has a `weight`, defaulting to `1`. It decides reading order, not
-eligibility: a wanted item at a fair price ranks above something you never asked
-for at a steep discount. Weight is deliberately kept out of every threshold, so
-`[scoring] anomaly_weight = 0.4` sinks the catch-all in the report without ever
-silencing it, and raising a weight can never push a lot past a bar it failed.
-
-One of those bars is the most of an item's stated retail you will ever pay:
-
-```toml
-[scoring]
-maximum_retail_ratio = 0.60
-```
-
-An auction lot is used, unwarranted and not returnable, so paying most of retail
-is a loss however much you want the thing. This is a gate rather than a penalty,
-and it sits with the location and condition gates before anything is scored --
-so no score a want can reach argues its way past it, and it applies to a wanted
-match and a bargain alike. One number states it once, for every rule, instead of
-a `max_total_cost` on each: a dollar cap knows only the total, and cannot tell a
-flagship monitor at a steal from a mediocre one at a fair price.
-
-A lot that states no retail states no ratio and is not judged by this. Value
-floors on individual rules are what decline an unproven claim; this judges only
-a claim that was actually made. Leave the key out and nothing is too expensive
-to report.
-
-One rule may be stricter than that, for a want that is only worth having as a
-steal:
-
-```toml
-[[interests]]
-name = "3d printing"
-maximum_retail_ratio = 0.10
-```
-
-It narrows and cannot widen -- the shared ceiling still applies -- and it is a
-share rather than a number of dollars because "cheap for what it is" does not
-survive being written in dollars: a $200 printer and a $1200 one want the same
-sentence and would need two different `max_total_cost` values.
-
-Pair it with a `minimum_score` above `80` to say "and only near the close". A
-wanted match starts at 80 and gains `ENDING_SOON_BONUS` only inside
-`ending_soon_minutes`, so any bar above 80 is unreachable outside that window.
-Together they read "unless it is late and nearly free, do not show me" -- and
-if no scheduled run fires while lots are closing, the honest consequence is
-that such a rule matches nothing at all.
-
-Valuation sources are ordinary `[[valuation.sources]]` TOML entries. Built-in
-adapters support human-reviewed XML catalogs, research-link templates, and
-authorized read-only JSON APIs. Custom adapters use a normal Python import path,
-so unusual integrations remain isolated. See [the valuation guide](docs/VALUATION.md)
-for the configuration and XML formats.
-
-### What the warehouse wrote on it
-
-A title is the manufacturer's words, identical on every copy of a product. The
-note is what somebody wrote after looking at this particular lot:
-
-```
-SnuggleBounce 13FT White Inflatable Bounce House
-  notes: 9/8 blower not included
-         leaks air/ needs a patch
-```
-
-Nothing else on the page says that, so the note is shown to the judge along
-with the title. It is the only place a missing blower, a missing power source,
-or a leaking seam is ever stated.
-
-The note can only ever rule a lot **out**. Wanted words are still read from the
-title alone, because a pallet lot's note lists everything on the pallet, and
-reading wants from there would make one pallet match every interest at once. A
-note is evidence against, never for -- and that asymmetry is structural rather
-than a rule anybody has to remember: the net that finds candidates reads the
-title, and only the judge that removes them reads the note.
-
-Notes are typed into a box over several visits, so they arrive with line breaks
-in them. Whitespace is flattened before matching: where somebody pressed Enter
-does not decide whether a lot is reported.
-
-## Judging
-
-A local model reads each wanted lot and says whether it is really the thing the
-interest asked for. It is off by default and needs nothing installed: the model
-is reached over HTTP, the same way the mail server and the webhook are.
-
-It **sinks** the lots it rejects rather than deleting them. Measured against a
-real capture, a small model rejects something good about one time in fifteen --
-a plainly titled metal shed as "wrong material", a hedge trimmer as "not a
-laser level" -- and deleting on that accuracy would reproduce the exact failure
-judging was built to end: a lot gone from the report with nobody able to tell
-it was ever there.
-
-Sinking degrades gently instead. A rejected lot keeps its place in the pile at
-a tenth of its weight, which puts it below every real match. Where a want has
-plenty of real lots, the rejected ones fall past `reports.most_per_interest`
-and are never seen. Where it has almost none, they surface -- which is the case
-where you would rather look at something doubtful than at nothing. And they
-arrive saying what they were accused of:
-
-```
-Miku AI Baby Monitor with App, Data Alerts with No Wearable
-  matches use interest 'monitor'
-  set aside by the judge: baby monitor, not computer
-```
-
-That line is the point. A word list that wrongly excluded something said
-nothing at all, so a mistake and an absence looked identical. This tells you
-which sentence to go and fix.
-
-```toml
-[judging]
-enabled = true
-model = "qwen2.5:7b-instruct"
-endpoint = "http://localhost:11434"
-timeout_seconds = 60
-workers = 6
-```
-
-Run a server that speaks the Ollama chat API and pull the model once:
-
-```
-ollama pull qwen2.5:7b-instruct
-ollama serve
-```
-
-`auction-lens doctor` reports which interests have a `wants` sentence and which
-would therefore go unjudged. It does not contact the endpoint, because that
-command promises to make no network requests.
-
-### It is asked what to discard, and answers with a word
-
-Both halves of that were measured rather than guessed, on 23 lots whose right
-answer was written down by hand first.
-
-The **direction** is the safer half of a bet either way. A lot wrongly shown
-costs a line in an email and can be argued with; a lot wrongly hidden is the
-silent failure that word lists already cause. So the judge is asked what to
-throw away, and told in as many words to keep anything it is unsure of.
-
-The **shape of the answer** turned out to matter far more, which was not
-expected. Asked for `"remove": true or false`, the model has to invert its
-own conclusion before writing it down, and often did not -- lots came back
-with `remove: true` beside a reason reading *"Exact match."* Asked for the
-word `keep` or `discard`, it cannot invert anything by accident:
-
-| answer shape | correct | wrongly hidden | wrongly shown |
-|---|---|---|---|
-| `{"match": true/false}` | 19/23 | 4 | 0 |
-| `{"remove": true/false}` | 6/23 | 15 | 2 |
-| `{"verdict": "keep"/"discard"}` | 20/23 | 3 | 0 |
-
-Any synonym for discarding is understood, because a model told to say
-`discard` sometimes says `remove`, and refusing to understand it would keep
-everything it meant to throw out. Every other answer -- an unknown word, a
-missing field, unparseable text -- keeps the lot.
-
-Everything about the wiring follows from that. An unparseable answer keeps the
-lot. An interest with no `wants` sentence is never asked about. An unreachable
-server keeps every lot and says so:
-
-```
-[!] not vetted: nothing answered at http://localhost:11434. Nothing was set aside.
-```
-
-A quiet report and a well-sorted one look identical, so a run that did vet
-says so too:
-
-```
-Vetted 130 match(es); 40 sank to the bottom as not the thing.
-```
-
-### What it is not for
-
-Condition is not its business. Damage, wear and "for parts only" are already
-scored against each interest's `condition_profile`, and a judge that also
-refused on those terms would be applying a second, unwritten policy that no
-configuration could see or change.
-
-Price is not its business either. What a lot costs against what it is worth is
-`maximum_retail_ratio` and the value floors, which are arithmetic and do not
-need an opinion.
-
-One sentence, one kind of thing. A sentence listing alternatives -- "a
-microscope, a telescope, a spectrometer" -- is answered against its first item
-alone and the rest are thrown out, which is why four real telescopes came back
-"not a microscope". Where an interest genuinely covers several things, give it
-several rules; the report's per-interest cap stops them competing anyway.
-
-The reason the accessory rules above were kept rather than deleted is the
-mirror image of the judge's weakness: its own mistakes run towards keeping a
-monitor arm, which adjacency turns away for free and for certain. Each covers
-what the other is bad at.
-
-## Contextual logistics
-
-Listings may provide a handling weight, package dimensions, and seller loading
-assistance. The generic `[logistics]` thresholds do not describe a person's
-friends, vehicles, or home. They only decide when a promising listing needs a
-handling question.
-
-Seller assistance resolves the origin-loading stage. It does not silently assume
-that an item fits the transport or can be unloaded at its destination. A report
-therefore turns a heavy forklift-loaded lot into a focused question instead of a
-blanket rejection.
-
-Save a decision for one listing in the same ignored SQLite database:
-
-```cmd
-.venv\Scripts\auction-lens.exe logistics ^
-  --source provider-id ^
-  --listing-id stable-id ^
-  --status feasible ^
-  --added-cost 25 ^
-  --note "Handling arranged"
-```
-
-Use `--status infeasible` to suppress the listing or `--status clear` to ask
-again. Added logistics cost participates in configured price ceilings. The future
-guided profile editor is deliberately separate; see [the roadmap](docs/ROADMAP.md).
-
-## Watchlist
-
-Every `run` appends one price reading -- time, bid, total cost, bid count -- for
-each reported lot to an ignored `private/watchlist.json`. Scan hourly and a lot
-collects an hourly trail; scan once and it collects a single point.
-
-Alongside the trail it keeps what the provider says about the lot: the six
-condition tags it grades (`Used`, `Assembly Required`, `Missing Parts` and the
-rest, each red, amber, or green), its own 1-5 quality rating, and the photo
-gallery -- whose last image is the photograph of the actual lot rather than the
-manufacturer's stock shot.
-
-On top of that you record what *you* think: your own estimate, a verdict, a
-note, which interest a won lot actually fulfilled, and whether you reviewed
-that question. A run never overwrites any of it. Match provenance and
-fulfillment are separate, so one purchase never silently satisfies every rule
-it happened to match.
-
-Every report shows a copyable `Watch key` such as `nellis/synthetic-001`.
-Pass that one value back with `watch --key`; the older `--source` plus
-`--listing-id` spelling remains available for scripts.
-
-```cmd
-.venv\Scripts\auction-lens.exe watch ^
-  --key nellis/synthetic-001 ^
-  --verdict hunting ^
-  --estimate 60 ^
-  --note "worth it under 40 all in"
-
-.venv\Scripts\auction-lens.exe watchlist
-```
-
-Assign a win to a finite want explicitly:
-
-```cmd
-.venv\Scripts\auction-lens.exe watch ^
-  --key nellis/synthetic-001 ^
-  --verdict won ^
-  --fulfills soundbar
-```
-
-The next run reports `1/1 fulfilled; retired` and stops applying that interest.
-A won multi-match lot accepts repeated `--fulfills`; supplying the flags
-replaces the saved allocation with exactly what you name. If the purchase
-fulfilled none of its matches, `--clear-fulfillments` clears any old allocation,
-reopens those finite interests, and records that you reviewed the question.
-
-The list prints keenest first, with headroom -- your estimate minus the latest
-total -- so a lot that has already cost more than you said it was worth says so.
-See [the watchlist guide](docs/WATCHLIST.md) for the file format and for the two
-ways a condition grade is easy to read backwards.
-
-Email only the lots you explicitly flagged as `hunting`:
-
-```cmd
-.venv\Scripts\auction-lens.exe watchlist ^
-  --verdict hunting ^
-  --config config\local.toml ^
-  --email
-```
-
-The email is a compact set of phone-friendly cards with price, headroom,
-condition concerns, the actual-lot photo, and a direct listing link. Successful
-delivery is remembered per selection, so an unchanged `hunting` list does not
-produce the same mail again. Add `--repeat-delivery` for an intentional resend;
-see [Delivery receipts](docs/DELIVERY.md).
-
-## Provider policy
-
-`config/providers/nellis.example.toml` demonstrates provider-specific economics,
-condition vocabulary, and rules. The project does not include automated bidding
-behavior.
-
-Keep acquisition separate from normalization and scoring so the analytical engine
-remains reproducible and testable with fixtures. `docs/DATA_ACQUISITION.md`
-describes the supported acquisition paths.
+`install` replaces tasks with the same names instead of duplicating them.
+Change run times in that script, not in documentation or a second scheduler.
+
+## Provider boundary
+
+The included Nellis adapter exists because that provider granted limited,
+conditional access for one personal deployment. That permission is informal,
+revocable, and non-transferable. This repository and its example configuration
+do not grant anyone else permission.
+
+Only enable acquisition after receiving authorization that covers your own use
+and each request shape you intend to send. Auction Lens requires an identifiable
+User-Agent, local caching, request pacing, explicit run limits, public pages,
+and read-only behavior. It does not automate login, bidding, or interaction
+behind an access wall.
+
+See [Data acquisition](docs/DATA_ACQUISITION.md) for the enforced boundary and
+[the authorization request template](docs/NELLIS_AUTHORIZATION_REQUEST.md) for a
+plain-language way to ask a provider first.
+
+## Find your way around
+
+The source folders are named for auction features. Start with the question you
+have rather than memorizing a dependency diagram:
+
+- [Code map](docs/CODE_MAP.md) - which file answers a concrete question.
+- [Architecture](docs/ARCHITECTURE.md) - workflow ownership and dependency rules.
+- [Conventions](docs/CONVENTIONS.md) - how code should read and where additions go.
+- [Simplicity](docs/SIMPLICITY.md) - the standard every design change is judged by.
+
+Operator guides:
+
+| Question | Guide |
+|---|---|
+| How do I edit practical limits safely? | [Profile](docs/PROFILE.md) |
+| How may listing pages be acquired? | [Data acquisition](docs/DATA_ACQUISITION.md) |
+| How do I add price evidence? | [Valuation](docs/VALUATION.md) |
+| What is stored about followed lots? | [Watchlist](docs/WATCHLIST.md) |
+| Why was a delivery omitted or repeated? | [Delivery](docs/DELIVERY.md) |
+| How do I configure Gmail? | [Gmail](docs/GMAIL.md) |
+| What is implemented or still open? | [Roadmap](docs/ROADMAP.md) |
 
 ## Development
 
-One command runs everything CI runs, in the same order: compiling, the ASCII
-check, the module-layering check, the linter, and the tests. Nothing in the
-suite touches the network, an SMTP server, or a real provider.
-
-Install the development tools once, then run the check wrapper:
+Install the pinned development tools and run the same gate used by CI:
 
 ```cmd
 .venv\Scripts\python.exe -m pip install -e ".[dev]"
 scripts\test.cmd
 ```
 
-`docs/SIMPLICITY.md` is the standard every change is measured against, and the
-first thing to read before writing any: what "one door", "one authority per
-fact", and "nothing bespoke" actually mean here, with the checklist to apply to
-a diff. It is deliberately about the shape of a change rather than its
-formatting, which ruff already settles.
+The gate compiles the package, checks portable ASCII, enforces import
+boundaries, runs Ruff, and executes the test suite. Tests use synthetic or
+redacted fixtures and fake transports; they do not contact a provider, SMTP
+server, or webhook.
 
-`docs/ARCHITECTURE.md` is the map: which module answers which question, and the
-direction dependencies are allowed to run -- a layering that is checked, not
-just described. `docs/CONVENTIONS.md` is the house style: where a validation
-rule belongs, when a closed set of words becomes an enum, when to split a module
-and when not to, and where a new setting, scoring signal, valuation source, or
-command is supposed to go.
+Before changing code, read [Simplicity](docs/SIMPLICITY.md). Before publishing,
+inspect the staged files as well as the diff: `.env`, `config/local.toml`,
+provider caches, databases, watchlists, delivery receipts, and agent notes are
+local-only.

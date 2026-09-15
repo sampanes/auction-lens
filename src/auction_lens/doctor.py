@@ -1,4 +1,4 @@
-"""Check everything a scheduled run needs, before it can fail unattended at 06:00.
+"""Check everything a scheduled run needs before it can fail unattended.
 
 Deliberately offline and deliberately read-only. Its whole value is that it can
 be run at any moment without consequence, so a scheduler can call it first and
@@ -9,8 +9,9 @@ from __future__ import annotations
 
 import argparse
 
+from .config.app import AppConfig
 from .config.load import load_config
-from .config.schema import AppConfig, RunMode
+from .config.provider import RunMode
 from .providers.nellis.discover import check_discovery_ready
 from .providers.search_terms import search_terms
 from .reports.send import preflight_reports

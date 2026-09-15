@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ..config.schema import ValuationSourceConfig
+from ..config.pricing import ValuationSourceConfig
 from ..listings.model import Listing
 from .model import ResearchLink
 from .sources import SourceResult, fill_template, settings_of

@@ -5,8 +5,8 @@ REM Every path this needs -- the config, the inbox, the database, the watchlist,
 REM the .env -- is already a CLI default, so nothing is repeated here. What is
 REM spelled out is only what this run decides: email it, and chase hunting lots.
 REM
-REM For a split digest, schedule this same file twice -- say 09:00 and 17:00.
-REM Both runs see the same lots: the private delivery ledger is what keeps the
+REM schedule.cmd owns every actual run time and points each task at this file.
+REM Runs may see the same lots: the private delivery ledger is what keeps a
 REM later email from repeating one the recipient already accepted at that bid.
 setlocal
 

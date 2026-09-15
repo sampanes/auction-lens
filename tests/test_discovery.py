@@ -9,7 +9,7 @@ from decimal import Decimal
 from unittest.mock import patch
 from urllib.error import HTTPError
 
-from auction_lens.config.schema import AcquisitionConfig, AcquisitionMode, ProviderConfig
+from auction_lens.config.provider import AcquisitionConfig, AcquisitionMode, ProviderConfig
 from auction_lens.http_safety import PublicHttpsRedirectHandler
 from auction_lens.listings.model import Listing
 from auction_lens.providers.http import PollLedger

@@ -1,8 +1,8 @@
 """Preview, confirm, and save the small profile edits the CLI understands.
 
-The configuration editor owns TOML preservation and atomic snapshots. This
-module owns only the conversation: three practical questions, a plain-language
-preview, an exact zero-context diff, and an explicit confirmation.
+The text editor preserves the person's TOML and the backup module makes writes
+recoverable. This module owns only the conversation: three practical questions,
+a plain-language preview, an exact zero-context diff, and explicit confirmation.
 """
 
 from __future__ import annotations
@@ -13,18 +13,21 @@ from difflib import unified_diff
 from pathlib import Path
 
 from ..values import parse_decimal
+from .app import AppConfig
 from .load import load_config, parse_config
+from .logistics import LargeItemPolicy, LogisticsConfig
 from .profile import render_profile
-from .profile_edit import (
-    REMOVE,
-    ProfileEdits,
+from .profile_backup import (
     profile_snapshot_path,
     recover_profile_restore,
     restore_profile_text,
     save_profile_text,
+)
+from .profile_edit import (
+    REMOVE,
+    ProfileEdits,
     update_profile_text,
 )
-from .schema import AppConfig, LargeItemPolicy, LogisticsConfig
 
 CANCELLED = "Cancelled; no files changed."
 NO_CHANGES = "No changes requested; no files changed."

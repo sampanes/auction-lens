@@ -7,7 +7,7 @@ rule-local ``condition`` table combine.
 
 from __future__ import annotations
 
-from .schema import ConditionPolicy
+from .interests import ConditionPolicy
 from .toml import Section
 
 PROFILE_KEY = "condition_profile"

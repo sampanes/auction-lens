@@ -6,8 +6,27 @@ import tomllib
 import unittest
 from decimal import Decimal
 
+from auction_lens.config.app import AppConfig, JudgingConfig
+from auction_lens.config.interests import ConditionPolicy, InterestRule, ScoringConfig
 from auction_lens.config.load import load_config
-from auction_lens.config.schema import InterestRule
+from auction_lens.config.logistics import LargeItemPolicy, LocationPolicy, LogisticsConfig
+from auction_lens.config.pricing import (
+    EconomicsConfig,
+    ValuationConfig,
+    ValuationSourceConfig,
+)
+from auction_lens.config.provider import (
+    AcquisitionConfig,
+    AcquisitionMode,
+    ProviderConfig,
+    RunMode,
+)
+from auction_lens.config.reports import (
+    EmailConfig,
+    EmailSecurity,
+    ReportsConfig,
+    WebhookConfig,
+)
 from support import EXAMPLE_CONFIG, example_config, temporary_directory
 
 
@@ -20,6 +39,39 @@ class ExampleConfigTests(unittest.TestCase):
         self.assertEqual(self.config.provider.display_name, "Nellis Auction")
         self.assertEqual(self.config.economics.default_buyer_premium, Decimal("0.15"))
         self.assertTrue(self.config.economics.premium_is_taxable)
+
+    def test_loaded_records_have_their_public_owner_types(self):
+        expected_types = (
+            (self.config, AppConfig),
+            (self.config.provider, ProviderConfig),
+            (self.config.acquisition, AcquisitionConfig),
+            (self.config.acquisition.mode, AcquisitionMode),
+            (self.config.acquisition.run_mode, RunMode),
+            (self.config.economics, EconomicsConfig),
+            (self.config.scoring, ScoringConfig),
+            (self.config.scoring.anomaly_condition, ConditionPolicy),
+            (self.config.valuation, ValuationConfig),
+            (self.config.logistics, LogisticsConfig),
+            (self.config.logistics.large_item_policy, LargeItemPolicy),
+            (self.config.locations, LocationPolicy),
+            (self.config.email, EmailConfig),
+            (self.config.email.security, EmailSecurity),
+            (self.config.webhook, WebhookConfig),
+            (self.config.reports, ReportsConfig),
+            (self.config.judging, JudgingConfig),
+        )
+        for value, expected_type in expected_types:
+            self.assertIs(type(value), expected_type)
+        self.assertTrue(all(type(rule) is InterestRule for rule in self.config.interests))
+        self.assertTrue(
+            all(type(rule.condition) is ConditionPolicy for rule in self.config.interests)
+        )
+        self.assertTrue(
+            all(
+                type(source) is ValuationSourceConfig
+                for source in self.config.valuation.sources
+            )
+        )
 
     def test_public_example_does_not_claim_transferable_fetch_permission(self):
         self.assertFalse(self.config.acquisition.authorization_confirmed)

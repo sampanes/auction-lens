@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from ..config.schema import InterestRule
+from ..config.interests import InterestRule
 from ..listings.model import Listing
 from ..matching.model import Candidate
 

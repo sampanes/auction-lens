@@ -1,8 +1,7 @@
 """The small contract and shared configuration for every price source.
 
 A source answers one question about one listing. This file also holds the
-shared URL-template and request-limit rules, plus the registry that turns a
-configured adapter name into its implementation.
+shared URL-template and request-limit rules used by the concrete adapters.
 """
 
 from __future__ import annotations
@@ -12,7 +11,7 @@ from decimal import Decimal
 from typing import Protocol
 from urllib.parse import quote_plus
 
-from ..config.schema import ValuationSourceConfig
+from ..config.pricing import ValuationSourceConfig
 from ..config.toml import Section, in_section
 from ..listings.model import Listing
 from ..values import require_at_least, require_not_negative

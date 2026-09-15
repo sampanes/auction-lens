@@ -8,7 +8,7 @@ from decimal import Decimal
 from unittest.mock import patch
 from urllib.error import HTTPError
 
-from auction_lens.config.schema import AcquisitionConfig, ProviderConfig
+from auction_lens.config.provider import AcquisitionConfig, ProviderConfig
 from auction_lens.providers.nellis.discover import discover_searches
 from support import FakeResponse, temporary_directory
 

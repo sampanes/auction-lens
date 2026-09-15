@@ -10,8 +10,8 @@ from unittest.mock import patch
 
 from auction_lens.cli import build_parser, console, main
 from auction_lens.config.load import load_config
-from auction_lens.config.profile_edit import profile_snapshot_path
-from auction_lens.config.schema import LargeItemPolicy
+from auction_lens.config.logistics import LargeItemPolicy
+from auction_lens.config.profile_backup import profile_snapshot_path
 from support import EXAMPLE_CONFIG, temporary_directory
 
 PRIVATE_MARKER = "PRIVATE-SENTINEL-DO-NOT-PRINT"

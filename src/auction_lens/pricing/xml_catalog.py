@@ -10,7 +10,7 @@ import re
 import xml.etree.ElementTree as ElementTree
 from pathlib import Path
 
-from ..config.schema import ValuationSourceConfig
+from ..config.pricing import ValuationSourceConfig
 from ..listings.model import Listing
 from ..values import parse_decimal, parse_money, parse_utc_datetime, parse_whole_number
 from .model import ValuationObservation

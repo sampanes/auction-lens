@@ -7,12 +7,8 @@ from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
-from auction_lens.config.schema import (
-    ConditionPolicy,
-    InterestDefaults,
-    InterestRule,
-    LocationPolicy,
-)
+from auction_lens.config.interests import ConditionPolicy, InterestDefaults, InterestRule
+from auction_lens.config.logistics import LocationPolicy
 from auction_lens.listings.model import ObservationChange
 from auction_lens.matching.evaluate import estimate_total_cost, evaluate
 from auction_lens.matching.logistics import LogisticsDecision

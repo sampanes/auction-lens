@@ -15,7 +15,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, replace
 from decimal import Decimal
 
-from ..config.schema import InterestRule
+from ..config.interests import InterestRule
 from ..listings.model import Listing
 from .model import Candidate, CandidateCategory
 

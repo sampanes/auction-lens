@@ -11,10 +11,10 @@ Every value has one place that decides whether it is acceptable.
 | The rule | Where it goes | Example |
 |---|---|---|
 | What an already-typed value must be | its record's `__post_init__` | `port must be between 1 and 65535` |
-| What kind of value TOML contains | `config/toml.py` | `scoring.minimum_report_score must be a whole number` |
-| Which table an operator must edit | `config/toml.py`, through `in_section` | prefixes `reports.email: ` |
+| What kind of value TOML contains | the `config/` loading boundary | `scoring.minimum_report_score must be a whole number` |
+| Which table an operator must edit | the labelled section in `config/` | prefixes `reports.email: ` |
 
-A config builder maps keys to record fields. If it checks a value after the
+A config loader maps keys to record fields. If it checks a value after the
 record is constructed, that check probably belongs to the record.
 
 Open-ended adapter settings are the exception. Their valid keys depend on the
@@ -56,8 +56,9 @@ Every validation error names the field the person must edit.
 ## 4. Parse at the boundary; trust the inside
 
 Untrusted values become strict records once, at the edge: `listings/files.py`,
-`config/load.py`, provider parsers, and pricing adapters. Code inside the
-application uses those records rather than repeatedly checking their fields.
+the `config/` loading boundary, provider parsers, and pricing adapters. Code
+inside the application uses those records rather than repeatedly checking
+their fields.
 
 A record derived entirely from validated records does not need to repeat their
 input checks. Revalidating computed data can turn an arithmetic quirk into an
@@ -92,13 +93,14 @@ Some repetition is cheaper than an abstraction:
 
 `reports/findings.py` decides what a report says and writes those decisions into
 format-neutral records from `reports/records.py`. `reports/text.py` and
-`reports/html.py` decide only what those facts look like. Renderers do not reach
-back into a `Candidate`, and report construction does not know about escaping or
-terminal presentation.
+`reports/html.py` decide only what those facts look like. Those two renderers do
+not reach back into a `Candidate`, and report construction does not know about
+escaping or terminal presentation.
 
 `reports/delivery.py` selects the revisions one destination has not received;
 `reports/receipts.py` records them only after that destination accepts the
-report. This separation keeps retry policy independent from transport and
+report. `reports/send.py` keeps selection, transport, and receipt recording in
+that order. This separation keeps retry policy independent from transport and
 persistence.
 
 The cross-channel contract tests require text, HTML, SMTP, and webhook output to
@@ -138,8 +140,8 @@ reason in its docstring.
 
 ## Adding something
 
-- **A setting:** add its field and invariant in `config/schema.py`, map it in
-  `config/load.py`, document it in the public example, and test the exact key.
+- **A setting:** add its typed field, invariant, and loading rule in `config/`,
+  document it in the public example, and test the exact key.
 - **A listing fact:** add it to `listings/model.py` and map it explicitly at each
   provider/canonical boundary.
 - **A match rule or score:** put shared admission policy in

@@ -14,7 +14,7 @@ from email.message import EmailMessage
 from html import escape
 from zoneinfo import ZoneInfo
 
-from ..config.schema import EmailConfig, EmailSecurity
+from ..config.reports import EmailConfig, EmailSecurity
 from ..matching.model import Candidate
 from ..watchlist.model import WatchedItem
 from ..watchlist.report import render_watchlist, render_watchlist_html

@@ -26,7 +26,7 @@ from urllib.error import HTTPError
 from urllib.parse import quote_plus, urlencode
 from urllib.request import HTTPCookieProcessor, Request
 
-from ...config.schema import (
+from ...config.provider import (
     CATEGORY_PLACEHOLDER,
     QUERY_PLACEHOLDER,
     AcquisitionConfig,

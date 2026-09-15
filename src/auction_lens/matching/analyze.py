@@ -9,7 +9,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 
-from ..config.schema import AppConfig, InterestRule
+from ..config.app import AppConfig
+from ..config.interests import InterestRule
 from ..history.logistics import LogisticsDecisionStore
 from ..history.observations import ObservationStore
 from ..listings.model import Listing

@@ -1,76 +1,80 @@
 # Architecture
 
-The source tree is the map. Auction Lens uses feature names for directories and
-plain verbs for the workflows at the top:
+The source tree uses auction features for directories and plain verbs for the
+workflows at the package root. A normal run can be read in one direction:
 
-```
-collect -> listings -> matching -> pricing -> reports
-              |            |                    |
-              +------ history and watchlist ----+
+```text
+daily
+  -> collect -> providers -> listings
+  -> matching -> pricing
+  -> history + watchlist
+  -> reports -> email or webhook
 ```
 
 Configuration supplies policy to every stage. Providers own the authorized
-boundary to an auction site. The command line names the doors into those
+boundary to an auction site. The command line names the public doors into the
 features, but it does not define a second version of their rules.
 
-## Where things live
+For a file-level answer to a concrete question, use the
+[question-first code map](CODE_MAP.md).
 
-| Path | The question it answers |
+## Top-level workflows
+
+The files at `src/auction_lens/` are the shortest path through the application:
+
+| Workflow | Owns |
 |---|---|
-| `collect.py` | How do authorized provider pages become one listings file? |
-| `providers/http.py` | May this request run, how is it paced, and may cached data be reused? |
-| `providers/nellis/discover.py` | Which public Nellis search pages should be requested? |
-| `providers/nellis/parse.py` | How does a Nellis page become provider-neutral rows? |
-| `providers/search_terms.py` | Which configured phrases should discovery ask for? |
-| `listings/model.py` | What facts make up one provider-neutral listing? |
-| `listings/files.py` | How do canonical JSON and CSV files become listings? |
-| `listings/conditions.py` | What does a provider's condition answer mean? |
-| `matching/analyze.py` | How does one complete analysis run flow? |
-| `matching/evaluate.py` | Which gates and general bargain rules admit a listing? |
-| `matching/interests.py` | How does a listing satisfy a configured interest? |
-| `matching/judge.py` | Is a word match really the thing the interest describes? |
-| `matching/logistics.py` | Can the item be handled with the available help and equipment? |
-| `matching/progress.py` | Which finite interests remain active? |
-| `matching/searches.py` | Which few provider searches cover a crowded set of matches? |
-| `matching/model.py` | What is a candidate, score, and report section? |
-| `pricing/value.py` | How are price sources asked and their evidence combined? |
-| `pricing/sources.py` | What common contract and settings does a price source use? |
-| `pricing/http_json.py` | How does a configured read-only JSON price API work? |
-| `pricing/reference.py` | How does a configured reference price become evidence? |
-| `pricing/xml_catalog.py` | How does a local XML price catalog become evidence? |
-| `reports/records.py` | What format-neutral facts make up a report? |
-| `reports/findings.py` | How do candidates become reader-facing facts? |
-| `reports/text.py`, `reports/html.py` | What do those facts look like? |
-| `reports/email.py` | How is a report submitted securely over SMTP? |
-| `reports/webhook.py` | How does the same report fit a compact chat message? |
-| `reports/delivery.py` | Which report revisions has one destination not received? |
-| `reports/receipts.py` | Which successful private deliveries should later runs remember? |
-| `history/database.py` | Which SQLite tables and transaction boundary hold local history? |
-| `history/observations.py` | What changed since a listing was last observed? |
-| `history/logistics.py` | Which handling decisions has the operator recorded? |
-| `history/sales.py` | What were closed lots last seen going for? |
-| `watchlist/model.py` | What can a person record about one followed lot? |
-| `watchlist/store.py` | How is that private, hand-readable history preserved? |
-| `watchlist/report.py` | How does the followed-lot list read in text and email? |
-| `config/schema.py` | What may the TOML configuration say? |
-| `config/load.py`, `config/toml.py` | How is TOML read into those strict records? |
-| `config/profile.py` | What do the choices mean in plain language? |
-| `config/profile_edit.py` | How can the small editable profile be changed reversibly? |
-| `config/profile_wizard.py` | How does a terminal walk a person through that edit? |
-| `cli/parser.py` | Which commands and flags exist, and what are their defaults? |
-| `cli/__init__.py` | Which command name calls which function? |
-| `cli/logistics.py` | How does the logistics command record a handling decision? |
-| `cli/watchlist.py` | How do watch and watchlist record, show, and email followed lots? |
-| `cli/sales.py` | How does sold answer the closing-price question? |
+| `setup.py` | Creating the ignored configuration and settings a clone cannot carry |
+| `doctor.py` | Checking an unattended run locally, without network or state changes |
+| `collect.py` | Fetching, discovering, and reparsing authorized provider pages |
+| `daily.py` | Running the full daily flow or analysing an existing listings file |
 
-The remaining files under `cli/` are the terminal adapter: argument parsing,
-dispatch, exit codes, and the small commands whose subject is inherently an
-operator action.
+`daily.py` is the first file to open for the complete operator path. It reads
+top to bottom as configuration, discovery, analysis, report construction, and
+optional delivery.
+
+## Feature directories
+
+| Directory | Owns |
+|---|---|
+| `config/` | Feature-owned records for provider, interests, pricing, reports, logistics, and the assembled app; TOML loading and profile editing |
+| `providers/` | Authorized HTTP behavior plus provider-specific discovery and parsing |
+| `listings/` | The canonical provider-neutral listing, file formats, and condition evidence |
+| `matching/` | Admission gates, interests, optional judging, logistics, ranking, and finite progress |
+| `pricing/` | Configurable value sources, evidence provenance, and aggregation |
+| `history/` | SQLite observations, closing-price evidence, and saved handling decisions |
+| `watchlist/` | Human verdicts, price trails, fulfillment decisions, storage, and rendering |
+| `reports/` | Shared report facts, rendering, destination filtering, transports, and receipts |
+| `cli/` | The public parser, command dispatch, exit codes, and small interactive adapters |
+
+The `reports/` split is deliberate. `records.py` defines what every channel can
+receive, `findings.py` decides what to say, and `text.py` and `html.py` decide
+how it looks. `email.py` and `webhook.py` own their transports. `delivery.py`
+plans what one destination has not received, `receipts.py` remembers successful
+revisions, and `send.py` keeps those operations in the safe order.
+
+The `cli/` package is deliberately thin. `parser.py` is the only authority for
+commands, flags, help, and defaults. Its dispatch map points each command at a
+feature or top-level workflow; domain decisions do not live in argument parsing.
+
+## Shared mechanisms
+
+A few package-root files are used by more than one feature:
+
+| File | Shared mechanism |
+|---|---|
+| `values.py` | Scalar and enum-choice parsing and validation vocabulary |
+| `files.py` | Atomic small-file JSON reads and writes |
+| `http_safety.py` | Public-HTTPS URL and redirect rules |
+| `throttle.py` | In-process spacing for a bounded request burst |
+| `local_files.py` | Default paths for private runtime files |
+
+They contain mechanisms, not provider, matching, or reporting policy.
 
 ## Enforced boundaries
 
-`scripts/check-imports.py` reads the imports from every source file and checks
-the rules a maintainer actually relies on:
+`scripts/check-imports.py` reads imports from every source file and checks the
+rules a maintainer relies on:
 
 1. Project imports cannot form a cycle.
 2. Only the console entry point may depend on `cli`.
@@ -79,42 +83,29 @@ the rules a maintainer actually relies on:
 4. Pure record modules cannot import I/O owners.
 5. Feature-package `__init__.py` files are signposts, not hidden API barrels.
 
-This leaves features free to keep related code together. There is no numeric
-layer chart that forces one behavior to be scattered across unrelated folders.
+This protects comprehensible ownership without assigning arbitrary numeric
+layers or forcing one feature to scatter itself across unrelated folders.
 
-## Rules that keep it navigable
+## Reading paths
 
-1. **One question per module.** Split when parts change for different reasons,
-   not merely because a line count is large.
-2. **Explicit imports.** Import from the file that owns a name. Do not make a
-   package marker into a second, hidden directory of re-exports.
-3. **Gates before scores.** A rejected listing leaves before arithmetic runs,
-   so its rejection stays cheap to explain.
-4. **Records enforce their own rules.** Downstream code trusts the values it
-   receives instead of repeating validation.
-5. **Names say what; comments say why.** A reader should understand the normal
-   path without comments, and understand the non-obvious tradeoff from them.
-6. **Price sources are data first.** Add an authorized source in TOML when the
-   existing adapters can express it; add code only for a new input mechanism.
+- For the whole application, start at `daily.py`.
+- For provider-neutral analysis, start at `matching/analyze.py`.
+- For the network boundary, start at `collect.py`, then `providers/http.py` and
+  the selected provider directory.
+- For what a person reads, start at `reports/findings.py`.
+- For the public command surface, start at `cli/parser.py`, then its one dispatch
+  map in `cli/__init__.py`.
 
-## Reading the code for the first time
-
-Start with `matching/analyze.py`. It shows the provider-neutral path from
-listings through observation, matching, optional judging, pricing, ranking, and
-watchlist history. Follow a call into the feature whose decision interests you.
-
-For the network boundary, start at `collect.py` and then open
-`providers/nellis/discover.py`. For what a person receives, start at
-`reports/findings.py`. Read `cli/parser.py` when you need the public command
-surface rather than the domain rules.
+Each module starts with a docstring explaining its one question. Follow a call
+only when that question is the one you need to answer.
 
 ## Tests
 
 `tests/` is organized by behavior, with shared synthetic fixtures and fakes in
-`tests/support.py`. The `tests/contracts/` directory pins the public CLI and
-cross-channel report meaning during structural refactors. Compatibility
-fixtures protect old watchlist and SQLite files. Nothing in the suite contacts
-a provider, SMTP server, or webhook.
+`tests/support.py`. `tests/contracts/` pins the public CLI and cross-channel
+report meaning during structural refactors. Compatibility fixtures protect old
+watchlist and SQLite files.
 
-Run everything CI runs with `scripts\test.cmd` on Windows or
-`python scripts/check.py` elsewhere.
+Nothing in the suite contacts a provider, SMTP server, or webhook. Run the
+complete gate with `scripts\test.cmd` on Windows or `python scripts/check.py`
+elsewhere.

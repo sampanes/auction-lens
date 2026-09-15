@@ -1,7 +1,7 @@
 """Reading one TOML file into an :class:`AppConfig`.
 
 Every section of the file gets one small builder, and every builder does exactly
-one thing: map keys to fields. It does not check them. The records in ``schema``
+one thing: map keys to fields. It does not check them. The feature records
 enforce their own rules, so the only thing added here is the name of the table
 an operator has to open, which a record cannot know.
 """
@@ -12,32 +12,31 @@ import tomllib
 from pathlib import Path
 
 from ..matching.model import ReadingOrder
+from .app import AppConfig, JudgingConfig
 from .conditions import resolve_condition_policy
-from .schema import (
-    DEFAULT_CACHE_FILE,
+from .interests import InterestDefaults, InterestRule, ScoringConfig
+from .logistics import (
     DEFAULT_FAR_MINIMUM_SCORE,
+    LargeItemPolicy,
+    LocationPolicy,
+    LogisticsConfig,
+)
+from .pricing import EconomicsConfig, ValuationConfig, ValuationSourceConfig
+from .provider import (
+    DEFAULT_CACHE_FILE,
     DEFAULT_LEDGER_FILE,
-    DEFAULT_MOST_PER_INTEREST,
     DEFAULT_SEARCH_CACHE_DIR,
     DEFAULT_USER_AGENT_ENV,
     AcquisitionConfig,
     AcquisitionMode,
-    AppConfig,
-    EconomicsConfig,
+    ProviderConfig,
+    RunMode,
+)
+from .reports import (
+    DEFAULT_MOST_PER_INTEREST,
     EmailConfig,
     EmailSecurity,
-    InterestDefaults,
-    InterestRule,
-    JudgingConfig,
-    LargeItemPolicy,
-    LocationPolicy,
-    LogisticsConfig,
-    ProviderConfig,
     ReportsConfig,
-    RunMode,
-    ScoringConfig,
-    ValuationConfig,
-    ValuationSourceConfig,
     WebhookConfig,
 )
 from .toml import Section, in_section

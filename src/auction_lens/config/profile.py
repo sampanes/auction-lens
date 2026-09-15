@@ -17,7 +17,9 @@ from ..matching.model import (
     HIGHEST_SCORE,
     LOWEST_SCORE,
 )
-from .schema import AppConfig, ConditionPolicy, InterestRule, LargeItemPolicy
+from .app import AppConfig
+from .interests import ConditionPolicy, InterestRule
+from .logistics import LargeItemPolicy
 
 NONE = "none"
 NO_LIMIT = "no limit"
