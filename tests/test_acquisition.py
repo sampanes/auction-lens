@@ -8,8 +8,8 @@ from datetime import UTC, datetime, timedelta
 from unittest.mock import patch
 from urllib.request import Request
 
-from auction_lens.acquisition import fetch_authorized_page
 from auction_lens.http_safety import PublicHttpsRedirectHandler
+from auction_lens.providers.http import fetch_authorized_page
 from support import (
     NELLIS_BROWSE_FIXTURE,
     FakeResponse,
@@ -43,7 +43,7 @@ class AuthorizedFetchTests(unittest.TestCase):
         self.assertIn("operator@auction-lens.dev", opener.calls[0][0].get_header("User-agent"))
         self.assertIn("fixture-v1", metadata)
 
-    @patch("auction_lens.acquisition.fetch.public_https_opener")
+    @patch("auction_lens.providers.http.public_https_opener")
     def test_the_default_fetch_path_uses_the_redirect_safe_opener(self, opener_factory):
         opener = RecordingOpener(FakeResponse(b"<html>fixture</html>"))
         opener_factory.return_value = opener

@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
 
-from ..models import LogisticsDecision, LogisticsStatus
+from ..matching.logistics import LogisticsDecision, LogisticsStatus
 from .database import Database
 
 _SELECT_DECISION = """

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import unittest
 
-from auction_lens.text_match import first_mention, mentions, standalone_mentions
+from auction_lens.matching.text import first_mention, mentions, standalone_mentions
 
 
 class WholeWordTests(unittest.TestCase):

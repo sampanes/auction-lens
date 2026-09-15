@@ -11,8 +11,9 @@ from collections.abc import Iterator
 from decimal import Decimal
 from html import escape
 
-from ..grading import HIGHEST_RATING, ConditionTag, Tag
-from ..models import InterestRef, Verdict, WatchedItem
+from ..listings.conditions import HIGHEST_RATING, ConditionTag, Tag
+from ..matching.progress import InterestRef
+from ..watchlist.model import Verdict, WatchedItem
 
 SEPARATOR = " | "
 

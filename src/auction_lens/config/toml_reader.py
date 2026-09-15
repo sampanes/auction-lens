@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
-from ..fields import require_finite, require_not_negative
+from ..values import require_finite, require_not_negative
 
 
 @dataclass(frozen=True)

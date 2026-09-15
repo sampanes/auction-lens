@@ -8,8 +8,8 @@ from decimal import Decimal
 from unittest.mock import patch
 from urllib.error import HTTPError
 
-from auction_lens.acquisition import discover_searches
-from auction_lens.config import AcquisitionConfig, ProviderConfig
+from auction_lens.config.schema import AcquisitionConfig, ProviderConfig
+from auction_lens.providers.nellis.discover import discover_searches
 from support import FakeResponse, temporary_directory
 
 CONTACT_USER_AGENT = "AuctionLens test contact=operator@auction-lens.dev"

@@ -6,10 +6,9 @@ import json
 import unittest
 from decimal import Decimal
 
-from auction_lens.ingest import read_product_page
-from auction_lens.ingest.nellis import _row
-from auction_lens.ingest.turbo_stream import decode
-from auction_lens.models import Listing
+from auction_lens.listings.model import Listing
+from auction_lens.providers.nellis.parse import _row, read_product_page
+from auction_lens.providers.nellis.turbo import decode
 from support import ROOT
 
 PRODUCT_PAGE = ROOT / "fixtures" / "nellis" / "product-page.html"

@@ -6,16 +6,10 @@ import unittest
 from datetime import UTC, datetime
 from decimal import Decimal
 
-from auction_lens.models import (
-    KEY_SEPARATOR,
-    ClosingPrice,
-    Listing,
-    LogisticsDecision,
-    LogisticsStatus,
-    ValuationObservation,
-    WatchedItem,
-    key_of,
-)
+from auction_lens.listings.model import KEY_SEPARATOR, Listing, key_of
+from auction_lens.matching.logistics import LogisticsDecision, LogisticsStatus
+from auction_lens.pricing.model import ValuationObservation
+from auction_lens.watchlist.model import ClosingPrice, WatchedItem
 
 
 class LogisticsDecisionTests(unittest.TestCase):

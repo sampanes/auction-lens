@@ -8,7 +8,7 @@ from dataclasses import replace
 from auction_lens.config import LocationPolicy, ReportsConfig, render_profile
 from auction_lens.config.profile import _minimum_score
 from auction_lens.config.schema import DEFAULT_FAR_MINIMUM_SCORE
-from auction_lens.models import (
+from auction_lens.matching.model import (
     BASE_INTEREST_SCORE,
     HIGHEST_INTEREST_SCORE,
     HIGHEST_SCORE,

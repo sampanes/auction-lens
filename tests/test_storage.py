@@ -7,7 +7,7 @@ from dataclasses import replace
 from datetime import timedelta
 from decimal import Decimal
 
-from auction_lens.models import LogisticsDecision
+from auction_lens.matching.logistics import LogisticsDecision
 from auction_lens.storage import LogisticsDecisionStore, ObservationStore
 from support import SOUNDBAR, example_listings, temporary_database
 

@@ -12,7 +12,7 @@ import argparse
 from pathlib import Path
 
 from ..config import AppConfig
-from ..models import Candidate, harvest_of
+from ..matching.model import Candidate, harvest_of
 from ..notifications import (
     DeliveryChannel,
     DeliveryRoute,

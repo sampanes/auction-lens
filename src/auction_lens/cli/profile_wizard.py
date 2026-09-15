@@ -22,7 +22,7 @@ from ..config.editor import (
     save_profile_text,
     update_profile_text,
 )
-from ..fields import parse_decimal
+from ..values import parse_decimal
 
 CANCELLED = "Cancelled; no files changed."
 NO_CHANGES = "No changes requested; no files changed."

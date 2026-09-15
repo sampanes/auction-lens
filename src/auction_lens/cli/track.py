@@ -15,14 +15,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from ..config import load_config
-from ..fields import parse_money
-from ..models import (
-    InterestRef,
-    LogisticsDecision,
-    LogisticsStatus,
-    Verdict,
-    WatchedItem,
-)
+from ..matching.logistics import LogisticsDecision, LogisticsStatus
+from ..matching.progress import InterestRef
+from ..matching.text import mentions
 from ..notifications import (
     DeliveryChannel,
     DeliveryRoute,
@@ -45,7 +40,8 @@ from ..storage import (
     LogisticsDecisionStore,
     WatchlistStore,
 )
-from ..text_match import mentions
+from ..values import parse_money
+from ..watchlist.model import Verdict, WatchedItem
 from .exit_codes import SUCCESS
 from .parser import CLEAR, DROP
 from .sending import delivery_failure, preflight_reports

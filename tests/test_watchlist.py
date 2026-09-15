@@ -10,8 +10,8 @@ from dataclasses import replace
 from datetime import timedelta
 from decimal import Decimal
 
-from auction_lens.grading import read_grade
-from auction_lens.models import InterestRef, PriceReading, Verdict, WatchedItem
+from auction_lens.listings.conditions import read_grade
+from auction_lens.matching.progress import InterestRef
 from auction_lens.pipeline import analyze_listings
 from auction_lens.reporting import render_watchlist, render_watchlist_html
 from auction_lens.storage import (
@@ -20,6 +20,7 @@ from auction_lens.storage import (
     ObservationStore,
     WatchlistStore,
 )
+from auction_lens.watchlist.model import PriceReading, Verdict, WatchedItem
 from support import (
     SOUNDBAR,
     example_config,

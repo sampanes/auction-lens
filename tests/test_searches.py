@@ -7,12 +7,12 @@ from dataclasses import replace
 from decimal import Decimal
 
 from auction_lens.config import InterestRule
+from auction_lens.matching.evaluate import evaluate
 from auction_lens.reporting import search_hints
 from auction_lens.reporting.searches import (
     FEWEST_LOTS_WORTH_A_PHRASE,
     MOST_STRANGERS_PER_LOT,
 )
-from auction_lens.scoring import evaluate
 from support import SOUNDBAR, example_config, example_listings
 
 

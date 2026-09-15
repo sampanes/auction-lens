@@ -15,10 +15,8 @@ from html import escape
 from zoneinfo import ZoneInfo
 
 from ..config import EmailConfig, EmailSecurity
-from ..models import (
-    Candidate,
-    WatchedItem,
-)
+from ..matching.model import Candidate
+from ..watchlist.model import WatchedItem
 from .destinations import destination_fingerprint
 from .findings import (
     NO_DELIVERY_FILTER,

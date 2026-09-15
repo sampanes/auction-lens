@@ -11,7 +11,8 @@ from dataclasses import replace
 from decimal import Decimal
 
 from auction_lens.config import InterestRule
-from auction_lens.judging import (
+from auction_lens.listings.model import ObservationChange
+from auction_lens.matching.judge import (
     LocalModel,
     ModelUnavailable,
     Verdict,
@@ -21,7 +22,7 @@ from auction_lens.judging import (
     verdict_from,
     vet,
 )
-from auction_lens.models import Candidate, CandidateCategory, ObservationChange
+from auction_lens.matching.model import Candidate, CandidateCategory
 from support import SOUNDBAR, example_listings
 
 MONITOR = InterestRule(

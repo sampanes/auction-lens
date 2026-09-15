@@ -16,7 +16,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from ..config import InterestRule
-from ..models import Candidate, Listing
+from ..listings.model import Listing
+from ..matching.model import Candidate
 
 # Below this a person may as well use the links. The point of a phrase is to
 # replace a list too long to click through.

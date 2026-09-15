@@ -9,13 +9,16 @@ from decimal import Decimal
 from unittest.mock import patch
 from urllib.error import HTTPError
 
-from auction_lens.acquisition import check_discovery_ready, discover_searches
-from auction_lens.acquisition.discover import session_opener
-from auction_lens.acquisition.polling import PollLedger
-from auction_lens.config import AcquisitionConfig, AcquisitionMode, ProviderConfig
+from auction_lens.config.schema import AcquisitionConfig, AcquisitionMode, ProviderConfig
 from auction_lens.http_safety import PublicHttpsRedirectHandler
-from auction_lens.ingest import read_search_page
-from auction_lens.models import Listing
+from auction_lens.listings.model import Listing
+from auction_lens.providers.nellis.discover import (
+    check_discovery_ready,
+    discover_searches,
+    session_opener,
+)
+from auction_lens.providers.nellis.parse import read_search_page
+from auction_lens.providers.pacing import PollLedger
 from support import ROOT, FakeResponse, temporary_directory
 
 SEARCH_PAGE = ROOT / "fixtures" / "nellis" / "search-page.html"
@@ -34,7 +37,7 @@ class SearchPageTests(unittest.TestCase):
             f'<a href="/p/example/{product["id"]}">lot</a>' for product in route["products"]
         )
         payload = {"loaderData": {"routes/search": route}}
-        with patch("auction_lens.ingest.nellis._payload", return_value=payload):
+        with patch("auction_lens.providers.nellis.parse._payload", return_value=payload):
             return read_search_page(links, source="nellis", page_url=PAGE_URL)
 
     def test_one_page_describes_every_lot_it_lists(self):

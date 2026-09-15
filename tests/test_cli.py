@@ -16,13 +16,14 @@ from getpass import GetPassWarning
 from unittest.mock import patch
 
 from auction_lens import __version__
-from auction_lens.acquisition import SearchCapture
 from auction_lens.cli import build_parser, console, main
 from auction_lens.config import load_config
-from auction_lens.env_file import load_env_file
-from auction_lens.ingest import load_listings
-from auction_lens.models import InterestRef, Verdict, WatchedItem
+from auction_lens.config.environment import load_env_file
+from auction_lens.listings.files import load_listings
+from auction_lens.matching.progress import InterestRef
+from auction_lens.providers.nellis.discover import SearchCapture
 from auction_lens.storage import Database, ObservationStore, WatchlistStore
+from auction_lens.watchlist.model import Verdict, WatchedItem
 from support import EXAMPLE_CONFIG, ROOT, SYNTHETIC_LISTINGS, temporary_directory
 
 NELLIS_PRODUCT_PAGE = ROOT / "fixtures" / "nellis" / "product-page.html"

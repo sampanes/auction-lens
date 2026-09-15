@@ -9,8 +9,10 @@ from decimal import Decimal
 from unittest.mock import MagicMock, patch
 
 from auction_lens.config import WebhookConfig
-from auction_lens.grading import read_grade
-from auction_lens.models import InterestProgress, InterestRef, ReadingOrder
+from auction_lens.listings.conditions import read_grade
+from auction_lens.matching.evaluate import evaluate
+from auction_lens.matching.model import ReadingOrder
+from auction_lens.matching.progress import InterestProgress, InterestRef
 from auction_lens.reporting import (
     DeliverySummary,
     build_report,
@@ -25,7 +27,6 @@ from auction_lens.reporting.webhook import (
     webhook_address,
     webhook_item_limit,
 )
-from auction_lens.scoring import evaluate
 from support import REPORT_ZONE, SOUNDBAR, example_config, example_listings
 
 ADDRESS = "https://discord.com/api/webhooks/000/secret-token"

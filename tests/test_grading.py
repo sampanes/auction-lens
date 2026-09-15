@@ -5,9 +5,9 @@ from __future__ import annotations
 import json
 import unittest
 
-from auction_lens.grading import AXES, Grade, Tag, read_grade
-from auction_lens.ingest import canonical_grade
-from auction_lens.models import Listing
+from auction_lens.listings.conditions import AXES, Grade, Tag, read_grade
+from auction_lens.listings.model import Listing
+from auction_lens.providers.nellis.parse import canonical_grade
 from support import ROOT
 
 GRADE_SAMPLES = ROOT / "fixtures" / "nellis" / "product-grade-samples.json"
@@ -83,7 +83,7 @@ class RecordedSampleTests(unittest.TestCase):
     The polarity looks harsh -- a used lot is red -- and softening it is a
     tempting change. It is the wrong change: the operator reads these tags
     beside the listing they link to, so disagreeing with the page is worse than
-    agreeing with it emphatically. See the note in grading.py.
+    agreeing with it emphatically. See the note in listings/conditions.py.
     """
 
     def test_every_recorded_sample_maps_to_the_colours_that_were_observed(self):

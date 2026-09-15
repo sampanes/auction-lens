@@ -9,8 +9,8 @@ from __future__ import annotations
 
 import argparse
 
-from ..acquisition import check_discovery_ready
 from ..config import AppConfig, RunMode, load_config
+from ..providers.nellis.discover import check_discovery_ready
 from .exit_codes import SUCCESS
 from .searching import search_terms
 from .sending import preflight_reports

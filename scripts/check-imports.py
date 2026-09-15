@@ -1,13 +1,11 @@
-"""Fail if any module imports something it is not allowed to depend on.
+"""Protect understandable dependency boundaries without dictating the file tree.
 
-docs/ARCHITECTURE.md describes a one-way flow of dependencies. A document
-cannot enforce itself, so the same rule is written below as data and checked on
-every run. Without this, one convenient import inverts the architecture and
-nothing notices until the code is hard to change again.
-
-The rule: a module may import a module in a LOWER layer, or another module in
-its own package. It may not import a peer in the same layer, and it may never
-import upward.
+The old checker assigned every package a number and banned imports between
+packages on the same row. That made the diagram tidy while forcing one feature
+to scatter its work across orchestration layers. This checker protects the
+boundaries a maintainer actually relies on instead: no cycles, no dependency on
+the command line, pure records stay free of I/O, and providers never reach into
+workflows or reports.
 
 Usage: python scripts/check-imports.py
 """
@@ -16,76 +14,201 @@ from __future__ import annotations
 
 import ast
 import sys
+from collections import defaultdict
+from importlib.util import resolve_name
 from pathlib import Path
 
-PACKAGE = Path("src/auction_lens")
+PACKAGE_NAME = "auction_lens"
+PACKAGE = Path("src") / PACKAGE_NAME
 
-# Lowest first. Everything on one line is a peer: peers must not know about
-# each other, which is what keeps them independently readable and testable.
-LAYERS = (
-    ("fields",),
-    ("grading",),
-    ("env_file", "file_io", "http_safety", "models", "text_match", "throttle"),
-    ("config",),
-    ("logistics", "notifications", "outcomes"),
-    ("acquisition", "ingest", "judging", "reporting", "scoring", "storage", "valuation"),
-    ("pipeline",),
-    ("cli",),
-)
+# An __init__ file is a signpost, not a second place to discover an API.
+# Config/reporting/storage remain temporary legacy facades during the staged
+# refactor and will join this set when their callers use explicit modules.
+EMPTY_PACKAGE_MARKERS = {
+    "listings",
+    "matching",
+    "pricing",
+    "pricing.adapters",
+    "providers",
+    "providers.nellis",
+    "watchlist",
+}
 
-LAYER_OF = {name: rank for rank, names in enumerate(LAYERS) for name in names}
+IO_OWNERS = {
+    "acquisition",
+    "cli",
+    "config",
+    "notifications",
+    "pipeline",
+    "providers",
+    "reporting",
+    "storage",
+}
+PURE_RECORD_MODULES = {
+    "listings.conditions",
+    "listings.model",
+    "matching.model",
+    "pricing.model",
+    "watchlist.model",
+}
+PROVIDER_FORBIDDEN = {
+    "cli",
+    "matching",
+    "notifications",
+    "pipeline",
+    "reporting",
+    "storage",
+    "watchlist",
+}
 
 
-def owner_of(path: Path) -> str:
-    """The top-level module or package a file belongs to."""
-    parts = path.relative_to(PACKAGE).parts
-    return parts[0] if len(parts) > 1 else path.stem
+def module_name(path: Path) -> str:
+    """The importable name represented by one Python source file."""
+    relative = path.relative_to(PACKAGE).with_suffix("")
+    parts = list(relative.parts)
+    if parts[-1] == "__init__":
+        parts.pop()
+    return ".".join((PACKAGE_NAME, *parts)) if parts else PACKAGE_NAME
 
 
-def imported_names(path: Path, owner: str) -> set[str]:
-    """Every top-level project module this file imports, by name."""
-    depth = len(path.relative_to(PACKAGE).parts) - 1
-    found = set()
-    for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
-        if not isinstance(node, ast.ImportFrom) or not node.level:
-            continue
-        # "from .x import y" inside a package stays inside that package;
-        # "from ..x import y" leaves it, and so does "from .x" at the top level.
-        leaves_the_package = node.level > 1 or depth == 0
-        if leaves_the_package and node.module:
-            name = node.module.split(".")[0]
-            if name != owner:
-                found.add(name)
-    return found
+def package_of(path: Path) -> str:
+    """The package Python uses to resolve a relative import in this file."""
+    module = module_name(path)
+    return module if path.stem == "__init__" else module.rpartition(".")[0]
 
 
-def complaints(path: Path) -> list[str]:
-    owner = owner_of(path)
-    if owner not in LAYER_OF:
-        return [f"{path}: '{owner}' is not listed in LAYERS; add it to this script"]
-    found = []
-    for name in sorted(imported_names(path, owner)):
-        if name not in LAYER_OF:
-            found.append(f"{path}: imports unknown module '{name}'")
-        elif LAYER_OF[name] > LAYER_OF[owner]:
-            found.append(f"{path}: '{owner}' must not import upward from '{name}'")
-        elif LAYER_OF[name] == LAYER_OF[owner]:
-            found.append(f"{path}: '{owner}' and '{name}' are peers and must stay apart")
-    return found
+def project_imports(path: Path) -> set[str]:
+    """Every Auction Lens module named directly by this file."""
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    imported: set[str] = set()
+
+    class ImportVisitor(ast.NodeVisitor):
+        """Collect runtime imports while ignoring type-checker-only edges."""
+
+        def visit_If(self, node: ast.If) -> None:
+            if isinstance(node.test, ast.Name) and node.test.id == "TYPE_CHECKING":
+                for statement in node.orelse:
+                    self.visit(statement)
+                return
+            self.generic_visit(node)
+
+        def visit_Import(self, node: ast.Import) -> None:
+            imported.update(
+                alias.name for alias in node.names if alias.name.startswith(f"{PACKAGE_NAME}.")
+            )
+
+        def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
+            if node.level:
+                relative = "." * node.level + (node.module or "")
+                base = resolve_name(relative, package_of(path))
+            elif node.module and node.module.startswith(f"{PACKAGE_NAME}."):
+                base = node.module
+            else:
+                return
+            imported.add(base)
+            imported.update(
+                f"{base}.{alias.name}" for alias in node.names if alias.name != "*"
+            )
+
+    ImportVisitor().visit(tree)
+    return imported
+
+
+def owner(module: str) -> str:
+    """The first feature directory beneath auction_lens."""
+    parts = module.split(".")
+    return parts[1] if len(parts) > 1 else ""
+
+
+def existing_target(name: str, modules: set[str]) -> str | None:
+    """Resolve an imported symbol path to the nearest source module we own."""
+    candidate = name
+    while candidate.startswith(PACKAGE_NAME):
+        if candidate in modules:
+            return candidate
+        candidate = candidate.rpartition(".")[0]
+    return None
+
+
+def cycle_in(graph: dict[str, set[str]]) -> list[str]:
+    """Return one dependency cycle, or an empty list when the graph is acyclic."""
+    visiting: list[str] = []
+    active: set[str] = set()
+    finished: set[str] = set()
+
+    def visit(module: str) -> list[str]:
+        if module in finished:
+            return []
+        if module in active:
+            start = visiting.index(module)
+            return [*visiting[start:], module]
+        active.add(module)
+        visiting.append(module)
+        for dependency in sorted(graph[module]):
+            found = visit(dependency)
+            if found:
+                return found
+        visiting.pop()
+        active.remove(module)
+        finished.add(module)
+        return []
+
+    for module in sorted(graph):
+        found = visit(module)
+        if found:
+            return found
+    return []
+
+
+def complaints(paths: list[Path]) -> list[str]:
+    """Explain every dependency that crosses a human-facing boundary."""
+    by_module = {module_name(path): path for path in paths}
+    modules = set(by_module)
+    graph: dict[str, set[str]] = defaultdict(set)
+    failures: list[str] = []
+
+    for module, path in by_module.items():
+        direct = project_imports(path)
+        graph[module] = {
+            target
+            for imported in direct
+            if (target := existing_target(imported, modules)) is not None and target != module
+        }
+        short = module.removeprefix(f"{PACKAGE_NAME}.")
+        source_owner = owner(module)
+        imported_owners = {owner(imported) for imported in direct}
+
+        imports_cli = "cli" in imported_owners
+        if source_owner != "cli" and module != f"{PACKAGE_NAME}.__main__" and imports_cli:
+            failures.append(f"{path}: only the console entry point may import the CLI")
+        if source_owner == "providers":
+            for forbidden in sorted(imported_owners & PROVIDER_FORBIDDEN):
+                failures.append(f"{path}: provider code must not import '{forbidden}'")
+        if short in PURE_RECORD_MODULES:
+            for forbidden in sorted(imported_owners & IO_OWNERS):
+                failures.append(
+                    f"{path}: record module must not import I/O owner '{forbidden}'"
+                )
+        if path.stem == "__init__" and short in EMPTY_PACKAGE_MARKERS:
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+            if any(isinstance(node, (ast.Import, ast.ImportFrom)) for node in tree.body):
+                failures.append(f"{path}: package marker must not hide implementation imports")
+
+    found_cycle = cycle_in(graph)
+    if found_cycle:
+        failures.append("project import cycle: " + " -> ".join(found_cycle))
+    return failures
 
 
 def main() -> int:
-    failures = []
-    for path in sorted(PACKAGE.rglob("*.py")):
-        if path.stem in {"__init__", "__main__"} and path.parent == PACKAGE:
-            continue
-        failures.extend(complaints(path))
-    for line in failures:
-        print(line)
+    """Check all project source modules and return a shell-friendly status."""
+    failures = complaints(sorted(PACKAGE.rglob("*.py")))
+    for failure in failures:
+        print(failure)
     if failures:
-        print(f"[X] {len(failures)} import(s) break the layering in docs/ARCHITECTURE.md")
+        print(f"[X] {len(failures)} project import boundary problem(s)")
         return 1
-    print("[OK] every import follows the layering in docs/ARCHITECTURE.md")
+    print("[OK] project imports are acyclic and follow the feature boundaries")
     return 0
 
 

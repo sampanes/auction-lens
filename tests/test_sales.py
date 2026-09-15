@@ -13,10 +13,11 @@ from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
-from auction_lens.ingest import dated
-from auction_lens.models import ClosingPrice, Listing
+from auction_lens.listings.files import dated
+from auction_lens.listings.model import Listing
 from auction_lens.reporting import render_closing_prices
 from auction_lens.storage import ClosingPriceStore, ObservationStore
+from auction_lens.watchlist.model import ClosingPrice
 from support import REPORT_ZONE, SOUNDBAR, example_listings, temporary_database
 
 CLOSES_AT = datetime(2026, 9, 10, 3, 0, tzinfo=UTC)

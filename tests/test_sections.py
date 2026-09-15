@@ -13,11 +13,11 @@ from dataclasses import replace
 from decimal import Decimal
 
 from auction_lens.config import parse_config
-from auction_lens.models import (
+from auction_lens.listings.model import ObservationChange
+from auction_lens.matching.model import (
     Candidate,
     CandidateCategory,
     InterestHarvest,
-    ObservationChange,
     best_of_each,
     harvest_of,
 )

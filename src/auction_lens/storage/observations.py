@@ -5,8 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from decimal import Decimal
 
-from ..fields import LABEL_SEPARATOR
-from ..models import Listing, ObservationChange
+from ..listings.model import Listing, ObservationChange
+from ..values import LABEL_SEPARATOR
 from .database import Database
 
 _SELECT_PREVIOUS_BID = """

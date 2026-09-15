@@ -17,7 +17,7 @@ from __future__ import annotations
 from collections.abc import Iterator
 from zoneinfo import ZoneInfo
 
-from ..models import ClosingPrice
+from ..watchlist.model import ClosingPrice
 
 # A reading taken within this long of the close is tight enough that the floor
 # is worth quoting. It is a default rather than a rule; the caller may widen it.

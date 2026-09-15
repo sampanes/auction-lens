@@ -6,8 +6,7 @@ import unittest
 from dataclasses import replace
 from decimal import Decimal
 
-from auction_lens.logistics import assess_logistics
-from auction_lens.models import LogisticsDecision
+from auction_lens.matching.logistics import LogisticsDecision, assess_logistics
 from support import SOUNDBAR, example_config, example_listings
 
 HEAVY_AND_LARGE = {

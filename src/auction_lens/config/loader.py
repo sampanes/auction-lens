@@ -11,7 +11,7 @@ from __future__ import annotations
 import tomllib
 from pathlib import Path
 
-from ..models import ReadingOrder
+from ..matching.model import ReadingOrder
 from .conditions import resolve_condition_policy
 from .schema import (
     DEFAULT_CACHE_FILE,

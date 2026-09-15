@@ -6,7 +6,7 @@ import os
 import unittest
 from unittest.mock import patch
 
-from auction_lens.env_file import load_env_file, write_settings
+from auction_lens.config.environment import load_env_file, write_settings
 from support import temporary_directory
 
 
@@ -39,7 +39,10 @@ class EnvironmentSettingWriterTests(unittest.TestCase):
             env_file = directory / ".env"
             original = "SETTING=before\n"
             env_file.write_text(original, encoding="utf-8")
-            with patch("auction_lens.env_file.os.replace", side_effect=OSError("stopped")):
+            with patch(
+                "auction_lens.config.environment.os.replace",
+                side_effect=OSError("stopped"),
+            ):
                 with self.assertRaisesRegex(OSError, "stopped"):
                     write_settings(env_file, {"SETTING": "after"})
             self.assertEqual(env_file.read_text(encoding="utf-8"), original)

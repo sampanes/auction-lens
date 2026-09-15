@@ -18,7 +18,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
 
-from ..models import ClosingPrice
+from ..watchlist.model import ClosingPrice
 from .database import Database
 
 # Timestamps are stored as ISO-8601 in UTC, and strings in that one shape sort

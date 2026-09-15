@@ -18,7 +18,7 @@ from auction_lens.config import (
     save_profile_text,
     update_profile_text,
 )
-from auction_lens.file_io import write_bytes_atomically
+from auction_lens.files import write_bytes_atomically
 from support import EXAMPLE_CONFIG, temporary_directory
 
 

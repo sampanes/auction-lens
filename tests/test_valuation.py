@@ -9,18 +9,19 @@ from decimal import Decimal
 from unittest.mock import patch
 from urllib.request import Request
 
-from auction_lens.config import ValuationSourceConfig
+from auction_lens.config.schema import ValuationSourceConfig
 from auction_lens.http_safety import PublicHttpsRedirectHandler
-from auction_lens.models import ValuationObservation
+from auction_lens.matching.evaluate import evaluate
+from auction_lens.pricing.adapters.http_json import HttpJsonAdapter
+from auction_lens.pricing.adapters.json_path import read_path
+from auction_lens.pricing.adapters.reference import ReferenceAdapter
+from auction_lens.pricing.combine import combine_into_bands
+from auction_lens.pricing.configure import create_adapter
+from auction_lens.pricing.model import ValuationObservation
+from auction_lens.pricing.research import fill_template
+from auction_lens.pricing.value import ValuationEngine
 from auction_lens.reporting import build_report, render_html, render_text
 from auction_lens.reporting.webhook import build_message
-from auction_lens.scoring import evaluate
-from auction_lens.valuation import ValuationEngine, create_adapter
-from auction_lens.valuation.aggregation import combine_into_bands
-from auction_lens.valuation.http_json import HttpJsonAdapter
-from auction_lens.valuation.json_path import read_path
-from auction_lens.valuation.reference import ReferenceAdapter
-from auction_lens.valuation.templates import fill_template
 from support import (
     REPORT_ZONE,
     SOUNDBAR,
@@ -59,7 +60,7 @@ class EngineTests(unittest.TestCase):
         broken = ValuationSourceConfig(source_id="broken", adapter="reference", settings={})
         sources = (*self.config.valuation.sources, broken)
         valuation = replace(self.config.valuation, sources=sources)
-        with self.assertLogs("auction_lens.valuation.engine", level="WARNING"):
+        with self.assertLogs("auction_lens.pricing.value", level="WARNING"):
             summary = ValuationEngine(valuation).value(self.listing)
         self.assertTrue(summary.bands)
         self.assertEqual(summary.errors[0], "broken: unavailable (ValueError)")
@@ -73,10 +74,10 @@ class EngineTests(unittest.TestCase):
                 raise RuntimeError(f"could not read {private_detail}")
 
         with patch(
-            "auction_lens.valuation.engine.create_adapter", return_value=BrokenAdapter()
+            "auction_lens.pricing.value.create_adapter", return_value=BrokenAdapter()
         ):
             engine = ValuationEngine(replace(self.config.valuation, sources=(source,)))
-        with self.assertLogs("auction_lens.valuation.engine", level="WARNING") as logs:
+        with self.assertLogs("auction_lens.pricing.value", level="WARNING") as logs:
             summary = engine.value(self.listing)
 
         self.assertEqual(summary.errors, ("broken: unavailable (RuntimeError)",))
@@ -170,7 +171,7 @@ class HttpJsonAdapterTests(unittest.TestCase):
         self.assertEqual(first.observations[0].basis, "used_sold")
         self.assertEqual(opener.request_count, 1)
 
-    @patch("auction_lens.valuation.http_json.public_https_opener")
+    @patch("auction_lens.pricing.adapters.http_json.public_https_opener")
     def test_the_default_path_uses_the_redirect_safe_opener(self, opener_factory):
         opener = RecordingOpener(FakeResponse(API_BODY))
         opener_factory.return_value = opener

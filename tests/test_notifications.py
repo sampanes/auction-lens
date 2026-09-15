@@ -7,16 +7,9 @@ from dataclasses import replace
 from datetime import UTC, datetime
 from decimal import Decimal
 
-from auction_lens.models import (
-    Candidate,
-    CandidateCategory,
-    InterestProgress,
-    InterestRef,
-    Listing,
-    ObservationChange,
-    PriceReading,
-    WatchedItem,
-)
+from auction_lens.listings.model import Listing, ObservationChange
+from auction_lens.matching.model import Candidate, CandidateCategory
+from auction_lens.matching.progress import InterestProgress, InterestRef
 from auction_lens.notifications import (
     DeliveryChannel,
     DeliveryItem,
@@ -28,6 +21,7 @@ from auction_lens.notifications import (
     plan_watchlist,
     watchlist_items,
 )
+from auction_lens.watchlist.model import PriceReading, WatchedItem
 
 
 class CandidatePlanTests(unittest.TestCase):

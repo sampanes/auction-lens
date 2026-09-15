@@ -5,8 +5,8 @@ from __future__ import annotations
 import unittest
 from dataclasses import replace
 
-from auction_lens.models import InterestRef, Verdict, WatchedItem
-from auction_lens.outcomes import plan_interests
+from auction_lens.matching.progress import InterestRef, plan_interests
+from auction_lens.watchlist.model import Verdict, WatchedItem
 from support import example_config
 
 

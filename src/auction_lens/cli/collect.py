@@ -12,15 +12,13 @@ import argparse
 from datetime import UTC, datetime
 from pathlib import Path
 
-from ..acquisition import (
-    METADATA_SUFFIX,
-    ResponseCache,
-    discover_searches,
-    fetch_authorized_page,
-)
 from ..config import AppConfig, load_config
-from ..file_io import read_json, write_json_atomically
-from ..ingest import dated, read_saved_page, read_search_page, unique_lots
+from ..files import read_json, write_json_atomically
+from ..listings.files import dated, unique_lots
+from ..providers.cache import METADATA_SUFFIX, ResponseCache
+from ..providers.http import fetch_authorized_page
+from ..providers.nellis.discover import discover_searches
+from ..providers.nellis.parse import read_saved_page, read_search_page
 from .exit_codes import SUCCESS
 from .searching import search_terms
 

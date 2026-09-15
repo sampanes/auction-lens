@@ -10,7 +10,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 from decimal import Decimal
 
-from ..models import (
+from ..matching.model import (
     BASE_INTEREST_SCORE,
     ENDING_SOON_BONUS,
     HIGHEST_INTEREST_SCORE,

@@ -20,9 +20,10 @@ from urllib.request import Request
 from zoneinfo import ZoneInfo
 
 from ..config import WebhookConfig
-from ..grading import Tag
 from ..http_safety import public_https_opener, require_public_https
-from ..models import Candidate, Listing, ranked
+from ..listings.conditions import Tag
+from ..listings.model import Listing
+from ..matching.model import Candidate, ranked
 from .destinations import destination_fingerprint
 from .findings import (
     DeliverySummary,

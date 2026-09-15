@@ -5,9 +5,10 @@ from __future__ import annotations
 import argparse
 
 from .. import __version__
-from ..models import OPERATOR_DECIDABLE, Verdict
+from ..matching.logistics import OPERATOR_DECIDABLE
 from ..reporting import DEFAULT_WITHIN_MINUTES
 from ..storage import DEFAULT_DELIVERY_LEDGER, DEFAULT_WATCHLIST_FILE
+from ..watchlist.model import Verdict
 
 PROGRAM = "auction-lens"
 DEFAULT_DATABASE = "data/auction-lens.sqlite3"

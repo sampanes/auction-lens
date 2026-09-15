@@ -11,7 +11,7 @@ import argparse
 from pathlib import Path
 
 from ..config import EmailConfig, load_config, render_profile
-from ..env_file import write_settings
+from ..config.environment import write_settings
 from .exit_codes import SUCCESS
 from .parser import DEFAULT_CONFIG, DEFAULT_INBOX, EXAMPLE_CONFIG, PROGRAM
 from .profile_wizard import edit_profile, restore_profile

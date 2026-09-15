@@ -15,7 +15,7 @@ from dataclasses import dataclass, replace
 from decimal import Decimal
 from pathlib import Path
 
-from ..file_io import write_bytes_atomically
+from ..files import write_bytes_atomically
 from .loader import parse_config
 from .schema import LargeItemPolicy, LogisticsConfig
 

@@ -16,16 +16,10 @@ from dataclasses import dataclass
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from ..models import (
-    Candidate,
-    InterestHarvest,
-    InterestProgress,
-    LogisticsStatus,
-    ReadingOrder,
-    ValuationBand,
-    ValuationSummary,
-    ranked,
-)
+from ..matching.logistics import LogisticsStatus
+from ..matching.model import Candidate, InterestHarvest, ReadingOrder, ranked
+from ..matching.progress import InterestProgress
+from ..pricing.model import ValuationBand, ValuationSummary
 from .searches import SearchHint
 
 EMPTY_REPORT = "Auction Lens found no listings meeting the configured criteria."

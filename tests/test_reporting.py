@@ -11,14 +11,11 @@ from decimal import Decimal
 from inspect import signature
 from unittest.mock import patch
 
-from auction_lens.env_file import load_env_file
-from auction_lens.models import (
-    InterestProgress,
-    InterestRef,
-    ObservationChange,
-    ReadingOrder,
-    WatchedItem,
-)
+from auction_lens.config.environment import load_env_file
+from auction_lens.listings.model import ObservationChange
+from auction_lens.matching.evaluate import evaluate
+from auction_lens.matching.model import ReadingOrder
+from auction_lens.matching.progress import InterestProgress, InterestRef
 from auction_lens.reporting import (
     DeliverySummary,
     build_report,
@@ -31,7 +28,7 @@ from auction_lens.reporting import (
     send_watchlist_email,
 )
 from auction_lens.reporting.delivery import _subject
-from auction_lens.scoring import evaluate
+from auction_lens.watchlist.model import WatchedItem
 from support import (
     LASER_LEVEL,
     REPORT_ZONE,

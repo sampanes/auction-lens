@@ -19,22 +19,17 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
-from ..fields import (
+from ..files import read_json, write_json_atomically
+from ..listings.conditions import ConditionTag, Tag
+from ..listings.model import Listing, key_of
+from ..matching.progress import InterestRef
+from ..values import (
     parse_money,
     parse_optional_money,
     parse_utc_datetime,
     parse_whole_number,
 )
-from ..file_io import read_json, write_json_atomically
-from ..grading import ConditionTag, Tag
-from ..models import (
-    InterestRef,
-    Listing,
-    PriceReading,
-    Verdict,
-    WatchedItem,
-    key_of,
-)
+from ..watchlist.model import PriceReading, Verdict, WatchedItem
 
 DEFAULT_WATCHLIST_FILE = "private/watchlist.json"
 

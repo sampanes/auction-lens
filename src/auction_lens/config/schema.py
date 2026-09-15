@@ -19,18 +19,18 @@ from enum import StrEnum
 from typing import Any, TypeVar
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from ..fields import (
+from ..matching.model import (
+    HIGHEST_INTEREST_SCORE,
+    HIGHEST_SCORE,
+    LOWEST_SCORE,
+    ReadingOrder,
+)
+from ..values import (
     require_at_least,
     require_at_most,
     require_finite,
     require_not_negative,
     require_within,
-)
-from ..models import (
-    HIGHEST_INTEREST_SCORE,
-    HIGHEST_SCORE,
-    LOWEST_SCORE,
-    ReadingOrder,
 )
 
 DEFAULT_USER_AGENT_ENV = "AUCTION_LENS_HTTP_USER_AGENT"

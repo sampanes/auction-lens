@@ -6,7 +6,7 @@ import json
 import unittest
 from decimal import Decimal
 
-from auction_lens.ingest import load_listings, unique_lots
+from auction_lens.listings.files import load_listings, unique_lots
 from support import SYNTHETIC_LISTINGS, temporary_directory
 
 MINIMAL_LISTING = {

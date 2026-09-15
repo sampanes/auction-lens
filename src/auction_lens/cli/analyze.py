@@ -15,10 +15,11 @@ from dataclasses import replace
 from pathlib import Path
 
 from ..config import AppConfig, load_config
-from ..ingest import load_listings
+from ..listings.files import load_listings
+from ..matching.progress import plan_interests
 from ..notifications import DeliveryChannel
-from ..outcomes import plan_interests
 from ..pipeline import analyze_listings
+from ..pricing.value import ValuationEngine
 from ..reporting import build_report, render_text
 from ..storage import (
     Database,
@@ -26,7 +27,6 @@ from ..storage import (
     ObservationStore,
     WatchlistStore,
 )
-from ..valuation import ValuationEngine
 from .collect import run_discovery, write_satisfied_discovery
 from .exit_codes import SUCCESS
 from .searching import daily_search_terms
