@@ -1,0 +1,51 @@
+{
+  "version": 2,
+  "items": [
+    {
+      "uid": "synthetic:legacy-item-1",
+      "source": "synthetic",
+      "listing_id": "legacy-auction-2",
+      "inventory_id": "legacy-item-1",
+      "title": "Legacy Example Speaker Relisting",
+      "url": "https://example.invalid/auction/legacy-auction-2",
+      "photo_urls": [
+        "https://example.invalid/photo/legacy-stock.jpg",
+        "https://example.invalid/photo/legacy-condition.jpg"
+      ],
+      "estimated_retail": "125.00",
+      "conditions": [],
+      "quality_rating": 2,
+      "my_estimate": "42.50",
+      "verdict": "won",
+      "note": "keep this allocation and price trail",
+      "matched_interests": [
+        {
+          "id": "audio",
+          "name": "Home audio"
+        }
+      ],
+      "fulfilled_interests": [
+        {
+          "id": "audio",
+          "name": "Home audio"
+        }
+      ],
+      "readings": [
+        {
+          "scanned_at": "2026-08-01T12:00:00+00:00",
+          "current_bid": "10.00",
+          "total_cost": "11.50",
+          "bid_count": 1,
+          "listing_id": "legacy-auction-1"
+        },
+        {
+          "scanned_at": "2026-08-02T12:00:00+00:00",
+          "current_bid": "20.00",
+          "total_cost": "23.00",
+          "bid_count": 3,
+          "listing_id": "legacy-auction-2"
+        }
+      ]
+    }
+  ]
+}

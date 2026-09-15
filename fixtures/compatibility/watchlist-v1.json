@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "items": [
+    {
+      "uid": "synthetic:legacy-auction-1",
+      "source": "synthetic",
+      "listing_id": "legacy-auction-1",
+      "title": "Legacy Example Speaker",
+      "url": "https://example.invalid/auction/legacy-auction-1",
+      "photo_urls": [
+        "https://example.invalid/photo/legacy-stock.jpg",
+        "https://example.invalid/photo/legacy-condition.jpg"
+      ],
+      "estimated_retail": "125.00",
+      "conditions": [
+        {
+          "axis": "condition",
+          "label": "Used",
+          "tag": "red"
+        }
+      ],
+      "quality_rating": 2,
+      "my_estimate": "42.50",
+      "verdict": "won",
+      "note": "keep this human decision",
+      "readings": [
+        {
+          "scanned_at": "2026-08-01T12:00:00+00:00",
+          "current_bid": "10.00",
+          "total_cost": "11.50",
+          "bid_count": 1
+        }
+      ]
+    }
+  ]
+}

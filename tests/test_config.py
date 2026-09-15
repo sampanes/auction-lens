@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import tomllib
 import unittest
 from decimal import Decimal
 
@@ -39,6 +40,12 @@ class ExampleConfigTests(unittest.TestCase):
         monitor = next(rule for rule in self.config.interests if rule.name == "monitor")
         self.assertIn("mount", monitor.accessory_nouns)
         self.assertIsNone(monitor.wanted)
+
+    def test_public_interest_defaults_contain_only_settings_the_loader_consumes(self):
+        with EXAMPLE_CONFIG.open("rb") as handle:
+            defaults = tomllib.load(handle)["interest_defaults"]
+
+        self.assertEqual(set(defaults), {"accessory_nouns"})
 
 
 class ConfigValidationTests(unittest.TestCase):

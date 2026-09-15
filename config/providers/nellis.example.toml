@@ -108,8 +108,6 @@ anomaly_condition_profile = "ready_to_use"
 # one of these words keeps it: an interest in "monitor stand" is not emptied by
 # the "stand" below.
 [interest_defaults]
-# Plain phrases, which mean "accessory" anywhere in a title.
-exclude_terms = ["compatible with", "replacement", "adapter", "cable"]
 # Words that only mean "accessory" next to the thing itself. "Monitor stand" is
 # not a monitor, but a table saw "with rolling stand" is still a table saw, and
 # only the distance between the words tells those apart.
