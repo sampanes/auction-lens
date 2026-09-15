@@ -13,18 +13,16 @@ from auction_lens.listings.conditions import read_grade
 from auction_lens.matching.evaluate import evaluate
 from auction_lens.matching.model import ReadingOrder
 from auction_lens.matching.progress import InterestProgress, InterestRef
-from auction_lens.reporting import (
-    DeliverySummary,
-    build_report,
-    check_webhook_ready,
-    send_webhook,
-    webhook_destination,
-)
-from auction_lens.reporting.webhook import (
+from auction_lens.reports.findings import build_report
+from auction_lens.reports.records import DeliverySummary
+from auction_lens.reports.webhook import (
     HIGHEST_CONTENT_LENGTH,
     HIGHEST_EMBED_COUNT,
     build_message,
+    check_webhook_ready,
+    send_webhook,
     webhook_address,
+    webhook_destination,
     webhook_item_limit,
 )
 from support import REPORT_ZONE, SOUNDBAR, example_config, example_listings
@@ -242,7 +240,7 @@ class AddressTests(unittest.TestCase):
         # It is a password: anyone holding it can post into the channel.
         self.assertNotIn("url", {field for field in vars(self.config) if "env" not in field})
 
-    @patch("auction_lens.reporting.webhook.public_https_opener")
+    @patch("auction_lens.reports.webhook.public_https_opener")
     def test_destination_identity_does_not_post_or_retain_the_webhook(self, opener):
         with patch.dict("os.environ", ENVIRONMENT, clear=False):
             fingerprint = webhook_destination(self.config)
@@ -257,7 +255,7 @@ class AddressTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "non-public"):
                 webhook_address(self.config)
 
-    @patch("auction_lens.reporting.webhook.public_https_opener")
+    @patch("auction_lens.reports.webhook.public_https_opener")
     def test_disabled_public_entry_points_never_post(self, opener_factory):
         disabled = WebhookConfig(enabled=False)
         with patch.dict("os.environ", ENVIRONMENT, clear=False):
@@ -273,7 +271,7 @@ class AddressTests(unittest.TestCase):
 
 
 class PostingTests(unittest.TestCase):
-    @patch("auction_lens.reporting.webhook.public_https_opener")
+    @patch("auction_lens.reports.webhook.public_https_opener")
     def test_the_default_path_uses_the_redirect_safe_opener(self, opener_factory):
         with patch.dict("os.environ", ENVIRONMENT, clear=False):
             send_webhook(build_report([], REPORT_ZONE), WebhookConfig(enabled=True))

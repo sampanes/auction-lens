@@ -13,9 +13,9 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from auction_lens.config import AppConfig, load_config
+from auction_lens.history.database import Database
 from auction_lens.listings.files import load_listings
 from auction_lens.listings.model import Listing
-from auction_lens.storage import Database
 
 ROOT = Path(__file__).resolve().parents[1]
 EXAMPLE_CONFIG = ROOT / "config" / "providers" / "nellis.example.toml"

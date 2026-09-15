@@ -17,7 +17,7 @@ from ..matching.text import mentions
 from ..values import require_not_negative
 
 if TYPE_CHECKING:
-    from ..config import LogisticsConfig
+    from ..config.schema import LogisticsConfig
 
 # Dimensions are rendered in the same order and units the provider supplied.
 DIMENSION_JOINER = " x "

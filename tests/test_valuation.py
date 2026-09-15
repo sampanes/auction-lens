@@ -12,16 +12,15 @@ from urllib.request import Request
 from auction_lens.config.schema import ValuationSourceConfig
 from auction_lens.http_safety import PublicHttpsRedirectHandler
 from auction_lens.matching.evaluate import evaluate
-from auction_lens.pricing.adapters.http_json import HttpJsonAdapter
-from auction_lens.pricing.adapters.json_path import read_path
-from auction_lens.pricing.adapters.reference import ReferenceAdapter
-from auction_lens.pricing.combine import combine_into_bands
-from auction_lens.pricing.configure import create_adapter
+from auction_lens.pricing.http_json import HttpJsonAdapter, read_path
 from auction_lens.pricing.model import ValuationObservation
-from auction_lens.pricing.research import fill_template
-from auction_lens.pricing.value import ValuationEngine
-from auction_lens.reporting import build_report, render_html, render_text
-from auction_lens.reporting.webhook import build_message
+from auction_lens.pricing.reference import ReferenceAdapter
+from auction_lens.pricing.sources import fill_template
+from auction_lens.pricing.value import ValuationEngine, combine_into_bands, create_adapter
+from auction_lens.reports.findings import build_report
+from auction_lens.reports.html import render_html
+from auction_lens.reports.text import render_text
+from auction_lens.reports.webhook import build_message
 from support import (
     REPORT_ZONE,
     SOUNDBAR,
@@ -171,7 +170,7 @@ class HttpJsonAdapterTests(unittest.TestCase):
         self.assertEqual(first.observations[0].basis, "used_sold")
         self.assertEqual(opener.request_count, 1)
 
-    @patch("auction_lens.pricing.adapters.http_json.public_https_opener")
+    @patch("auction_lens.pricing.http_json.public_https_opener")
     def test_the_default_path_uses_the_redirect_safe_opener(self, opener_factory):
         opener = RecordingOpener(FakeResponse(API_BODY))
         opener_factory.return_value = opener

@@ -14,22 +14,22 @@ import argparse
 from dataclasses import replace
 from pathlib import Path
 
-from ..config import AppConfig, load_config
+from ..collect import run_discovery, write_satisfied_discovery
+from ..config.load import load_config
+from ..config.schema import AppConfig
+from ..history.database import Database
+from ..history.logistics import LogisticsDecisionStore
+from ..history.observations import ObservationStore
 from ..listings.files import load_listings
+from ..matching.analyze import analyze_listings
 from ..matching.progress import plan_interests
 from ..notifications import DeliveryChannel
-from ..pipeline import analyze_listings
 from ..pricing.value import ValuationEngine
-from ..reporting import build_report, render_text
-from ..storage import (
-    Database,
-    LogisticsDecisionStore,
-    ObservationStore,
-    WatchlistStore,
-)
-from .collect import run_discovery, write_satisfied_discovery
+from ..providers.search_terms import daily_search_terms
+from ..reports.findings import build_report
+from ..reports.text import render_text
+from ..watchlist.store import WatchlistStore
 from .exit_codes import SUCCESS
-from .searching import daily_search_terms
 from .sending import deliver_findings, preflight_reports
 
 

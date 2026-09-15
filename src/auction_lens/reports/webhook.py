@@ -25,12 +25,8 @@ from ..listings.conditions import Tag
 from ..listings.model import Listing
 from ..matching.model import Candidate, ranked
 from .destinations import destination_fingerprint
-from .findings import (
-    DeliverySummary,
-    OutcomeSummary,
-    Report,
-    closing_time,
-)
+from .findings import closing_time
+from .records import DeliverySummary, OutcomeSummary, Report
 
 WEBHOOK_TIMEOUT_SECONDS = 15
 

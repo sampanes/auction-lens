@@ -11,26 +11,25 @@ the rest of the configuration file uses.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 from urllib.request import Request
 
-from ...config.schema import ValuationSourceConfig
-from ...config.toml_reader import Section
-from ...http_safety import public_https_opener, require_public_https
-from ...listings.model import Listing
-from ...throttle import RequestThrottle
-from ...values import parse_decimal, parse_money, parse_utc_datetime, parse_whole_number
-from ..model import ValuationObservation
-from ..research import fill_template
-from ..source_config import read_request_limits, settings_of
-from ..sources import SourceResult
-from .http_cache import JsonResponseCache
-from .json_path import read_optional_path, read_path
+from ..config.schema import ValuationSourceConfig
+from ..config.toml import Section
+from ..files import write_bytes_atomically
+from ..http_safety import public_https_opener, require_public_https
+from ..listings.model import Listing
+from ..throttle import RequestThrottle
+from ..values import parse_decimal, parse_money, parse_utc_datetime, parse_whole_number
+from .model import ValuationObservation
+from .sources import SourceResult, fill_template, read_request_limits, settings_of
 
 ENVIRONMENT_PREFIX = "env:"
 REQUIRED_FIELD = "typical"
@@ -155,3 +154,49 @@ def _resolved_header(value: str) -> str:
     if not resolved:
         raise RuntimeError(f"required environment variable {variable!r} is empty")
     return resolved
+
+
+@dataclass(frozen=True)
+class JsonResponseCache:
+    """A local cache that avoids asking a slow-moving source the same question."""
+
+    directory: Path
+    source_id: str
+    lifetime: timedelta
+    clock: Callable[[], datetime] = lambda: datetime.now(UTC)
+
+    def read_fresh(self, endpoint: str) -> Any | None:
+        path = self.path_for(endpoint)
+        if not path.is_file():
+            return None
+        written_at = datetime.fromtimestamp(path.stat().st_mtime, tz=UTC)
+        if self.clock() - written_at > self.lifetime:
+            return None
+        return json.loads(path.read_text(encoding="utf-8"))
+
+    def store(self, endpoint: str, payload: Any) -> None:
+        write_bytes_atomically(
+            self.path_for(endpoint),
+            json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+        )
+
+    def path_for(self, endpoint: str) -> Path:
+        digest = hashlib.sha256(endpoint.encode("utf-8")).hexdigest()
+        return self.directory / f"{self.source_id}-{digest}.json"
+
+
+def read_path(value: Any, path: str) -> Any:
+    """Follow object keys and list indexes in a deliberately small dotted path."""
+    if not path:
+        return value
+    current = value
+    for part in path.split("."):
+        current = current[int(part)] if isinstance(current, list) else current[part]
+    return current
+
+
+def read_optional_path(value: Any, path: Any, default: Any) -> Any:
+    """Read a configured path when present, otherwise return its source default."""
+    if path is None or path == "":
+        return default
+    return read_path(value, str(path))

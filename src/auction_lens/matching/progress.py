@@ -12,7 +12,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from ..config import InterestRule
+from ..config.schema import InterestRule
 from ..values import require_at_least, require_not_negative
 
 if TYPE_CHECKING:

@@ -303,10 +303,10 @@ indexes describing the object graph: a scalar is itself, an array is a list of
 indexes, and an object is `{"_<keyIndex>": valueIndex}`, so both keys and values
 are indexes into that same array. A string used forty times is stored once.
 
-`providers/nellis/turbo.py` decodes that envelope and knows nothing about
-auctions. `providers/nellis/parse.py` is the only module that knows the
-provider's field names, and turns one page into the canonical row the rest of
-the project already reads.
+The decoder at the bottom of `providers/nellis/parse.py` reconstructs that
+envelope and knows nothing about auctions. The rest of that module is the only
+code that knows the provider's field names, and turns one page into the
+canonical row the rest of the project already reads.
 
 Two details that cost real debugging:
 

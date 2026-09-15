@@ -17,17 +17,12 @@ from zoneinfo import ZoneInfo
 from ..config import EmailConfig, EmailSecurity
 from ..matching.model import Candidate
 from ..watchlist.model import WatchedItem
+from ..watchlist.report import render_watchlist, render_watchlist_html
 from .destinations import destination_fingerprint
-from .findings import (
-    NO_DELIVERY_FILTER,
-    DeliverySummary,
-    Report,
-    closing_time,
-    soonest_close,
-)
+from .findings import closing_time, soonest_close
 from .html import render_html
+from .records import NO_DELIVERY_FILTER, DeliverySummary, Report
 from .text import render_text
-from .watchlist import render_watchlist, render_watchlist_html
 
 SMTP_TIMEOUT_SECONDS = 30
 MATCH_COUNT_PLACEHOLDER = "{{ match_count }}"

@@ -1,4 +1,4 @@
-"""Fetching one authorized public page, politely and reproducibly.
+"""Fetching authorized public pages, with caching and request limits.
 
 Every guard here exists so that an unattended scheduled run cannot become a
 burden on a provider: the request identifies its operator, is counted before it
@@ -9,17 +9,17 @@ from __future__ import annotations
 
 import os
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from urllib.error import HTTPError
 from urllib.request import Request
+from zoneinfo import ZoneInfo
 
-from ..config.schema import AcquisitionConfig, AcquisitionMode, ProviderConfig
+from ..config.schema import AcquisitionConfig, AcquisitionMode, ProviderConfig, RunMode
+from ..files import read_json, write_bytes_atomically, write_json_atomically
 from ..http_safety import public_https_opener, require_public_https
-from .cache import ResponseCache
-from .pacing import PollLedger, enforce_request_limits
 
 ACCEPTED_CONTENT = "text/html,application/xhtml+xml"
 
@@ -37,6 +37,15 @@ PLACEHOLDER_CONTACT_DOMAINS = frozenset(
     {"example.com", "example.net", "example.org", "localhost"}
 )
 PLACEHOLDER_CONTACT_SUFFIXES = (".example", ".invalid", ".localhost", ".test")
+
+METADATA_SUFFIX = ".metadata.json"
+ETAG = "etag"
+LAST_MODIFIED = "last_modified"
+FETCHED_AT = "fetched_at"
+
+# Enough request history to explain today's decisions without growing forever.
+RETAINED_ATTEMPTS = 60
+ATTEMPTS_KEY = "attempts"
 
 
 @dataclass(frozen=True)
@@ -163,3 +172,132 @@ def _timezone_aware(instant: datetime) -> datetime:
     if instant.tzinfo is None:
         raise ValueError("now must be timezone-aware")
     return instant
+
+
+@dataclass(frozen=True)
+class ResponseCache:
+    """A cached response body and the metadata needed to revalidate it."""
+
+    path: Path
+
+    @classmethod
+    def at(cls, path: str | Path) -> ResponseCache:
+        return cls(Path(path))
+
+    @property
+    def metadata_path(self) -> Path:
+        return self.path.with_suffix(self.path.suffix + METADATA_SUFFIX)
+
+    def exists(self) -> bool:
+        return self.path.exists()
+
+    def size(self) -> int:
+        return self.path.stat().st_size
+
+    def fetched_at(self) -> datetime | None:
+        """Return when this body was downloaded, when metadata records it.
+
+        A reused body is as old as its download, not as old as the run that
+        reused it. Everything read from the body was true at this moment and
+        no other, so this is the honest date to put on those listings.
+        """
+        recorded = read_json(self.metadata_path, default={}).get(FETCHED_AT, "")
+        return datetime.fromisoformat(recorded) if recorded else None
+
+    def conditional_headers(self) -> dict[str, str]:
+        """Ask the provider to send a body only if the cached copy is stale."""
+        metadata = read_json(self.metadata_path, default={})
+        headers = {}
+        if metadata.get(ETAG):
+            headers["If-None-Match"] = metadata[ETAG]
+        if metadata.get(LAST_MODIFIED):
+            headers["If-Modified-Since"] = metadata[LAST_MODIFIED]
+        return headers
+
+    def store(
+        self,
+        body: bytes,
+        *,
+        headers: Mapping[str, str],
+        fetched_at: datetime,
+        source_url: str,
+    ) -> None:
+        """Replace the cached body, then record what can revalidate it."""
+        write_bytes_atomically(self.path, body)
+        write_json_atomically(
+            self.metadata_path,
+            {
+                FETCHED_AT: fetched_at.isoformat(),
+                ETAG: headers.get("ETag", ""),
+                LAST_MODIFIED: headers.get("Last-Modified", ""),
+                "source_url": source_url,
+            },
+        )
+
+
+@dataclass(frozen=True)
+class PollLedger:
+    """Previous request attempts, persisted so restarts still respect limits."""
+
+    path: Path
+
+    @classmethod
+    def at(cls, path: str | Path) -> PollLedger:
+        return cls(Path(path))
+
+    def attempts(self) -> list[datetime]:
+        stored = read_json(self.path, default={}).get(ATTEMPTS_KEY, [])
+        return [_parse_attempt(value) for value in stored]
+
+    def record(self, instant: datetime) -> None:
+        """Append one attempt, keeping only the most recent entries."""
+        attempts = [*self.attempts(), instant.astimezone(UTC)]
+        write_json_atomically(
+            self.path,
+            {ATTEMPTS_KEY: [value.isoformat() for value in attempts[-RETAINED_ATTEMPTS:]]},
+        )
+
+
+def enforce_request_limits(
+    attempts: list[datetime],
+    config: AcquisitionConfig,
+    instant: datetime,
+) -> None:
+    """Raise unless another request is allowed right now.
+
+    Production counts requests against the provider's calendar day. Development
+    only spaces requests out, so parser work stays polite without a daily quota.
+    """
+    if config.run_mode == RunMode.PRODUCTION:
+        _enforce_daily_limit(attempts, config, instant)
+    if attempts and instant - max(attempts) < _minimum_interval(config):
+        raise RuntimeError(f"{config.run_mode} minimum interval has not elapsed")
+
+
+def _enforce_daily_limit(
+    attempts: list[datetime],
+    config: AcquisitionConfig,
+    instant: datetime,
+) -> None:
+    zone = config.zone
+    today = _local_date(instant, zone)
+    used = [value for value in attempts if _local_date(value, zone) == today]
+    if len(used) >= config.max_requests_per_day:
+        raise RuntimeError(f"daily request limit reached for {today}")
+
+
+def _minimum_interval(config: AcquisitionConfig) -> timedelta:
+    if config.run_mode == RunMode.PRODUCTION:
+        return timedelta(minutes=config.minimum_interval_minutes)
+    return timedelta(seconds=config.development_minimum_interval_seconds)
+
+
+def _local_date(instant: datetime, zone: ZoneInfo) -> date:
+    return instant.astimezone(zone).date()
+
+
+def _parse_attempt(value: str) -> datetime:
+    parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    if parsed.tzinfo is None:
+        raise ValueError("ledger timestamps must be timezone-aware")
+    return parsed

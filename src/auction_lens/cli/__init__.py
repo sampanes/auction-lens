@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import sys
 
+from .. import collect
 from ..config.environment import load_env_file
-from . import analyze, collect, doctor, setup, track
+from . import analyze, doctor, setup, track
 from .exit_codes import OPERATOR_ERROR
 from .parser import (
     DAILY,

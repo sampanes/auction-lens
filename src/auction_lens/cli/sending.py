@@ -11,7 +11,8 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from ..config import AppConfig
+from ..config.schema import AppConfig
+from ..matching.analyze import AnalysisResult, follow_candidates
 from ..matching.model import Candidate, harvest_of
 from ..notifications import (
     DeliveryChannel,
@@ -21,17 +22,16 @@ from ..notifications import (
     outcome_fingerprint,
     plan_candidates,
 )
-from ..pipeline import RunResult, follow_candidates
-from ..reporting import (
-    DeliverySummary,
-    build_report,
-    email_destination,
-    send_email,
+from ..reports.email import email_destination, send_email
+from ..reports.findings import build_report
+from ..reports.records import DeliverySummary
+from ..reports.webhook import (
     send_webhook,
     webhook_destination,
+    webhook_item_limit,
 )
-from ..reporting.webhook import webhook_item_limit
-from ..storage import DeliveryLedger, WatchlistStore
+from ..storage.deliveries import DeliveryLedger
+from ..watchlist.store import WatchlistStore
 
 
 def preflight_reports(
@@ -58,7 +58,7 @@ def preflight_reports(
 def deliver_findings(
     args: argparse.Namespace,
     config: AppConfig,
-    result: RunResult,
+    result: AnalysisResult,
     watchlist: WatchlistStore,
     destinations: dict[DeliveryChannel, str],
 ) -> tuple[int, list[str]]:
@@ -132,7 +132,7 @@ def _send_findings(
     channel: DeliveryChannel,
     candidates: tuple[Candidate, ...],
     config: AppConfig,
-    result: RunResult,
+    result: AnalysisResult,
     delivery: DeliverySummary,
 ) -> None:
     """Cross one transport boundary; its caller owns receipt persistence."""

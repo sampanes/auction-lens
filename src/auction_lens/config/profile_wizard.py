@@ -12,8 +12,10 @@ from decimal import Decimal
 from difflib import unified_diff
 from pathlib import Path
 
-from ..config import AppConfig, LargeItemPolicy, LogisticsConfig, parse_config, render_profile
-from ..config.editor import (
+from ..values import parse_decimal
+from .load import parse_config
+from .profile import render_profile
+from .profile_edit import (
     REMOVE,
     ProfileEdits,
     profile_snapshot_path,
@@ -22,7 +24,7 @@ from ..config.editor import (
     save_profile_text,
     update_profile_text,
 )
-from ..values import parse_decimal
+from .schema import AppConfig, LargeItemPolicy, LogisticsConfig
 
 CANCELLED = "Cancelled; no files changed."
 NO_CHANGES = "No changes requested; no files changed."

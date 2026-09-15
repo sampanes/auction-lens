@@ -12,15 +12,13 @@ import argparse
 from datetime import UTC, datetime
 from pathlib import Path
 
-from ..config import AppConfig, load_config
-from ..files import read_json, write_json_atomically
-from ..listings.files import dated, unique_lots
-from ..providers.cache import METADATA_SUFFIX, ResponseCache
-from ..providers.http import fetch_authorized_page
-from ..providers.nellis.discover import discover_searches
-from ..providers.nellis.parse import read_saved_page, read_search_page
-from .exit_codes import SUCCESS
-from .searching import search_terms
+from .config import AppConfig, load_config
+from .files import read_json, write_json_atomically
+from .listings.files import dated, unique_lots
+from .providers.http import METADATA_SUFFIX, ResponseCache, fetch_authorized_page
+from .providers.nellis.discover import discover_searches
+from .providers.nellis.parse import read_saved_page, read_search_page
+from .providers.search_terms import search_terms
 
 PAGE_SUFFIX = ".html"
 LISTINGS_KEY = "listings"
@@ -37,7 +35,7 @@ def fetch(args: argparse.Namespace) -> int:
         else f"{result.bytes_received} bytes cached"
     )
     print(f"{provider} returned HTTP {result.status}; {outcome} at {result.cache_path}")
-    return SUCCESS
+    return 0
 
 
 def discover(args: argparse.Namespace) -> int:
@@ -66,7 +64,7 @@ def run_discovery(args: argparse.Namespace, config: AppConfig, terms: list[str])
     rows = unique_lots(found)
     write_json_atomically(Path(args.output), {LISTINGS_KEY: rows})
     print(f"Found {len(rows)} lot(s) from {len(captures)} page(s) into {args.output}.")
-    return SUCCESS
+    return 0
 
 
 def write_satisfied_discovery(output: str) -> None:
@@ -99,7 +97,7 @@ def pull(args: argparse.Namespace) -> int:
     print(f"Read {len(lots)} lot(s) from {len(pages)} saved page(s) into {args.output}.")
     for failure in failures:
         print(f"  [!] {failure}")
-    return SUCCESS
+    return 0
 
 
 def _saved_pages(source: Path) -> list[Path]:

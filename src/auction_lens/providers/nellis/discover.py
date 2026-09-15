@@ -6,7 +6,7 @@ would be forty requests for information already received, which is most of the
 difference between a polite client and a nuisance.
 
 Two limits apply here and they answer different questions. The persistent
-ledger in ``providers/pacing.py`` answers "may this run happen at all", and
+ledger in ``providers/http.py`` answers "may this run happen at all", and
 counts one attempt for the whole run. The in-memory throttle answers "how fast
 may this run work", and spaces the searches inside it. Conflating the two would
 either forbid a second search for twelve hours or let one run fire every search
@@ -34,16 +34,17 @@ from ...config.schema import (
 )
 from ...http_safety import public_https_opener
 from ...throttle import RequestThrottle
-from ..cache import ResponseCache
 from ..http import (
     ACCEPTED_CONTENT,
     HTTP_NOT_MODIFIED,
     HTTP_OK,
+    PollLedger,
+    ResponseCache,
     authorized_user_agent,
+    enforce_request_limits,
     require_fetch_allowed,
     require_not_rate_limited,
 )
-from ..pacing import PollLedger, enforce_request_limits
 
 # Enough digest to keep two similar terms in separate files, short enough that a
 # person can still see at a glance which file belongs to which search.

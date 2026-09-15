@@ -13,7 +13,7 @@ from html import escape
 
 from ..listings.conditions import HIGHEST_RATING, ConditionTag, Tag
 from ..matching.progress import InterestRef
-from ..watchlist.model import Verdict, WatchedItem
+from .model import Verdict, WatchedItem
 
 SEPARATOR = " | "
 

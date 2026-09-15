@@ -16,7 +16,7 @@ from decimal import Decimal
 from pathlib import Path
 
 from ..files import write_bytes_atomically
-from .loader import parse_config
+from .load import parse_config
 from .schema import LargeItemPolicy, LogisticsConfig
 
 LOGISTICS_TABLE = "logistics"

@@ -7,9 +7,9 @@ from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+from auction_lens.matching.analyze import analyze_listings
 from auction_lens.matching.model import CandidateCategory
 from auction_lens.matching.progress import InterestRef
-from auction_lens.pipeline import analyze_listings
 from auction_lens.pricing.value import ValuationEngine
 from auction_lens.storage import LogisticsDecisionStore, ObservationStore, WatchlistStore
 from auction_lens.watchlist.model import Verdict, WatchedItem

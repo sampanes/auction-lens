@@ -9,7 +9,8 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 
-from .findings import (
+from ..matching.searches import SearchHint
+from .records import (
     Fact,
     Finding,
     Group,
@@ -18,7 +19,6 @@ from .findings import (
     Report,
     Valuation,
 )
-from .searches import SearchHint
 
 SEPARATOR = " | "
 

@@ -285,7 +285,7 @@ class ProfileSavingTests(unittest.TestCase):
                     target.write_bytes(external)
 
             with patch(
-                "auction_lens.config.editor.write_bytes_atomically",
+                "auction_lens.config.profile_edit.write_bytes_atomically",
                 side_effect=write_then_change,
             ):
                 with self.assertRaisesRegex(RuntimeError, "changed after the profile preview"):
@@ -302,7 +302,7 @@ class ProfileSavingTests(unittest.TestCase):
             target.write_bytes(source)
 
             with patch(
-                "auction_lens.config.editor.write_bytes_atomically",
+                "auction_lens.config.profile_edit.write_bytes_atomically",
                 side_effect=OSError("snapshot stopped"),
             ):
                 with self.assertRaisesRegex(OSError, "snapshot stopped"):
@@ -325,7 +325,7 @@ class ProfileSavingTests(unittest.TestCase):
                 write_bytes_atomically(path, value)
 
             with patch(
-                "auction_lens.config.editor.write_bytes_atomically",
+                "auction_lens.config.profile_edit.write_bytes_atomically",
                 side_effect=fail_profile,
             ):
                 with self.assertRaisesRegex(OSError, "profile stopped"):
@@ -379,7 +379,7 @@ class ProfileRestoreSavingTests(unittest.TestCase):
                 write_bytes_atomically(path, value)
 
             with patch(
-                "auction_lens.config.editor.write_bytes_atomically",
+                "auction_lens.config.profile_edit.write_bytes_atomically",
                 side_effect=fail_target,
             ):
                 with self.assertRaisesRegex(OSError, "profile stopped"):
@@ -403,7 +403,7 @@ class ProfileRestoreSavingTests(unittest.TestCase):
                 write_bytes_atomically(path, value)
 
             with patch(
-                "auction_lens.config.editor.write_bytes_atomically",
+                "auction_lens.config.profile_edit.write_bytes_atomically",
                 side_effect=fail_snapshot,
             ):
                 with self.assertRaisesRegex(OSError, "snapshot stopped"):
@@ -427,7 +427,7 @@ class ProfileRestoreSavingTests(unittest.TestCase):
                 write_bytes_atomically(path, value)
 
             with patch(
-                "auction_lens.config.editor.write_bytes_atomically",
+                "auction_lens.config.profile_edit.write_bytes_atomically",
                 side_effect=fail_snapshot_and_rollback,
             ):
                 with self.assertRaisesRegex(OSError, "rollback stopped"):

@@ -10,7 +10,7 @@ from unittest.mock import patch
 
 from auction_lens.cli import build_parser, console, main
 from auction_lens.config import LargeItemPolicy, load_config
-from auction_lens.config.editor import profile_snapshot_path
+from auction_lens.config.profile_edit import profile_snapshot_path
 from support import EXAMPLE_CONFIG, temporary_directory
 
 PRIVATE_MARKER = "PRIVATE-SENTINEL-DO-NOT-PRINT"
@@ -57,8 +57,8 @@ class ProfileEditorCommandTests(unittest.TestCase):
             config = _config_copy(directory)
             original = config.read_bytes()
             with patch("auction_lens.cli.load_env_file") as load_env:
-                with patch("auction_lens.cli.collect.discover_searches") as discover:
-                    with patch("auction_lens.cli.collect.fetch_authorized_page") as fetch:
+                with patch("auction_lens.collect.discover_searches") as discover:
+                    with patch("auction_lens.collect.fetch_authorized_page") as fetch:
                         with patch("auction_lens.cli.analyze.load_listings") as listings:
                             with patch("auction_lens.cli.analyze.Database") as database:
                                 output, prompts = _run_profile(

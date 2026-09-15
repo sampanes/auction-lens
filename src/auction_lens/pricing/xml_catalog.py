@@ -10,12 +10,11 @@ import re
 import xml.etree.ElementTree as ElementTree
 from pathlib import Path
 
-from ...config.schema import ValuationSourceConfig
-from ...listings.model import Listing
-from ...values import parse_decimal, parse_money, parse_utc_datetime, parse_whole_number
-from ..model import ValuationObservation
-from ..source_config import settings_of
-from ..sources import SourceResult
+from ..config.schema import ValuationSourceConfig
+from ..listings.model import Listing
+from ..values import parse_decimal, parse_money, parse_utc_datetime, parse_whole_number
+from .model import ValuationObservation
+from .sources import SourceResult, settings_of
 
 TERM_SEPARATOR = "|"
 WORD_PATTERN = re.compile(r"[a-z0-9]+")

@@ -1,169 +1,162 @@
 # Conventions
 
 `ARCHITECTURE.md` says where code lives. This says what it should look like when
-it gets there, so that a change made a year from now is indistinguishable from
-one made today. If you are about to invent a new way of doing something already
-done here, do it the existing way instead, or change every instance at once.
+it gets there. The goal is not short code. It is code where a reader can answer
+their question without learning a private framework first.
 
-The goal is not short code. It is code where a reader who has never seen the
-project can answer their question without opening a second file.
+## 1. Write a rule down once
 
-## 1. A rule is written down once
-
-Every value has exactly one place that decides whether it is acceptable.
+Every value has one place that decides whether it is acceptable.
 
 | The rule | Where it goes | Example |
 |---|---|---|
-| What a value must be | the record's `__post_init__` | `port must be between 1 and 65535` |
-| What kind of thing the file holds | `config/toml_reader.py` | `scoring.minimum_report_score must be a whole number` |
-| Which table an operator must edit | `config/toml_reader.py`, via `in_section` | prefixes `reports.email: ` |
+| What an already-typed value must be | its record's `__post_init__` | `port must be between 1 and 65535` |
+| What kind of value TOML contains | `config/toml.py` | `scoring.minimum_report_score must be a whole number` |
+| Which table an operator must edit | `config/toml.py`, through `in_section` | prefixes `reports.email: ` |
 
-So a config builder does nothing but map keys to fields. If you find yourself
-writing `if` after constructing a record, the check belongs in the record.
+A config builder maps keys to record fields. If it checks a value after the
+record is constructed, that check probably belongs to the record.
 
-The payoff is that consumers never re-check. `send_email` does not verify that
-`security` is a real mode, and `assess_logistics` does not verify that
-`large_item_policy` is a real policy, because those records cannot hold anything
-else. Before this rule existed the same four guards were written twice each.
+Open-ended adapter settings are the exception. Their valid keys depend on the
+adapter named in TOML, so `pricing/sources.py` supplies a labelled `Section` and
+shared request limits. Each adapter validates only the keys it understands.
 
-The one exception: a table of names an operator chose, such as
-`[conditions.penalties]`. No record can name a key it has never heard of, so the
-reader checks those and names them precisely.
+`listings/conditions.py` applies the same rule to provider vocabulary. An
+answer such as `Yes` can be good on one condition axis and bad on another; its
+polarity is recorded once rather than guessed at every call site.
 
-A valuation source's `settings` table is the same shape of problem: its keys
-belong to whichever adapter the source named, so `config/schema.py` cannot list
-them. `valuation/settings.py` gives that table the same two pieces anyway -- a
-`Section` labelled `valuation.sources.<id>`, and a `RequestLimits` record -- so
-an adapter reads its settings exactly the way the loader reads everything else.
+## 2. Use an enum for a closed set of words
 
-`grading.py` is the same rule applied to a provider's vocabulary. A condition
-answer of `Yes` is green on one axis and red on another, so the polarity is
-written once, as a table of axes, and never re-derived at a call site. Anything
-that reads the answer word on its own gets `Assembly Required` backwards.
+If a setting or status may only be one of a few words, use a `StrEnum`, not a
+bare string plus a separate collection of allowed values.
 
-## 2. A closed set of words is an enum
+- Settle text at the edge. TOML, SQLite, and command-line strings become enum
+  members while their containing record is built.
+- Compare members with `==`, never `is`. Equality remains correct even when an
+  older persisted value first arrives as its equivalent string.
 
-If a setting or a status may only be one of a few words, it is a `StrEnum`
-(`RunMode`, `EmailSecurity`, `LargeItemPolicy`, `AcquisitionMode`,
-`LogisticsStatus`, `CandidateCategory`). Never a bare `str` with a `frozenset`
-of allowed values beside it.
+Examples include `RunMode`, `EmailSecurity`, `LargeItemPolicy`,
+`AcquisitionMode`, `LogisticsStatus`, and `CandidateCategory`.
 
-- **Settle it at the edge.** The record turns the written word into the member
-  (`_settle` in `config/schema.py`, `_decidable` in `models/handling.py`), so text from
-  TOML, SQLite, or argparse all arrive inside as the member.
-- **Compare with `==`, never `is`.** `status is LogisticsStatus.INFEASIBLE` is
-  silently `False` when `status` is the plain string `"infeasible"`, and that
-  failure looks exactly like a listing that passed the gate. `==` is right in
-  both cases, so there is nothing to remember.
+## 3. Use `values.py` for shared value vocabulary
 
-## 3. `fields.py` is the vocabulary
+Everything that parses or validates the same kind of scalar should use the same
+words, so an operator sees the same error wherever the bad value entered.
 
-Everything that reads a value uses its words, so an operator sees the same
-sentence for the same mistake whatever file it was in.
+- `require_*` checks a value already of the right type and returns it.
+- `parse_*` turns loose listing or command input into a typed value while
+  applying the requirements.
 
-- `require_*` checks a value that is already the right type, and returns it.
-- `parse_*` coerces a loosely typed value from a listing file, applying the
-  requirements on the way.
+Listing input is coerced because CSV has no types. TOML input is not coerced
+because TOML does: writing `"70"` where a number belongs is an actionable
+configuration mistake.
 
-Listing input is coerced because CSV has no types. TOML input is **not** coerced,
-because it does: a number written as `"70"` in a config file is a mistake worth
-reporting, not something to quietly convert.
-
-Every message names the field, because the person reading it has to go and edit
-that field.
+Every validation error names the field the person must edit.
 
 ## 4. Parse at the boundary; trust the inside
 
-Untrusted values are turned into strict records once, at the edge
-(`ingest`, `config/loader`, the valuation adapters). After that, code uses them.
+Untrusted values become strict records once, at the edge: `listings/files.py`,
+`config/load.py`, provider parsers, and pricing adapters. Code inside the
+application uses those records rather than repeatedly checking their fields.
 
-A record built from another record is *derived*, and does not re-check.
-`ValuationObservation` enforces `low <= typical <= high` because it is built from
-a file; `ValuationBand` does not, because it is computed from observations that
-already passed. Re-checking derived data turns an arithmetic quirk into a crash.
+A record derived entirely from validated records does not need to repeat their
+input checks. Revalidating computed data can turn an arithmetic quirk into an
+unrelated crash.
 
-## 5. Splitting a module
+## 5. Split by reason to change
 
-Split when two parts change for different reasons. Never split to make a file
-shorter. A module with a large interface and a small implementation costs a
-reader more than the long file it replaced -- they now have to learn a name, an
-import, and a call to get to two lines of logic.
+A module earns its place when this sentence has one answer: *this module
+answers the question ...*.
 
-Concretely, a new module earns its place if you can finish this sentence without
-using "and": *this module answers the question ...*.
+Do not split merely to lower a line count. A tiny wrapper with a broad name
+costs more than the two obvious lines it hides. Conversely, do split unrelated
+parsing, persistence, rendering, and policy even when they once fitted in one
+file: they change for different reasons and appear as different concepts in the
+directory tree.
 
-## 6. Deliberate repetition
+Avoid names such as `base`, `engine`, `manager`, `service`, and `utils` when a
+domain noun or verb says what the file actually owns.
 
-Some repetition is cheaper than the abstraction that would remove it. Where that
-is true, it is written down here so nobody "fixes" it badly.
+## 6. Prefer explicit code over private machinery
 
-- **`Listing.from_mapping` names every field by hand**, and
-  `REQUIRED_LISTING_FIELDS` lists five of them again. A table-driven mapper would
-  remove the repetition and replace it with a small framework a reader has to
-  learn first. The explicit version *is* the documentation of the file format an
-  operator hands us. Adding a field means editing the dataclass and that call.
-- **SQL column lists appear in the schema and in the statements.** SQLite is the
-  authority on its own tables; an ORM to avoid retyping them would be a much
-  larger thing to understand than the two lists.
+Some repetition is cheaper than an abstraction:
 
-## 7. Reports: what, then how
+- `Listing.from_mapping` names each field by hand. That explicit call is also
+  the documentation for the canonical input format.
+- SQL column lists appear in the schema and statements. An ORM would be much
+  more to understand than those nearby lists.
+- Package `__init__.py` files are markers. Import a name from its owning module
+  so a code search and the directory tree give the same answer.
 
-`reporting/findings.py` decides what a report says. `text.py` and `html.py`
-decide only what that looks like. A renderer must not reach into a `Candidate`,
-and `findings.py` must not know about terminals, markup, or escaping.
+## 7. Reports decide what, then how
 
-This is enforced by a test (`BothRenderingsSayTheSameThingTests`) which asserts
-that every fact and every open question reaches both renderings. Adding a new
-format means writing one function against `Report`.
+`reports/findings.py` decides what a report says and writes those decisions into
+format-neutral records from `reports/records.py`. `reports/text.py` and
+`reports/html.py` decide only what those facts look like. Renderers do not reach
+back into a `Candidate`, and report construction does not know about escaping or
+terminal presentation.
 
-## 8. Names over comments
+The cross-channel contract tests require text, HTML, SMTP, and webhook output to
+retain the same important facts. A new output format should be one renderer
+against the report records, not another analysis workflow.
 
-A comment says *why*; the code says *what*. A number that encodes a judgement is
-a named constant (`ENDING_SOON_BONUS`, `SAMPLE_SIZE_CAP`, `FACTS_PER_LINE`), not
-a literal inside an expression.
+## 8. Names say what; comments say why
 
-Every module opens with a docstring saying what question it answers. This is
-checked (`D100`).
+A reader should be able to follow the ordinary path from function and variable
+names alone. A comment earns its space by explaining a constraint, tradeoff, or
+failure mode that the code cannot say.
 
-## 9. ASCII only
+Judgement numbers are named constants (`ENDING_SOON_BONUS`,
+`SAMPLE_SIZE_CAP`, `FACTS_PER_LINE`), not unexplained literals in expressions.
+Every module begins with a docstring stating its one question; Ruff checks this.
 
-No emoji, box drawing, arrows, em-dashes, smart quotes, or Greek letters in any
-tracked file. Use `[OK]`, `[X]`, `->`, `--`. If a specific codepoint is genuinely
-needed, escape it (`"\u00d7"`, as `fields.py` does). Checked by `scripts/check-ascii.py`.
+## 9. Keep tracked text safe and portable
 
-## 10. Tests
+Tracked files use ASCII: no smart quotes, emoji, box drawing, or accidental
+mojibake. Escape a genuinely required codepoint. `scripts/check-ascii.py`
+enforces the rule.
 
-`tests/` mirrors the module layout, one file per area, with fixtures and fakes in
-`tests/support.py`. Nothing touches the network, SMTP, or a real provider.
+Private runtime files never enter Git. This includes `.env`, `config/local.toml`,
+provider caches, delivery ledgers, databases, watchlists, and profile backups.
 
-Name a test for the behavior it protects, not the function it calls:
+## 10. Test behavior, boundaries, and old data
+
+Name a test for the behavior it protects, not the function it happens to call:
 `test_a_misspelled_acquisition_mode_is_refused_at_load_time`, not
-`test_load_config_4`. When a test exists because of a specific past mistake, say
-so in its docstring.
+`test_load_config_4`. When a particular past mistake explains a test, put that
+reason in its docstring.
+
+- `tests/contracts/` pins public command and report meaning while internals move.
+- `fixtures/compatibility/` proves old local data still opens.
+- Provider tests use redacted transcripts and fake openers, never live traffic.
+- Shared synthetic examples live in `tests/support.py`.
 
 ## Adding something
 
-- **A setting**: add the field to the record in `config/schema.py`, its rule to
-  that record's `__post_init__`, and one line to the matching builder in
-  `config/loader.py`. Then add it to `config/providers/nellis.example.toml`.
-- **A record**: put it in the `models/` module that already holds its subject,
-  and add one line to the `__init__` door so nothing outside has to know which.
-- **A scoring signal**: a function in `scoring/signals.py`, and its number in
-  `models/scale.py` if configuration has to be explained in terms of it.
-  Put anything both interests and anomaly discovery need on `ScoringContext`.
-- **A valuation source**: prefer configuration. If it genuinely needs code,
-  implement `collect(listing)` and register it in `valuation/registry.py`.
-- **Something to say in reports**: add it to the view model in
-  `reporting/findings.py` first. Both renderings then have to show it.
-- **A command**: parser in `cli/parser.py`, function in the `cli/` module that
-  already holds its subject -- `setup`, `collect`, `analyze`, `doctor`, or
-  `track` -- and one line in the `COMMANDS` map in `cli/__init__.py`. Real
-  logic belongs in `pipeline` instead.
+- **A setting:** add its field and invariant in `config/schema.py`, map it in
+  `config/load.py`, document it in the public example, and test the exact key.
+- **A listing fact:** add it to `listings/model.py` and map it explicitly at each
+  provider/canonical boundary.
+- **A match rule or score:** put shared admission policy in
+  `matching/evaluate.py`; interest-specific evidence belongs in
+  `matching/interests.py`. Keep explanatory score constants by the matching
+  record that uses them.
+- **A price source:** prefer a new TOML `[[valuation.sources]]` entry. For a new
+  input mechanism, implement the `ValuationAdapter` contract in `pricing/` and
+  register it in `pricing/value.py`.
+- **Something to say in reports:** add the fact to `reports/records.py`, populate
+  it in `reports/findings.py`, and render it in every supported format.
+- **A provider:** keep its page discovery and parser in `providers/<name>/` and
+  emit provider-neutral `Listing` records. Do not let provider details leak into
+  matching.
+- **A command:** describe flags in `cli/parser.py`, put behavior in the plainly
+  named feature or workflow module, and add one dispatch entry in
+  `cli/__init__.py`.
 
 ## Running the checks
 
-`scripts/check.py` owns the check list used by CI. On Windows,
-`scripts\test.cmd` runs that driver with the project virtual environment:
+`scripts/check.py` owns the list used locally and in CI. On Windows,
+`scripts\test.cmd` runs it with the project virtual environment:
 
 ```
 compileall  ->  check-ascii  ->  check-imports  ->  ruff  ->  unittest

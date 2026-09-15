@@ -1,6 +1,8 @@
 """Reading, describing, and safely editing one provider's TOML configuration."""
 
-from .editor import (
+from .load import load_config, parse_config
+from .profile import render_profile
+from .profile_edit import (
     REMOVE,
     ProfileEdits,
     profile_restore_recovery_path,
@@ -10,8 +12,6 @@ from .editor import (
     save_profile_text,
     update_profile_text,
 )
-from .loader import load_config, parse_config
-from .profile import render_profile
 from .schema import (
     AcquisitionConfig,
     AcquisitionMode,
@@ -34,7 +34,7 @@ from .schema import (
     ValuationSourceConfig,
     WebhookConfig,
 )
-from .toml_reader import Section, in_section
+from .toml import Section, in_section
 
 __all__ = [
     "AcquisitionConfig",

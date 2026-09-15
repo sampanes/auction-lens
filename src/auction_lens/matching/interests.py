@@ -10,7 +10,7 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from decimal import Decimal
 
-from ..config import ConditionPolicy, InterestRule
+from ..config.schema import ConditionPolicy, InterestRule
 from ..listings.model import Listing, ObservationChange
 from ..matching.text import first_mention, mentions, standalone_mentions
 from .logistics import LogisticsAssessment

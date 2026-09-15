@@ -10,11 +10,13 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from ..config import EmailConfig, load_config, render_profile
 from ..config.environment import write_settings
+from ..config.load import load_config
+from ..config.profile import render_profile
+from ..config.profile_wizard import edit_profile, restore_profile
+from ..config.schema import EmailConfig
 from .exit_codes import SUCCESS
 from .parser import DEFAULT_CONFIG, DEFAULT_INBOX, EXAMPLE_CONFIG, PROGRAM
-from .profile_wizard import edit_profile, restore_profile
 from .prompts import (
     ask,
     ask_for_address,

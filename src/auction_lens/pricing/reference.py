@@ -2,12 +2,10 @@
 
 from __future__ import annotations
 
-from ...config.schema import ValuationSourceConfig
-from ...listings.model import Listing
-from ..model import ResearchLink
-from ..research import fill_template
-from ..source_config import settings_of
-from ..sources import SourceResult
+from ..config.schema import ValuationSourceConfig
+from ..listings.model import Listing
+from .model import ResearchLink
+from .sources import SourceResult, fill_template, settings_of
 
 
 class ReferenceAdapter:

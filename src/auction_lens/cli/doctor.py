@@ -11,8 +11,8 @@ import argparse
 
 from ..config import AppConfig, RunMode, load_config
 from ..providers.nellis.discover import check_discovery_ready
+from ..providers.search_terms import search_terms
 from .exit_codes import SUCCESS
-from .searching import search_terms
 from .sending import preflight_reports
 
 

@@ -10,7 +10,8 @@ from __future__ import annotations
 from collections.abc import Iterable
 from html import escape
 
-from .findings import (
+from ..matching.searches import SearchHint
+from .records import (
     Fact,
     Finding,
     Group,
@@ -20,7 +21,6 @@ from .findings import (
     Report,
     Valuation,
 )
-from .searches import SearchHint
 
 CARD_STYLE = "border:1px solid #ddd;border-radius:8px;padding:14px;margin:12px 0"
 HEADING_STYLE = "margin-top:0"

@@ -12,13 +12,13 @@ from urllib.error import HTTPError
 from auction_lens.config.schema import AcquisitionConfig, AcquisitionMode, ProviderConfig
 from auction_lens.http_safety import PublicHttpsRedirectHandler
 from auction_lens.listings.model import Listing
+from auction_lens.providers.http import PollLedger
 from auction_lens.providers.nellis.discover import (
     check_discovery_ready,
     discover_searches,
     session_opener,
 )
 from auction_lens.providers.nellis.parse import read_search_page
-from auction_lens.providers.pacing import PollLedger
 from support import ROOT, FakeResponse, temporary_directory
 
 SEARCH_PAGE = ROOT / "fixtures" / "nellis" / "search-page.html"

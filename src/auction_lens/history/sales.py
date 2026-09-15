@@ -1,31 +1,106 @@
-"""Closing prices as a person reads them.
+"""Closing-price evidence, from its database query to its human-readable report.
 
-The run report answers "what is worth bidding on tonight". This answers the
-question that only history can answer -- "what does this kind of thing actually
-go for" -- and every line of it is a floor rather than a sale price, so the
-rendering says so once at the top and then never lets a reader forget which
-readings are tight enough to trust.
+Nothing new is written here. Every fact this needs was already being recorded:
+``listings`` knows when a lot closed, and ``price_history`` knows what it cost
+each time it was looked at. Putting those two together is the only step that
+was missing, and it is a read, so the answer improves on its own as more looks
+accumulate rather than needing a migration.
 
-Readings are ordered by how close to the close they were taken, because that is
-the quality of the evidence. A stale reading is reported as a count rather than
-dropped in silence: knowing that four hundred lots were looked at too early is
-itself the answer to "why is this list so short".
+The useful reading is the last one taken *before* the close. A look
+taken after a lot ended is not evidence about that auction -- the page may be
+stale, or the lot may have been relisted -- so this asks the database for the
+last look while the lot was still open, and reports how late that look was.
+
+Every quoted price is therefore a floor rather than a final sale price. The
+report keeps that limitation visible and counts readings that were taken too
+early to be useful instead of silently dropping them.
 """
 
 from __future__ import annotations
 
 from collections.abc import Iterator
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from decimal import Decimal
 from zoneinfo import ZoneInfo
 
 from ..watchlist.model import ClosingPrice
+from .database import Database
 
-# A reading taken within this long of the close is tight enough that the floor
-# is worth quoting. It is a default rather than a rule; the caller may widen it.
 DEFAULT_WITHIN_MINUTES = 30
-
 CLOSE_FORMAT = "%a %d %b %H:%M"
-
 FLOOR_NOTE = "Each price is a floor: the lot sold for at least this much."
+
+# Timestamps are stored as ISO-8601 in UTC, and strings in that one shape sort
+# the same way the instants do. That is what lets the comparison and the MAX
+# below happen in SQLite rather than by reading every row into Python.
+_SELECT_CLOSED = """
+SELECT
+    listing.source,
+    listing.listing_id,
+    listing.title,
+    listing.url,
+    listing.estimated_retail,
+    listing.ends_at,
+    seen.current_bid,
+    seen.bid_count,
+    seen.observed_at
+FROM listings AS listing
+JOIN price_history AS seen
+    ON seen.source = listing.source
+   AND seen.listing_id = listing.listing_id
+   AND seen.observed_at = (
+       SELECT MAX(earlier.observed_at)
+       FROM price_history AS earlier
+       WHERE earlier.source = listing.source
+         AND earlier.listing_id = listing.listing_id
+         AND earlier.observed_at <= listing.ends_at
+   )
+WHERE listing.ends_at IS NOT NULL
+  AND listing.ends_at <= ?
+ORDER BY listing.ends_at DESC
+"""
+
+
+@dataclass(frozen=True)
+class ClosingPriceStore:
+    """The closing-price view of the observation database."""
+
+    database: Database
+
+    def closed_by(self, moment: datetime) -> tuple[ClosingPrice, ...]:
+        """Every lot whose close has passed, most recently closed first."""
+        with self.database.connect() as connection:
+            rows = connection.execute(
+                _SELECT_CLOSED, (moment.astimezone(UTC).isoformat(),)
+            ).fetchall()
+        return tuple(_closing_price(row) for row in rows)
+
+
+def _closing_price(row: tuple) -> ClosingPrice:
+    """Rebuild one record from the row the query returned."""
+    (
+        source,
+        listing_id,
+        title,
+        url,
+        estimated_retail,
+        ends_at,
+        current_bid,
+        bid_count,
+        observed_at,
+    ) = row
+    return ClosingPrice(
+        source=source,
+        listing_id=listing_id,
+        title=title,
+        url=url,
+        last_bid=Decimal(current_bid),
+        ends_at=datetime.fromisoformat(ends_at),
+        last_seen_at=datetime.fromisoformat(observed_at),
+        bid_count=bid_count,
+        estimated_retail=None if estimated_retail is None else Decimal(estimated_retail),
+    )
 
 
 def render_closing_prices(
@@ -35,7 +110,7 @@ def render_closing_prices(
     within_minutes: int = DEFAULT_WITHIN_MINUTES,
     limit: int | None = None,
 ) -> str:
-    """Render the tight readings, and account for the ones left out."""
+    """Render reliable closing-price floors and account for omitted readings."""
     tight, stale = _split_by_tightness(prices, within_minutes)
     if not tight:
         return _nothing_tight_enough(prices, stale, within_minutes)
@@ -108,7 +183,7 @@ def _against_retail(price: ClosingPrice) -> str:
 def _omission_lines(
     trimmed: int, stale: list[ClosingPrice], within_minutes: int
 ) -> Iterator[str]:
-    """Say what is not on the screen, so a short list is never mistaken for all."""
+    """Say what is not shown, so a short list is never mistaken for all."""
     if trimmed:
         yield ""
         yield f"{trimmed} further tight reading(s) not shown; raise the limit to see them."
@@ -121,6 +196,6 @@ def _omission_lines(
         )
 
 
-def _money(amount) -> str:
+def _money(amount: Decimal) -> str:
     """Whole dollars; cents are noise at the resolution this answers."""
     return f"${amount:,.0f}"

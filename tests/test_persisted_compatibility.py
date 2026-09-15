@@ -9,15 +9,13 @@ from contextlib import closing
 from datetime import UTC, datetime
 from decimal import Decimal
 
+from auction_lens.history.database import Database
+from auction_lens.history.logistics import LogisticsDecisionStore
+from auction_lens.history.observations import ObservationStore
 from auction_lens.listings.model import Listing
 from auction_lens.matching.logistics import LogisticsDecision
-from auction_lens.storage import (
-    Database,
-    LogisticsDecisionStore,
-    ObservationStore,
-    WatchlistStore,
-)
 from auction_lens.watchlist.model import Verdict
+from auction_lens.watchlist.store import WatchlistStore
 from support import ROOT, temporary_directory
 
 COMPATIBILITY_FIXTURES = ROOT / "fixtures" / "compatibility"

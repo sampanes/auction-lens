@@ -9,7 +9,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from decimal import Decimal
 
-from ..config import AppConfig, EconomicsConfig, ScoringConfig
+from ..config.schema import AppConfig, EconomicsConfig, ScoringConfig
 from ..listings.model import Listing, ObservationChange
 from ..values import CENTS
 from .interests import (

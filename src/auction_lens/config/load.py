@@ -40,7 +40,7 @@ from .schema import (
     ValuationSourceConfig,
     WebhookConfig,
 )
-from .toml_reader import Section, in_section
+from .toml import Section, in_section
 
 # Keys consumed by ValuationSourceConfig itself; the rest are adapter settings.
 VALUATION_SOURCE_KEYS = frozenset({"id", "adapter", "enabled", "label", "categories", "weight"})

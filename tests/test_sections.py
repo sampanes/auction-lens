@@ -21,8 +21,10 @@ from auction_lens.matching.model import (
     best_of_each,
     harvest_of,
 )
-from auction_lens.reporting import build_report, render_html, render_text
-from auction_lens.reporting.searches import SearchHint
+from auction_lens.matching.searches import SearchHint
+from auction_lens.reports.findings import build_report
+from auction_lens.reports.html import render_html
+from auction_lens.reports.text import render_text
 from support import EXAMPLE_CONFIG, REPORT_ZONE, SOUNDBAR, example_listings
 
 NO_CHANGE = ObservationChange(is_new=False, price_changed=False)

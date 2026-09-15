@@ -2,11 +2,11 @@
 
 Each record mirrors one concern in the file, so a consumer can depend on the
 narrow slice it actually needs: cost estimation takes economics, the fetcher
-takes acquisition, and only the CLI assembles the whole application config.
+takes acquisition, and ``load.py`` assembles the complete application config.
 
 A record enforces its own rules in ``__post_init__``. That is what lets every
 consumer downstream simply use a value instead of re-checking it, and it is why
-the loader in this package is nothing but field mapping. Where a setting may
+``load.py`` is nothing but field mapping. Where a setting may
 only be one of a few words, it is an enum, so a typo is caught by construction
 rather than by a membership test repeated at each use.
 """
@@ -441,7 +441,7 @@ class WebhookConfig:
 
 # Enough of one interest to see what today's crop of it looks like, few enough
 # that a busy want leaves room for the others. The same number is what makes a
-# search phrase worth printing: see ``reporting.searches``.
+# search phrase worth printing: see ``matching.searches``.
 DEFAULT_MOST_PER_INTEREST = 3
 
 

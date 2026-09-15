@@ -9,11 +9,15 @@ from __future__ import annotations
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 
-from .config import AppConfig, InterestRule
-from .listings.model import Listing
-from .matching.evaluate import evaluate
-from .matching.judge import LocalModel, VettingOutcome, vet
-from .matching.model import (
+from ..config.schema import AppConfig, InterestRule
+from ..history.logistics import LogisticsDecisionStore
+from ..history.observations import ObservationStore
+from ..listings.model import Listing
+from ..pricing.value import ValuationEngine
+from ..watchlist.store import FollowedListing, WatchlistStore
+from .evaluate import evaluate
+from .judge import LocalModel, VettingOutcome, vet
+from .model import (
     Candidate,
     CandidateCategory,
     InterestHarvest,
@@ -21,19 +25,12 @@ from .matching.model import (
     harvest_of,
     ranked,
 )
-from .matching.progress import InterestProgress, InterestRef, plan_interests
-from .pricing.value import ValuationEngine
-from .reporting.searches import SearchHint, search_hints
-from .storage import (
-    FollowedListing,
-    LogisticsDecisionStore,
-    ObservationStore,
-    WatchlistStore,
-)
+from .progress import InterestProgress, InterestRef, plan_interests
+from .searches import SearchHint, search_hints
 
 
 @dataclass(frozen=True)
-class RunResult:
+class AnalysisResult:
     """What one analysis run found, and what it deliberately ignored."""
 
     candidates: list[Candidate]
@@ -89,7 +86,7 @@ def analyze_listings(
     watchlist: WatchlistStore | None = None,
     valuation_engine: ValuationEngine | None = None,
     now: datetime | None = None,
-) -> RunResult:
+) -> AnalysisResult:
     """Observe, score, and value every listing belonging to this provider.
 
     A file may hold listings from several providers, but one configuration
@@ -142,7 +139,7 @@ def analyze_listings(
         best_of_each(candidates, config.reports.most_per_interest),
         config.reports.max_items,
     )
-    return RunResult(
+    return AnalysisResult(
         candidates=reportable,
         searches=search_hints(candidates, listings, plan.active_rules),
         harvest=harvest_of(candidates, reportable),

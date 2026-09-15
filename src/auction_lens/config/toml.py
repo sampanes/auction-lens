@@ -3,10 +3,10 @@
 Configuration is the part of this project an operator edits by hand, so every
 reader reports the full key path that has to change.
 
-TOML is already typed, so this module never coerces: a value that is written as
-the wrong kind of thing is an operator mistake worth reporting, not something to
-be quietly converted. What a value must *be* once read comes from ``fields``,
-which is the same vocabulary listing input is held to.
+TOML is already typed, so this module never coerces: a value written as the
+wrong kind of thing is an operator mistake worth reporting, not something to be
+quietly converted. Whole-record rules live in ``schema``; reusable primitive
+checks live in ``values`` alongside the checks applied to listing input.
 """
 
 from __future__ import annotations

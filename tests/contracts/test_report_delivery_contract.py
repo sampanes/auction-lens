@@ -18,14 +18,12 @@ from auction_lens.listings.model import ObservationChange
 from auction_lens.matching.evaluate import evaluate
 from auction_lens.matching.progress import InterestProgress, InterestRef
 from auction_lens.pricing.model import ResearchLink, ValuationBand, ValuationSummary
-from auction_lens.reporting import (
-    DeliverySummary,
-    build_report,
-    render_html,
-    render_text,
-    send_email,
-    send_webhook,
-)
+from auction_lens.reports.email import send_email
+from auction_lens.reports.findings import build_report
+from auction_lens.reports.html import render_html
+from auction_lens.reports.records import DeliverySummary
+from auction_lens.reports.text import render_text
+from auction_lens.reports.webhook import send_webhook
 
 ROOT = Path(__file__).resolve().parents[2]
 EXAMPLE_CONFIG = ROOT / "config" / "providers" / "nellis.example.toml"

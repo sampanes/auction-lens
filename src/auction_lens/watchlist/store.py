@@ -29,7 +29,7 @@ from ..values import (
     parse_utc_datetime,
     parse_whole_number,
 )
-from ..watchlist.model import PriceReading, Verdict, WatchedItem
+from .model import PriceReading, Verdict, WatchedItem
 
 DEFAULT_WATCHLIST_FILE = "private/watchlist.json"
 

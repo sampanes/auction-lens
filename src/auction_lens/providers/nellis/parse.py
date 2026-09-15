@@ -23,8 +23,6 @@ import re
 from typing import Any
 from urllib.parse import unquote_plus, urljoin
 
-from .turbo import decode
-
 # Where the streamed payload sits, and where the page states its own address.
 PAYLOAD_PATTERN = re.compile(r'streamController\.enqueue\("(.*?)"\);', re.DOTALL)
 CANONICAL_URL_PATTERN = re.compile(
@@ -324,3 +322,56 @@ def _words(value: Any) -> tuple[str, ...]:
 def _amount(value: Any) -> str:
     """Money as text, so a float's rounding never becomes the record."""
     return "0" if value is None else str(value)
+
+
+# The provider streams a flat graph of interned values rather than ordinary
+# JSON. The only negative marker observed in that envelope stands for null;
+# unfamiliar markers are refused because guessing could silently change money.
+NULL_MARKER = -5
+
+
+def decode(payload: str) -> Any:
+    """Turn the provider's streamed value graph back into ordinary Python."""
+    values = json.loads(payload.splitlines()[0])
+    if not isinstance(values, list) or not values:
+        raise ValueError("a streamed payload must be a non-empty array of values")
+    return _resolve(0, values, seen=frozenset())
+
+
+def _resolve(index: int, values: list[Any], *, seen: frozenset[int]) -> Any:
+    """Follow one index, refusing a graph that points back at itself."""
+    if index < 0:
+        return _marker(index)
+    if index in seen:
+        raise ValueError(f"streamed payload refers to itself at index {index}")
+    if index >= len(values):
+        raise ValueError(f"streamed payload refers to missing index {index}")
+
+    node = values[index]
+    deeper = seen | {index}
+    if isinstance(node, dict):
+        return {
+            _resolve(_key_index(key), values, seen=deeper): _resolve(
+                value, values, seen=deeper
+            )
+            for key, value in node.items()
+        }
+    if isinstance(node, list):
+        return [_resolve(item, values, seen=deeper) for item in node]
+    return node
+
+
+def _key_index(key: str) -> int:
+    """Object keys are an underscore plus the index of their key text."""
+    if not key.startswith("_") or not key[1:].lstrip("-").isdigit():
+        raise ValueError(f"streamed object key {key!r} is not an index")
+    return int(key[1:])
+
+
+def _marker(index: int) -> None:
+    if index == NULL_MARKER:
+        return None
+    raise ValueError(
+        f"streamed payload used unknown marker {index}; "
+        "decode it deliberately rather than guessing what it means"
+    )

@@ -1018,8 +1018,8 @@ class ProfileCommandTests(unittest.TestCase):
             before = config.read_bytes()
             files_before = tuple(directory.iterdir())
             with patch("auction_lens.cli.load_env_file") as load_env:
-                with patch("auction_lens.cli.collect.discover_searches") as discover:
-                    with patch("auction_lens.cli.collect.fetch_authorized_page") as fetch:
+                with patch("auction_lens.collect.discover_searches") as discover:
+                    with patch("auction_lens.collect.fetch_authorized_page") as fetch:
                         message = run_cli(["profile", "--config", str(config)])
 
             self.assertEqual(config.read_bytes(), before)
@@ -1224,7 +1224,7 @@ class MailSetupTests(unittest.TestCase):
 
 
 class DailyCommandTests(unittest.TestCase):
-    @patch("auction_lens.cli.collect.run_discovery")
+    @patch("auction_lens.collect.run_discovery")
     def test_report_preflight_happens_before_discovery(self, discover):
         with temporary_directory() as directory:
             output = directory / "listings.json"
@@ -1289,7 +1289,7 @@ class DailyCommandTests(unittest.TestCase):
         self.assertEqual(asked, ["one-off phrase"])
         _run.assert_called_once()
 
-    @patch("auction_lens.cli.collect.discover_searches")
+    @patch("auction_lens.collect.discover_searches")
     def test_all_satisfied_interests_make_a_quiet_report_without_a_request(
         self, discover_searches
     ):
@@ -1388,7 +1388,7 @@ class DailyCommandTests(unittest.TestCase):
         ]
         for term in requested:
             argv.extend(("--search", term))
-        with patch("auction_lens.cli.collect.discover_searches", fake_discovery):
+        with patch("auction_lens.collect.discover_searches", fake_discovery):
             run_cli(argv)
         return asked
 
@@ -1498,7 +1498,7 @@ class DiscoverCommandTests(unittest.TestCase):
             )
             output = directory / "listings.json"
             with patch(
-                "auction_lens.cli.collect.discover_searches", return_value=[capture]
+                "auction_lens.collect.discover_searches", return_value=[capture]
             ):
                 run_cli(
                     ["discover", "--config", str(EXAMPLE_CONFIG), "--output",
