@@ -21,6 +21,7 @@ from .model import (
     Candidate,
     CandidateCategory,
 )
+from .sizes import fits
 
 
 @dataclass(frozen=True)
@@ -173,7 +174,22 @@ def matches_terms(listing: Listing, total_cost: Decimal, rule: InterestRule) -> 
         return False
     if _asks_too_much_of_retail(listing, total_cost, rule.maximum_retail_ratio):
         return False
+    if rule.fits is not None and not _could_be_worn_by(listing, rule):
+        return False
     return rule.max_total_cost is None or total_cost <= rule.max_total_cost
+
+
+def _could_be_worn_by(listing: Listing, rule: InterestRule) -> bool:
+    """Whether the person this rule shops for could wear the lot.
+
+    Reads the title alone rather than the shared searchable text, which is the
+    one question in the file that wants less than everything a provider said.
+    That text appends the branch and the condition words, so a shirt titled
+    "... - Large" arrives as "... - large mesa used" and the size stops being
+    the last thing in its clause. Location and condition cannot state a size,
+    so nothing is lost by not reading them.
+    """
+    return fits(listing.title.lower(), rule.fits)
 
 
 def describes_an_accessory(searchable: str, rule: InterestRule) -> bool:

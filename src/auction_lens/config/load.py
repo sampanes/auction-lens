@@ -11,7 +11,7 @@ from __future__ import annotations
 import tomllib
 from pathlib import Path
 
-from ..matching.model import ReadingOrder
+from ..matching.model import Person, ReadingOrder
 from .app import AppConfig, JudgingConfig
 from .conditions import resolve_condition_policy
 from .interests import InterestDefaults, InterestRule, ScoringConfig
@@ -21,6 +21,7 @@ from .logistics import (
     LocationPolicy,
     LogisticsConfig,
 )
+from .people import read_people, resolve_person
 from .pricing import EconomicsConfig, ValuationConfig, ValuationSourceConfig
 from .provider import (
     DEFAULT_CACHE_FILE,
@@ -69,7 +70,7 @@ def _app_config(root: Section) -> AppConfig:
         economics=_economics(root.table("economics")),
         acquisition=_acquisition(provider.table("acquisition")),
         scoring=_scoring(root.table("scoring"), root.table("conditions"), profiles),
-        interests=_interests(root, profiles),
+        interests=_interests(root, profiles, read_people(root)),
         valuation=_valuation(root.table("valuation")),
         logistics=_logistics(root.table("logistics")),
         email=_email(root.table("reports").table("email")),
@@ -152,7 +153,9 @@ def _scoring(section: Section, conditions: Section, profiles: Section) -> Scorin
         )
 
 
-def _interests(root: Section, profiles: Section) -> tuple[InterestRule, ...]:
+def _interests(
+    root: Section, profiles: Section, people: dict[str, Person]
+) -> tuple[InterestRule, ...]:
     """Every rule, already carrying what it inherits.
 
     Inheritance is resolved here, once, so that everything downstream reads a
@@ -160,7 +163,7 @@ def _interests(root: Section, profiles: Section) -> tuple[InterestRule, ...]:
     """
     defaults = _interest_defaults(root.table("interest_defaults"))
     interests = tuple(
-        defaults.applied_to(_interest(item, profiles))
+        defaults.applied_to(_interest(item, profiles, people))
         for item in root.tables("interests")
     )
     _require_unique_interests(interests)
@@ -192,7 +195,9 @@ def _interest_defaults(section: Section) -> InterestDefaults:
         )
 
 
-def _interest(item: Section, profiles: Section) -> InterestRule:
+def _interest(
+    item: Section, profiles: Section, people: dict[str, Person]
+) -> InterestRule:
     with in_section(item):
         wanted = item.optional_positive_integer("wanted")
         if wanted is not None and not item.contains("id"):
@@ -215,6 +220,7 @@ def _interest(item: Section, profiles: Section) -> InterestRule:
             weight=item.decimal("weight", "1"),
             condition_profile=item.text("condition_profile"),
             condition=resolve_condition_policy(item, profiles),
+            fits=resolve_person(item, people),
         )
 
 

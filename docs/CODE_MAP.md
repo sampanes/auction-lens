@@ -53,6 +53,8 @@ listing is desirable.
   whether a title satisfies one configured interest and condition policy.
 - [`matching/text.py`](../src/auction_lens/matching/text.py) owns literal phrase
   and accessory-context matching.
+- [`matching/sizes.py`](../src/auction_lens/matching/sizes.py) reads the size and
+  audience out of a title and decides whether one person could wear it.
 - [`matching/judge.py`](../src/auction_lens/matching/judge.py) optionally asks a
   local model whether a broad word match is actually the requested thing; an
   explicit mismatch is down-ranked and labelled, never deleted.

@@ -114,6 +114,39 @@ anomaly_condition_profile = "ready_to_use"
 accessory_nouns = ["stand", "case", "cover", "mount", "bracket", "holder", "arm",
                    "controller"]
 
+# WHO A GARMENT HAS TO FIT
+#
+# Clothing is the one category where the right product at the right price is
+# still useless. Declare a person once and several interests can point at them
+# with `fits`, so the sizes live with the person rather than being restated on
+# every rule and drifting apart.
+#
+# Sizes are compared chart by chart: letter sizes, numeric shoe sizes, and
+# waist-by-inseam are three unrelated measurements. Someone who wrote down a
+# shirt size has not thereby said their waist is wrong, so a chart nobody
+# filled in never refuses anything. Neither does a title that states no size.
+#
+# Leave `styles` out to accept every department; leave `sizes` out to accept
+# every size. Spellings are forgiving: "Medium", "M" and "medium" are one
+# answer, as are "mens", "men" and "men's".
+[[people]]
+name = "sam"
+sizes = ["M", "9.5", "32x30"]
+styles = ["mens", "unisex"]
+
+[[people]]
+name = "kid"
+sizes = ["S"]
+styles = ["boys", "kids", "unisex"]
+
+# An interest then points at one of them. A title that states no size still
+# gets through; only a stated mismatch is refused:
+#
+#     [[interests]]
+#     name = "work jacket"
+#     any_terms = ["carhartt", "work jacket", "canvas jacket"]
+#     fits = "sam"
+
 [[interests]]
 name = "soundbar"
 id = "soundbar"

@@ -16,6 +16,7 @@ from ..matching.model import (
     HIGHEST_INTEREST_SCORE,
     HIGHEST_SCORE,
     LOWEST_SCORE,
+    Person,
 )
 from .app import AppConfig
 from .interests import ConditionPolicy, InterestRule
@@ -123,12 +124,27 @@ def _interest(number: int, rule: InterestRule, global_minimum_score: int) -> lis
             f"{_optional_money(rule.minimum_retail, empty=NONE)}",
             f"   Maximum share of retail: "
             f"{_optional_share(rule.maximum_retail_ratio, empty=NO_LIMIT)}",
+            f"   Has to fit: {_fits(rule.fits)}",
             f"   Minimum score: {_minimum_score(threshold)}",
             f"   Relative importance: {_number(rule.weight)}",
             f"   Conditions{policy_name}: {_condition(rule.condition)}",
         ]
     )
     return lines
+
+
+def _fits(person: Person | None) -> str:
+    """Who a want is shopping for, spelled out rather than left as a name.
+
+    The readback exists to be checked against what someone meant, so it says
+    the sizes back. A name alone would only confirm the rule points at a
+    person, not that the person is the one they had in mind.
+    """
+    if person is None:
+        return "anyone; size is not checked"
+    sizes = ", ".join(sorted(person.sizes)) or "any size"
+    styles = ", ".join(sorted(person.styles)) or "any style"
+    return f"{person.person_id} (sizes {sizes}; styles {styles})"
 
 
 def _wanted_quantity(wanted: int | None) -> str:

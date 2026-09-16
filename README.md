@@ -145,6 +145,37 @@ Defaults live in the configuration records and command parser, not in this
 README. Use `profile` to see what the selected file means after defaults and
 condition profiles are applied.
 
+## Clothing that actually fits
+
+Clothing is the one category where the right product at the right price is
+still useless. Declare each person once, then let any interest name them:
+
+```toml
+[[people]]
+name = "sam"
+sizes = ["M", "9.5", "32x30"]
+styles = ["mens", "unisex"]
+
+[[interests]]
+name = "work jacket"
+any_terms = ["carhartt", "work jacket", "canvas jacket"]
+fits = "sam"
+```
+
+Sizes belong to the person rather than to the want, so the same answer governs
+a jacket rule and a boots rule and the two cannot drift apart.
+
+Two silences are treated as silence rather than as a mismatch. A title that
+never states a size is never refused for its size, because warehouse titles
+routinely omit it and refusing them would hide more real finds than the check
+saves. A size chart nobody filled in cannot refuse anything either: letter
+sizes, numeric shoe sizes, and waist-by-inseam are three unrelated
+measurements, and writing down a shirt size does not declare a waist wrong.
+
+Naming a person who was never declared is an error, not a silent no-op -- a
+typo that quietly disabled the check would look exactly like a check that
+passed. Run `profile` to read back who each interest is shopping for.
+
 ## Reports and local memory
 
 Report construction decides what to say once. Plain text and HTML then render

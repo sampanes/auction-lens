@@ -33,6 +33,29 @@ HIGHEST_INTEREST_SCORE = BASE_INTEREST_SCORE + ENDING_SOON_BONUS
 NEW_LISTING_PRIORITY_BONUS = _NEW_LISTING_PRIORITY_BONUS
 PRICE_CHANGE_PRIORITY_BONUS = _PRICE_CHANGE_PRIORITY_BONUS
 
+
+@dataclass(frozen=True)
+class Person:
+    """One person a garment has to fit, named so several rules can share them.
+
+    A record rather than two lists on the rule because the sizes belong to the
+    person, not to the want: the same teenager is the reason a jacket rule and
+    a boots rule both pass over a size 13, and restating that on every rule is
+    how the two drift apart.
+
+    Both lists may be empty, which means "do not check this half". Someone with
+    no styles declared is offered a womens jacket in their size, which is the
+    right default for a household where nobody wrote the answer down yet.
+    """
+
+    person_id: str
+    sizes: frozenset[str] = frozenset()
+    styles: frozenset[str] = frozenset()
+
+    def __post_init__(self) -> None:
+        if not self.person_id.strip():
+            raise ValueError("a person needs an id so a rule can name them")
+
 class CandidateCategory(StrEnum):
     """Why a listing is being reported at all."""
 

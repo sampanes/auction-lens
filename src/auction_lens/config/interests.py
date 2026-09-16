@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field, replace
 from decimal import Decimal
 
-from ..matching.model import HIGHEST_SCORE, LOWEST_SCORE
+from ..matching.model import HIGHEST_SCORE, LOWEST_SCORE, Person
 from ..values import (
     HIGHEST_RATE,
     require_at_least,
@@ -49,6 +49,10 @@ class InterestRule:
     minimum_retail: Decimal | None = None
     # A per-interest price ratio can narrow, but never widen, the shared ceiling.
     maximum_retail_ratio: Decimal | None = None
+    # Who this has to fit, for the wants where the right product in the wrong
+    # size is not a find. Named as `fits = "someone"` in TOML and resolved to
+    # the person here at load time, so matching never needs the whole config.
+    fits: Person | None = None
     # None is ongoing; a positive count plus a stable id can retire after wins.
     wanted: int | None = None
     minimum_score: int = 0
