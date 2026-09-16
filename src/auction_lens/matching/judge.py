@@ -14,6 +14,7 @@ import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, replace
 from decimal import Decimal
+from typing import Protocol
 
 from ..config.interests import InterestRule
 from ..listings.model import Listing
@@ -57,6 +58,17 @@ def verdict_from(answer: str) -> Verdict:
 
 class ModelUnavailable(RuntimeError):
     """Nothing is serving the model, so this run cannot vet at all."""
+
+
+class Judge(Protocol):
+    """The one question vetting asks of whatever is doing the judging.
+
+    Written down so the parameter can say what it wants instead of naming
+    the class that happens to satisfy it today: a test double is a judge,
+    and so would a second model be.
+    """
+
+    def verdict(self, instructions: str, subject: str) -> Verdict: ...
 
 
 @dataclass(frozen=True)
@@ -218,7 +230,7 @@ class VettingOutcome:
 def vet(
     candidates: list[Candidate],
     rules: tuple[InterestRule, ...],
-    judge,
+    judge: Judge,
     *,
     workers: int = 4,
 ) -> VettingOutcome:
@@ -281,7 +293,7 @@ def _is_askable(candidate: Candidate, wants: dict[str, InterestRule]) -> bool:
 def _ask_about_all(
     askable: list[Candidate],
     wants: dict[str, InterestRule],
-    judge,
+    judge: Judge,
     workers: int,
 ) -> list[Verdict]:
     """Every verdict, asking each distinct question only once.

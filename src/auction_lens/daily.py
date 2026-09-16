@@ -22,7 +22,8 @@ from .history.logistics import LogisticsDecisionStore
 from .history.observations import ObservationStore
 from .listings.files import load_listings
 from .matching.analyze import analyze_listings
-from .matching.progress import plan_interests
+from .matching.judge import VettingOutcome
+from .matching.progress import InterestPlan, plan_interests
 from .pricing.value import ValuationEngine
 from .providers.registry import resolve_provider
 from .providers.search_terms import daily_search_terms
@@ -46,12 +47,7 @@ def daily(args: argparse.Namespace) -> int:
     watchlist = WatchlistStore(Path(args.watchlist))
     plan = plan_interests(config.interests, watchlist.items())
     terms = daily_search_terms(config, args.search, plan.active_rules)
-    if (
-        not terms
-        and not config.acquisition.categories
-        and config.interests
-        and not plan.active_rules
-    ):
+    if _nothing_left_to_ask_for(config, terms, plan):
         write_satisfied_discovery(args.output)
     else:
         run_discovery(args, config, terms, adapter=adapter)
@@ -116,6 +112,25 @@ def _score_and_report(
     return 0
 
 
+def _nothing_left_to_ask_for(
+    config: AppConfig, terms: list[str], plan: InterestPlan
+) -> bool:
+    """Whether a run has genuinely nothing to search for, rather than nothing yet.
+
+    There are two ways to end up with no search terms, and they deserve
+    opposite treatment. A profile that never asked for anything in particular
+    is browsing, and should still see the day's categories. A profile whose
+    every finite want has been bought is finished, and asking the provider
+    again would be a request made for no reason.
+
+    Both are "no terms", so the difference has to be read from what is
+    configured: wants exist, and none of them is still open.
+    """
+    if terms or config.acquisition.categories:
+        return False
+    return bool(config.interests) and not plan.active_rules
+
+
 def _with_todays_trips(config: AppConfig, visiting: list[str]) -> AppConfig:
     """Apply the errands already planned, which is a fact about today only.
 
@@ -159,7 +174,7 @@ def _report_capped(hidden: int, shown: int) -> None:
         )
 
 
-def _report_vetting(vetting) -> None:
+def _report_vetting(vetting: VettingOutcome) -> None:
     """Say what the judge did, because a reordered report is not a quiet day.
 
     Both facts are worth a line for the same reason the cap is. A reader who

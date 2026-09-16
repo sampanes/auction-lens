@@ -1362,6 +1362,39 @@ class DailyCommandTests(unittest.TestCase):
         _run.assert_called_once()
 
     @patch("auction_lens.daily.resolve_provider")
+    def test_a_profile_that_wants_nothing_in_particular_still_browses(self, provider):
+        """No terms because nothing was asked for is not the same as being done.
+
+        A profile with no interests at all is browsing, and must still see the
+        day's categories. Only a profile whose finite wants are all filled has
+        a reason to skip the request.
+        """
+        with temporary_directory() as directory:
+            config = self._daily_config(directory)
+            text = config.read_text(encoding="utf-8")
+            text = text[: text.index("[[interests]]")]
+            config.write_text(text, encoding="utf-8")
+            watchlist = directory / "watchlist.json"
+
+            run_cli(
+                [
+                    "daily",
+                    "--config",
+                    str(config),
+                    "--output",
+                    str(directory / "listings.json"),
+                    "--database",
+                    str(directory / "observations.sqlite3"),
+                    "--watchlist",
+                    str(watchlist),
+                    "--env-file",
+                    str(directory / "absent.env"),
+                ]
+            )
+
+        provider.return_value.discover_searches.assert_called_once()
+
+    @patch("auction_lens.daily.resolve_provider")
     def test_all_satisfied_interests_make_a_quiet_report_without_a_request(
         self, provider
     ):

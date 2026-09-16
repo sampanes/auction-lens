@@ -7,6 +7,7 @@ a plain-language preview, an exact zero-context diff, and explicit confirmation.
 
 from __future__ import annotations
 
+import argparse
 import sys
 from decimal import Decimal
 from difflib import unified_diff
@@ -34,7 +35,7 @@ NO_CHANGES = "No changes requested; no files changed."
 RECOVERED = "Recovered an interrupted profile restore before continuing."
 
 
-def profile(args) -> int:
+def profile(args: argparse.Namespace) -> int:
     """Read, edit, or restore the selected human-owned configuration profile."""
     if args.edit:
         edit_profile(args.config)
