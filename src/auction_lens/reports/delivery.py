@@ -243,12 +243,17 @@ def outcome_fingerprint(
         ),
         key=lambda item: (str(item["id"]).casefold(), str(item["id"])),
     )
+    summary: dict[str, object] = {
+        "finite": finite,
+        "unreviewed_wins": unreviewed_wins,
+    }
+    distinct_notices = sorted(set(notices))
+    if distinct_notices:
+        # Preserve pre-v0.8 fingerprints for healthy runs.  A warning should
+        # prompt a delivery; merely upgrading the program should not.
+        summary["notices"] = distinct_notices
     canonical = json.dumps(
-        {
-            "finite": finite,
-            "notices": sorted(set(notices)),
-            "unreviewed_wins": unreviewed_wins,
-        },
+        summary,
         ensure_ascii=False,
         separators=(",", ":"),
         sort_keys=True,

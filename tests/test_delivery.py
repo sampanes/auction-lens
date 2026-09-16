@@ -287,6 +287,7 @@ class OutcomeFingerprintTests(unittest.TestCase):
         clean = outcome_fingerprint((), 0)
         warned = outcome_fingerprint((), 0, notices=("second", "first"))
 
+        self.assertEqual(clean, outcome_fingerprint((), 0, notices=()))
         self.assertNotEqual(warned, clean)
         self.assertEqual(
             warned,

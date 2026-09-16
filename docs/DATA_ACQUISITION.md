@@ -289,6 +289,11 @@ because a run that is cut short partway -- by a 429, say -- has already written
 real pages to the cache, and losing them would mean asking the provider for
 them all over again.
 
+Discovery also isolates parser changes page by page. If one saved response can
+no longer be understood, the remaining pages still produce a report and a
+bounded warning appears in the terminal, email, and webhook. If every page is
+unreadable, the run refuses to pretend that an empty result is trustworthy.
+
 Whole pages of lots overlap: one lot answers two searches, or appears in a
 search and again in a category sweep. `unique_lots` keys it by provider and
 physical item where available. It keeps the first page's auction-state values,
