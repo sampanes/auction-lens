@@ -33,6 +33,7 @@ OUTCOME_HEADING = "INTEREST PROGRESS"
 def render_text(report: Report) -> str:
     """Render a built report as plain text, grouped and ordered as it says."""
     lines = [report.headline]
+    lines.extend(f"[!] {notice}" for notice in report.notices)
     lines.extend(report.delivery.lines)
     lines.extend(_outcome_lines(report.outcomes))
     for group in report.groups:

@@ -251,6 +251,7 @@ class Report:
     first_close: str = ""
     groups: tuple[Group, ...] = ()
     searches: tuple[SearchHint, ...] = ()
+    notices: tuple[str, ...] = ()
     outcomes: OutcomeSummary = OutcomeSummary()
     delivery: DeliverySummary = NO_DELIVERY_FILTER
 

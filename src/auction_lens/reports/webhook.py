@@ -106,7 +106,11 @@ def build_message(report: Report, config: WebhookConfig) -> dict[str, Any]:
     return {
         "username": config.username,
         "content": _content(
-            report.match_count, len(shown), report.outcomes, report.delivery
+            report.match_count,
+            len(shown),
+            report.notices,
+            report.outcomes,
+            report.delivery,
         ),
         "embeds": [_card(finding) for finding in shown],
     }
@@ -115,11 +119,13 @@ def build_message(report: Report, config: WebhookConfig) -> dict[str, Any]:
 def _content(
     found: int,
     shown: int,
+    notices: tuple[str, ...],
     outcomes: OutcomeSummary,
     delivery: DeliverySummary,
 ) -> str:
     """Add outcome context without letting Discord reject an oversized post."""
     lines = [_headline(found, shown, delivery)]
+    lines.extend(f"WARNING: {notice}" for notice in notices)
     lines.extend(delivery.lines)
     if outcomes.warning:
         lines.append(outcomes.warning)

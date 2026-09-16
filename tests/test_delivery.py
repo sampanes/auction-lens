@@ -283,6 +283,16 @@ class OutcomeFingerprintTests(unittest.TestCase):
                 )
         self.assertNotEqual(outcome_fingerprint((original,), 1), fingerprint)
 
+    def test_collection_notices_are_summary_facts_but_order_is_not(self):
+        clean = outcome_fingerprint((), 0)
+        warned = outcome_fingerprint((), 0, notices=("second", "first"))
+
+        self.assertNotEqual(warned, clean)
+        self.assertEqual(
+            warned,
+            outcome_fingerprint((), 0, notices=("first", "second", "first")),
+        )
+
     def test_an_invalid_unreviewed_count_is_refused(self):
         with self.assertRaisesRegex(ValueError, "non-negative integer"):
             outcome_fingerprint((), -1)

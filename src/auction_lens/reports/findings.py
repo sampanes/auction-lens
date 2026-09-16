@@ -66,6 +66,7 @@ def build_report(
     unreviewed_wins: int = 0,
     delivery: DeliverySummary = NO_DELIVERY_FILTER,
     harvest: tuple[InterestHarvest, ...] = (),
+    notices: tuple[str, ...] = (),
 ) -> Report:
     """Turn scored candidates into everything a report has to say about them.
 
@@ -84,7 +85,12 @@ def build_report(
             if delivery.active and not delivery.repeated
             else EMPTY_REPORT
         )
-        return Report(headline=headline, outcomes=outcomes, delivery=delivery)
+        return Report(
+            headline=headline,
+            notices=notices,
+            outcomes=outcomes,
+            delivery=delivery,
+        )
 
     ordered = ranked(candidates, order=order)
     priority_ranks: dict[int, deque[int]] = defaultdict(deque)
@@ -101,6 +107,7 @@ def build_report(
         findings=findings,
         first_close=first_close,
         searches=_hints_without_a_section(searches, set(sections)),
+        notices=notices,
         outcomes=outcomes,
         delivery=delivery,
         groups=tuple(

@@ -89,6 +89,8 @@ def deliver_findings(
     result: AnalysisResult,
     watchlist: WatchlistStore,
     destinations: dict[DeliveryChannel, str],
+    *,
+    notices: tuple[str, ...] = (),
 ) -> tuple[int, list[str]]:
     """Send each route independently and remember only accepted reports.
 
@@ -102,7 +104,11 @@ def deliver_findings(
         return 0, []
 
     ledger = DeliveryLedger(Path(args.delivery_ledger))
-    summary = outcome_fingerprint(result.interest_progress, result.unreviewed_wins)
+    summary = outcome_fingerprint(
+        result.interest_progress,
+        result.unreviewed_wins,
+        notices=notices,
+    )
     additionally_followed = 0
     failures = []
     for channel, fingerprint in destinations.items():
@@ -139,6 +145,7 @@ def deliver_findings(
                         config,
                         result,
                         note,
+                        notices,
                     )
                 additionally_followed += follow_candidates(
                     plan.candidates,
@@ -216,6 +223,7 @@ def _send_findings(
     config: AppConfig,
     result: AnalysisResult,
     delivery: DeliverySummary,
+    notices: tuple[str, ...],
 ) -> None:
     """Cross one transport boundary; its caller owns receipt persistence."""
     selected = list(candidates)
@@ -227,6 +235,7 @@ def _send_findings(
         interest_progress=result.interest_progress,
         unreviewed_wins=result.unreviewed_wins,
         delivery=delivery,
+        notices=notices,
         # Counted against what this destination is actually being sent, so a
         # suppressed lot is not described as one still on the page.
         harvest=harvest_of(list(result.all_candidates), selected),

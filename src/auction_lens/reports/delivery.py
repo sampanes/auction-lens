@@ -218,9 +218,12 @@ def plan_watchlist(
 
 
 def outcome_fingerprint(
-    progress: Iterable[InterestProgress], unreviewed_wins: int
+    progress: Iterable[InterestProgress],
+    unreviewed_wins: int,
+    *,
+    notices: Iterable[str] = (),
 ) -> str:
-    """Hash finite outcome facts, independent of report wording and order."""
+    """Hash summary facts that can require a delivery without a changed lot."""
     if (
         isinstance(unreviewed_wins, bool)
         or not isinstance(unreviewed_wins, int)
@@ -241,7 +244,11 @@ def outcome_fingerprint(
         key=lambda item: (str(item["id"]).casefold(), str(item["id"])),
     )
     canonical = json.dumps(
-        {"finite": finite, "unreviewed_wins": unreviewed_wins},
+        {
+            "finite": finite,
+            "notices": sorted(set(notices)),
+            "unreviewed_wins": unreviewed_wins,
+        },
         ensure_ascii=False,
         separators=(",", ":"),
         sort_keys=True,

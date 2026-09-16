@@ -53,6 +53,7 @@ SHARED_REPORT_FACTS = (
     "Example Warehouse",
     "nellis/synthetic-001",
     "matches use interest 'soundbar'",
+    "Collection incomplete: 1 provider page could not be read; this report may omit listings.",
     "Only new or price-changed matches are included in this delivery.",
     "2 unchanged matches were already delivered here.",
     "1 more new or changed match was held back by this report's limit.",
@@ -163,6 +164,10 @@ class DailyReportDeliveryContract(unittest.TestCase):
                 ),
             ),
             unreviewed_wins=1,
+            notices=(
+                "Collection incomplete: 1 provider page could not be read; "
+                "this report may omit listings.",
+            ),
             delivery=DeliverySummary(
                 active=True,
                 unchanged_matches=2,

@@ -47,12 +47,15 @@ def daily(args: argparse.Namespace) -> int:
     watchlist = WatchlistStore(Path(args.watchlist))
     plan = plan_interests(config.interests, watchlist.items())
     terms = daily_search_terms(config, args.search, plan.active_rules)
+    notices: tuple[str, ...] = ()
     if _nothing_left_to_ask_for(config, terms, plan):
         write_satisfied_discovery(args.output)
     else:
-        run_discovery(args, config, terms, adapter=adapter)
+        notices = run_discovery(args, config, terms, adapter=adapter).notices
     run_args = argparse.Namespace(**{**vars(args), "input": args.output})
-    return _score_and_report(run_args, config, watchlist, destinations)
+    return _score_and_report(
+        run_args, config, watchlist, destinations, collection_notices=notices
+    )
 
 
 def run(args: argparse.Namespace) -> int:
@@ -67,6 +70,8 @@ def _score_and_report(
     config: AppConfig,
     watchlist: WatchlistStore,
     destinations: dict[DeliveryChannel, str],
+    *,
+    collection_notices: tuple[str, ...] = (),
 ) -> int:
     """Execute an already-loaded run, so ``daily`` need not load its inputs twice."""
     listings = load_listings(args.input)
@@ -91,6 +96,7 @@ def _score_and_report(
                 interest_progress=result.interest_progress,
                 unreviewed_wins=result.unreviewed_wins,
                 harvest=result.harvest,
+                notices=collection_notices,
             )
         ),
         end="",
@@ -105,6 +111,7 @@ def _score_and_report(
         result,
         watchlist,
         destinations,
+        notices=collection_notices,
     )
     _report_followed(result.lots_followed + additionally_followed, args.watchlist)
     if delivery_failures:

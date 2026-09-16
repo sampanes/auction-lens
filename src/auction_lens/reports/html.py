@@ -43,6 +43,9 @@ WITHHELD_STYLE = "color:#666;font-size:13px;margin:4px 0 18px 0"
 OUTCOME_WARNING_STYLE = (
     "border-left:4px solid #c62828;background:#fff4f4;padding:10px;margin:12px 0"
 )
+COLLECTION_WARNING_STYLE = (
+    "border-left:4px solid #f9a825;background:#fffbea;padding:10px;margin:12px 0"
+)
 
 
 def render_html(report: Report) -> str:
@@ -51,6 +54,10 @@ def render_html(report: Report) -> str:
         sections = [f"<p>{escape(report.headline)}</p>"]
     else:
         sections = [f"<h2>{escape(report.headline)}</h2>"]
+    sections.extend(
+        f"<p style='{COLLECTION_WARNING_STYLE}'><strong>{escape(notice)}</strong></p>"
+        for notice in report.notices
+    )
     sections.extend(f"<p>{escape(line)}</p>" for line in report.delivery.lines)
     sections.append(_outcomes(report.outcomes))
     for group in report.groups:

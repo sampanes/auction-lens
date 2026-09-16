@@ -17,6 +17,7 @@ from unittest.mock import patch
 
 from auction_lens import __version__
 from auction_lens.cli import build_parser, console, main
+from auction_lens.collect import DiscoveryStatus
 from auction_lens.config.environment import load_env_file
 from auction_lens.config.load import load_config
 from auction_lens.history.database import Database
@@ -1360,6 +1361,35 @@ class DailyCommandTests(unittest.TestCase):
 
         self.assertEqual(asked, ["one-off phrase"])
         _run.assert_called_once()
+
+    @patch("auction_lens.daily._score_and_report", return_value=0)
+    @patch(
+        "auction_lens.daily.run_discovery",
+        return_value=DiscoveryStatus(("synthetic search",)),
+    )
+    def test_a_partial_discovery_warning_reaches_the_report(self, _discover, _run):
+        with temporary_directory() as directory:
+            config = self._daily_config(directory)
+            run_cli(
+                [
+                    "daily",
+                    "--config",
+                    str(config),
+                    "--output",
+                    str(directory / "listings.json"),
+                    "--database",
+                    str(directory / "observations.sqlite3"),
+                    "--watchlist",
+                    str(directory / "watchlist.json"),
+                    "--env-file",
+                    str(directory / "absent.env"),
+                ]
+            )
+
+        notices = _run.call_args.kwargs["collection_notices"]
+        self.assertEqual(len(notices), 1)
+        self.assertIn("synthetic search", notices[0])
+        self.assertIn("report may omit listings", notices[0])
 
     @patch("auction_lens.daily.resolve_provider")
     def test_a_profile_that_wants_nothing_in_particular_still_browses(self, provider):

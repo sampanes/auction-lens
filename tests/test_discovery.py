@@ -2,13 +2,20 @@
 
 from __future__ import annotations
 
+import argparse
+import io
+import json
 import unittest
-from dataclasses import replace
+from contextlib import redirect_stdout
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
+from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 from urllib.error import HTTPError
 
+from auction_lens.collect import DiscoveryStatus, run_discovery
 from auction_lens.config.provider import AcquisitionConfig, AcquisitionMode, ProviderConfig
 from auction_lens.http_safety import PublicHttpsRedirectHandler
 from auction_lens.listings.model import Listing
@@ -19,12 +26,30 @@ from auction_lens.providers.nellis.discover import (
     session_opener,
 )
 from auction_lens.providers.nellis.parse import read_search_page
-from support import ROOT, FakeResponse, temporary_directory
+from support import ROOT, FakeResponse, example_config, temporary_directory
 
 SEARCH_PAGE = ROOT / "fixtures" / "nellis" / "search-page.html"
 PAGE_URL = "https://example.invalid/search?query=soundbar"
 NOW = datetime(2026, 9, 6, 12, 0, tzinfo=UTC)
 CONTACT_USER_AGENT = "AuctionLens test contact=operator@auction-lens.dev"
+
+
+@dataclass
+class _Capture:
+    """One saved search page, as discovery hands it to the reader."""
+
+    term: str
+    readable: bool = True
+    reused_cache: bool = False
+    url: str = "https://example.invalid/search"
+    fetched_at: datetime = NOW
+
+    @property
+    def path(self):
+        """The page's text, standing in for the file it would be read from."""
+        return SimpleNamespace(
+            read_text=lambda **_: self.term if self.readable else "unreadable"
+        )
 
 
 def _page() -> str:
@@ -170,6 +195,83 @@ class RecordingOpener:
         if self.raise_not_modified:
             raise HTTPError(request.full_url, 304, "Not Modified", {}, None)
         return FakeResponse(self.body, headers=self.response_headers)
+
+
+class UnreadablePageTests(unittest.TestCase):
+    """What a run does when the provider changes one page out of many.
+
+    This is the path that lost a scheduled evening: the requests are already
+    spent by the time a page fails to parse, so discarding the rest converts
+    one changed page into no email at all.
+    """
+
+    def setUp(self):
+        self.args = argparse.Namespace(output="")
+        self.config = example_config()
+
+    def _run(
+        self, readable: int, unreadable: int
+    ) -> tuple[int, str, list, DiscoveryStatus]:
+        """Discover a mixture of pages, returning rows, output, and status."""
+        captures = [
+            _Capture(f"good-{index}") for index in range(readable)
+        ] + [_Capture(f"bad-{index}", readable=False) for index in range(unreadable)]
+        rows: list = []
+
+        def read(html, *, source, page_url):
+            if html == "unreadable":
+                raise ValueError("streamed payload used unknown marker -9")
+            return [{"listing_id": html, "source": source, "title": html}]
+
+        adapter = SimpleNamespace(
+            discover_searches=lambda *_args: captures,
+            read_search_page=read,
+        )
+        with temporary_directory() as directory:
+            self.args.output = str(directory / "listings.json")
+            with redirect_stdout(io.StringIO()) as said:
+                status = run_discovery(self.args, self.config, [], adapter=adapter)
+            rows = json.loads(
+                Path(self.args.output).read_text(encoding="utf-8")
+            )["listings"]
+        return len(rows), said.getvalue(), captures, status
+
+    def test_one_unreadable_page_does_not_lose_the_others(self):
+        kept, said, _, status = self._run(readable=5, unreadable=1)
+
+        self.assertEqual(kept, 5)
+        self.assertIn("could not read bad-0", said)
+        self.assertIn("bad-0", status.notices[0])
+        self.assertIn("report may omit listings", status.notices[0])
+
+    def test_the_pages_that_failed_are_named_rather_than_counted(self):
+        """A run that quietly drops a page looks exactly like a quiet day."""
+        _, said, _, _ = self._run(readable=2, unreadable=2)
+
+        self.assertIn("bad-0", said)
+        self.assertIn("bad-1", said)
+        self.assertIn("unknown marker -9", said)
+
+    def test_every_page_failing_is_refused_rather_than_reported_as_empty(self):
+        with self.assertRaisesRegex(ValueError, "no page could be read"):
+            self._run(readable=0, unreadable=3)
+
+    def test_a_run_with_no_pages_at_all_is_not_a_provider_change(self):
+        """None of none failing is not everything failing."""
+        kept, _, _, status = self._run(readable=0, unreadable=0)
+
+        self.assertEqual(kept, 0)
+        self.assertEqual(status.notices, ())
+
+    def test_an_unattended_warning_names_a_few_pages_and_counts_the_rest(self):
+        _, _, _, status = self._run(readable=1, unreadable=7)
+
+        warning = status.notices[0]
+        self.assertIn("7 provider page(s)", warning)
+        self.assertIn("bad-0", warning)
+        self.assertIn("bad-4", warning)
+        self.assertNotIn("bad-5", warning)
+        self.assertIn("and 2 more", warning)
 
 
 class DiscoveryTests(unittest.TestCase):
