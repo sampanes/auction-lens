@@ -43,6 +43,38 @@ class TurboStreamTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "unknown marker -2"):
             decode(_payload([{"_1": -2}, "notes"]))
 
+    def test_the_undefined_marker_also_reads_as_nothing(self):
+        """A null and an undefined are both an absence, and neither is a lot."""
+        self.assertEqual(decode(_payload([{"_1": -7}, "token"])), {"token": None})
+
+    def test_a_tagged_date_reads_as_the_timestamp_it_stands_for(self):
+        """The provider sends some dates tagged and some spelled out.
+
+        Both have to arrive downstream as the same string, or a lot's closing
+        time would depend on which encoder served the page.
+        """
+        # 1789523580000 ms is 01:53 UTC, which is an 18:53 close in Phoenix --
+        # the hour Nellis lots actually start going.
+        payload = _payload([{"_1": 2}, "closeTime", ["D", 1789523580000]])
+
+        self.assertEqual(decode(payload), {"closeTime": "2026-09-16T01:53:00.000Z"})
+
+    def test_a_tagged_date_and_a_written_one_agree(self):
+        tagged = _payload([{"_1": 2}, "closeTime", ["D", 1789523580000]])
+        written = _payload([{"_1": 2}, "closeTime", "2026-09-16T01:53:00.000Z"])
+
+        self.assertEqual(decode(tagged), decode(written))
+
+    def test_a_reference_that_is_not_an_index_is_refused_by_name(self):
+        """A crash and a refusal must not look the same to a scheduler.
+
+        An unreadable reference used to reach the index comparison as a string
+        and raise TypeError, which left Task Scheduler reporting the whole run
+        as a crash rather than as something the operator could read.
+        """
+        with self.assertRaisesRegex(ValueError, "where an index was expected"):
+            decode(_payload([{"_1": "nonsense"}, "notes"]))
+
     def test_a_payload_that_points_at_itself_is_refused(self):
         with self.assertRaisesRegex(ValueError, "refers to itself"):
             decode(_payload([{"_1": 0}, "self"]))

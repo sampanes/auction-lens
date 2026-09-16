@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import json
 import re
+from datetime import UTC, datetime
 from typing import Any
 from urllib.parse import unquote_plus, urljoin
 
@@ -325,9 +326,28 @@ def _amount(value: Any) -> str:
 
 
 # The provider streams a flat graph of interned values rather than ordinary
-# JSON. The only negative marker observed in that envelope stands for null;
-# unfamiliar markers are refused because guessing could silently change money.
-NULL_MARKER = -5
+# JSON. Negative references are markers rather than positions.
+#
+# Two of them mean "there is no value here", and both become None because the
+# difference between a null and an undefined is a fact about JavaScript rather
+# than about a lot. The undefined one appeared on 2026-09-15, on exactly the
+# four fields an anonymous visitor has none of -- userId, token, locale and
+# adultContent -- which is what identifies it as an absence rather than a
+# value.
+#
+# Every other marker is still refused. The ones that could appear next stand
+# for NaN and the infinities, and a number that is not a number must never be
+# quietly accepted into a bid, a retail price or a closing time. An unreadable
+# page costs one page; a silently wrong price costs money.
+ABSENT_MARKERS = frozenset({-5, -7})
+
+# A date arrives tagged rather than spelled out: ["D", milliseconds]. Seen
+# first on 2026-09-15, on the same capture as pages still sending the ISO
+# string, so the provider is part way through changing it and both have to be
+# read. It is decoded back to that same string so nothing downstream learns
+# that the provider has two spellings for one fact.
+DATE_TAG = "D"
+ISO_MILLISECONDS = "%Y-%m-%dT%H:%M:%S.%f"
 
 
 def decode(payload: str) -> Any:
@@ -338,8 +358,15 @@ def decode(payload: str) -> Any:
     return _resolve(0, values, seen=frozenset())
 
 
-def _resolve(index: int, values: list[Any], *, seen: frozenset[int]) -> Any:
+def _resolve(index: Any, values: list[Any], *, seen: frozenset[int]) -> Any:
     """Follow one index, refusing a graph that points back at itself."""
+    if not isinstance(index, int) or isinstance(index, bool):
+        # Not an index at all. Refusing by name rather than letting the
+        # comparison below fail keeps a provider change an error the operator
+        # can read, instead of a TypeError that a scheduler reports as a crash.
+        raise ValueError(
+            f"streamed payload used {index!r} where an index was expected"
+        )
     if index < 0:
         return _marker(index)
     if index in seen:
@@ -357,8 +384,25 @@ def _resolve(index: int, values: list[Any], *, seen: frozenset[int]) -> Any:
             for key, value in node.items()
         }
     if isinstance(node, list):
-        return [_resolve(item, values, seen=deeper) for item in node]
+        tagged = _tagged_date(node)
+        return tagged if tagged is not None else [
+            _resolve(item, values, seen=deeper) for item in node
+        ]
     return node
+
+
+def _tagged_date(node: list[Any]) -> str | None:
+    """The timestamp this node holds, if it is the provider's tagged date form.
+
+    Checked before the node is walked as a list of indexes, because its first
+    element is the tag "D" rather than a reference to anything.
+    """
+    if len(node) != 2 or node[0] != DATE_TAG or not isinstance(node[1], int):
+        return None
+    moment = datetime.fromtimestamp(node[1] / 1000, tz=UTC)
+    # Trimmed to milliseconds and given the provider's own Z, so a tagged date
+    # and a spelled-out one are the same string by the time anything reads it.
+    return f"{moment.strftime(ISO_MILLISECONDS)[:-3]}Z"
 
 
 def _key_index(key: str) -> int:
@@ -369,7 +413,7 @@ def _key_index(key: str) -> int:
 
 
 def _marker(index: int) -> None:
-    if index == NULL_MARKER:
+    if index in ABSENT_MARKERS:
         return None
     raise ValueError(
         f"streamed payload used unknown marker {index}; "
