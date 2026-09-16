@@ -73,6 +73,35 @@ class TextReportTests(unittest.TestCase):
     def test_empty_report_says_so_plainly(self):
         self.assertIn("no listings", render_text(build_report([], REPORT_ZONE)))
 
+    def test_feedback_is_one_shared_footer_not_per_listing(self):
+        candidates = evaluate(self.listings[SOUNDBAR], self.config)
+        report = build_report(candidates, REPORT_ZONE)
+        hint = (
+            "Optional feedback: copy a Watch key into "
+            "`auction-lens feedback yes --key WATCH-KEY`; run "
+            "`auction-lens feedback --help` for specific reasons."
+        )
+
+        plain = render_text(report)
+        markup = render_html(report)
+
+        self.assertEqual(plain.count(hint), 1)
+        self.assertEqual(markup.count(hint), 1)
+        self.assertEqual(markup.count("Optional feedback:"), 1)
+        self.assertNotIn("Optional feedback:", render_text(build_report([], REPORT_ZONE)))
+
+    def test_feedback_footer_is_escaped_as_shared_report_data(self):
+        candidate = evaluate(self.listings[SOUNDBAR], self.config)[0]
+        report = replace(
+            build_report([candidate], REPORT_ZONE),
+            feedback_hint="Optional <feedback> & advice",
+        )
+
+        self.assertIn("Optional <feedback> & advice", render_text(report))
+        markup = render_html(report)
+        self.assertIn("Optional &lt;feedback&gt; &amp; advice", markup)
+        self.assertNotIn("Optional <feedback>", markup)
+
     def test_a_changed_price_names_what_the_destination_last_received(self):
         candidate = evaluate(self.listings[LASER_LEVEL], self.config)[0]
         candidate = replace(

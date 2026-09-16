@@ -3,6 +3,17 @@
 Auction Lens uses semantic versions for operator-visible releases. Git tags are
 the exact source snapshots; this file explains what changed in human terms.
 
+## 0.9.0 - 2026-09-16
+
+- Added private, append-only recommendation feedback with explicit corrections
+  and stable identity across relisted auctions.
+- Added review of repeated evidence from distinct items and conservative price
+  proposals that never edit configuration automatically.
+- Added immutable, sanitized private proposal artifacts and one shared feedback
+  invitation across text, email, and webhook reports.
+- Documented the boundary between recommendation feedback, watch verdicts,
+  logistics decisions, and the configuration that remains human-controlled.
+
 ## 0.8.0 - 2026-09-16
 
 - Added optional people and garment-fit rules with validated, human-readable

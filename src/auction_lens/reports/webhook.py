@@ -111,6 +111,7 @@ def build_message(report: Report, config: WebhookConfig) -> dict[str, Any]:
             report.notices,
             report.outcomes,
             report.delivery,
+            report.feedback_hint,
         ),
         "embeds": [_card(finding) for finding in shown],
     }
@@ -122,6 +123,7 @@ def _content(
     notices: tuple[str, ...],
     outcomes: OutcomeSummary,
     delivery: DeliverySummary,
+    feedback_hint: str,
 ) -> str:
     """Add outcome context without letting Discord reject an oversized post."""
     lines = [_headline(found, shown, delivery)]
@@ -131,10 +133,34 @@ def _content(
         lines.append(outcomes.warning)
     if outcomes.progress:
         lines.append("Interests: " + " | ".join(outcomes.progress))
-    content = "\n".join(lines)
+    return _bounded_content(lines, feedback_hint)
+
+
+def _bounded_content(lines: list[str], footer: str) -> str:
+    """Keep the shared footer while respecting the chat service's hard cap."""
+    body = "\n".join(lines)
+    separator = "\n" if footer else ""
+    content = body + separator + footer
     if len(content) <= HIGHEST_CONTENT_LENGTH:
         return content
-    return content[: HIGHEST_CONTENT_LENGTH - 3].rstrip() + "..."
+
+    # A report-level action is more useful than the tail of a long status
+    # summary. Reserve its complete wording, then shorten only the body.
+    if footer:
+        if len(footer) >= HIGHEST_CONTENT_LENGTH:
+            return _truncate(footer, HIGHEST_CONTENT_LENGTH)
+        body_limit = HIGHEST_CONTENT_LENGTH - len(separator) - len(footer)
+        body = _truncate(body, body_limit)
+        return body + separator + footer
+    return _truncate(body, HIGHEST_CONTENT_LENGTH)
+
+
+def _truncate(text: str, limit: int) -> str:
+    if len(text) <= limit:
+        return text
+    if limit <= 3:
+        return "." * max(limit, 0)
+    return text[: limit - 3].rstrip() + "..."
 
 
 def _headline(found: int, shown: int, delivery: DeliverySummary) -> str:

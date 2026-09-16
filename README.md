@@ -16,6 +16,8 @@ retail value as verified market value.
 - Counts capped and unchanged matches instead of making a short report look quiet.
 - Fans price research out to any number of TOML-configured sources.
 - Remembers observations, price changes, handling decisions, and followed lots.
+- Records private yes/maybe/no feedback and proposes reviewable tuning only
+  after repeated evidence from distinct items.
 - Retires finite interests only after an explicit human-confirmed purchase.
 - Renders matching text and HTML reports, with optional email and webhook delivery.
 - Caches and paces authorized requests and identifies them with a contact address.
@@ -120,6 +122,7 @@ provider, SMTP server, or webhook:
 | `logistics` | You want to save or clear one handling decision |
 | `watch` | You want to record an opinion, estimate, or fulfillment |
 | `watchlist` | You want to read or email followed lots |
+| `feedback` | You want to record a reaction or review repeated evidence |
 | `sold` | You want closing-price floors from observation history |
 
 Run `auction-lens COMMAND --help` for flags and defaults. The command parser is
@@ -188,6 +191,8 @@ Local runtime state is ignored by Git:
 - SQLite history records observations, price movements, and handling decisions.
 - The JSON watchlist keeps followed lots, price trails, verdicts, and explicit
   fulfillment decisions in a hand-readable format.
+- A separate append-only JSON log keeps recommendation feedback and corrections;
+  it never edits configuration automatically.
 - A separate SQLite delivery ledger remembers which revision each opaque
   destination fingerprint accepted.
 
@@ -264,6 +269,7 @@ Operator guides:
 | How may listing pages be acquired? | [Data acquisition](docs/DATA_ACQUISITION.md) |
 | How do I add price evidence? | [Valuation](docs/VALUATION.md) |
 | What is stored about followed lots? | [Watchlist](docs/WATCHLIST.md) |
+| How do I teach it from recommendations? | [Feedback](docs/FEEDBACK.md) |
 | Why was a delivery omitted or repeated? | [Delivery](docs/DELIVERY.md) |
 | How do I configure Gmail? | [Gmail](docs/GMAIL.md) |
 | What is implemented or still open? | [Roadmap](docs/ROADMAP.md) |

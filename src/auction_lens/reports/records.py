@@ -254,6 +254,10 @@ class Report:
     notices: tuple[str, ...] = ()
     outcomes: OutcomeSummary = OutcomeSummary()
     delivery: DeliverySummary = NO_DELIVERY_FILTER
+    # One report-level invitation, not another instruction repeated on every
+    # listing card.  The builder owns the wording so every renderer receives
+    # exactly the same operator action.
+    feedback_hint: str = ""
 
     @property
     def match_count(self) -> int:

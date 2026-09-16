@@ -9,6 +9,8 @@ daily
   -> matching -> pricing
   -> history + watchlist
   -> reports -> email or webhook
+
+report Watch key -> optional feedback -> private event log -> review-only proposal
 ```
 
 Configuration supplies policy to every stage. Providers own the authorized
@@ -44,6 +46,7 @@ optional delivery.
 | `pricing/` | Configurable value sources, evidence provenance, and aggregation |
 | `history/` | SQLite observations, closing-price evidence, and saved handling decisions |
 | `watchlist/` | Human verdicts, price trails, fulfillment decisions, storage, and rendering |
+| `feedback/` | Append-only recommendation reactions, pattern review, and immutable proposal artifacts |
 | `reports/` | Shared report facts, rendering, destination filtering, transports, and receipts |
 | `cli/` | The public parser, command dispatch, exit codes, and small interactive adapters |
 
@@ -56,6 +59,11 @@ revisions, and `send.py` keeps those operations in the safe order.
 The `cli/` package is deliberately thin. `parser.py` is the only authority for
 commands, flags, help, and defaults. Its dispatch map points each command at a
 feature or top-level workflow; domain decisions do not live in argument parsing.
+
+Feedback deliberately stops before configuration. Its store retains correction
+events, review counts evidence from distinct items, and proposal rendering
+produces a private artifact a person may accept or reject. The configuration
+loader remains the authority for the rules that actually run.
 
 ## Shared mechanisms
 
@@ -93,6 +101,8 @@ layers or forcing one feature to scatter itself across unrelated folders.
 - For the network boundary, start at `collect.py`, then `providers/http.py` and
   the selected provider directory.
 - For what a person reads, start at `reports/findings.py`.
+- For what recommendations taught you, start at `feedback/model.py`, then read
+  `record.py`, `store.py`, and `review.py` in that directory.
 - For the public command surface, start at `cli/parser.py`, then its one dispatch
   map in `cli/__init__.py`.
 

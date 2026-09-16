@@ -135,6 +135,24 @@ Old local formats are protected by
 [`tests/test_persisted_compatibility.py`](../tests/test_persisted_compatibility.py)
 and [`fixtures/compatibility`](../fixtures/compatibility/).
 
+## How does feedback become a proposal?
+
+- [`feedback/model.py`](../src/auction_lens/feedback/model.py) defines the small
+  reaction vocabulary, immutable evidence, patterns, and proposal records.
+- [`feedback/record.py`](../src/auction_lens/feedback/record.py) turns a known
+  watched item into one feedback or correction event.
+- [`feedback/store.py`](../src/auction_lens/feedback/store.py) keeps the ignored
+  append-only JSON history and derives each current effective reaction.
+- [`feedback/review.py`](../src/auction_lens/feedback/review.py) counts distinct
+  items and permits only a clean, evidence-backed narrowing of price limits.
+- [`feedback/artifacts.py`](../src/auction_lens/feedback/artifacts.py) saves an
+  immutable private proposal; it never edits TOML.
+- [`cli/feedback.py`](../src/auction_lens/cli/feedback.py) resolves Watch keys
+  against the watchlist and presents the workflow at the command line.
+
+[Feedback-assisted tuning](FEEDBACK.md) explains the labels, corrections, and
+the boundary between evidence and configuration.
+
 ## Where do I change my preferences?
 
 - `config/local.toml` is the ignored source of truth on an operator's machine.
@@ -171,6 +189,7 @@ The exact public surface is frozen by
 | A new matching rule | The matching file that already owns that kind of decision |
 | A new report fact | `reports/records.py`, then `findings.py` and every renderer |
 | A new persisted field | Its subject model/store plus a compatibility fixture |
+| A new feedback label or proposal kind | `feedback/`, with its operator meaning documented first |
 | A new command | `cli/parser.py`, its feature workflow, then the one dispatch map |
 
 [Conventions](CONVENTIONS.md) contains the complete change checklist.

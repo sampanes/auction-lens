@@ -66,6 +66,12 @@ class MessageShapeTests(unittest.TestCase):
 
         self.assertEqual(fields["Watch key"], "nellis/synthetic-001")
 
+    def test_feedback_is_one_message_footer_not_per_card(self):
+        message = build_message(build_report(_candidates(2), REPORT_ZONE), self.config)
+
+        self.assertEqual(message["content"].count("Optional feedback:"), 1)
+        self.assertNotIn("Optional feedback:", json.dumps(message["embeds"]))
+
     def test_a_card_says_when_bidding_ends_in_the_providers_own_time(self):
         message = build_message(build_report(_candidates(), REPORT_ZONE), self.config)
         fields = {field["name"]: field["value"] for field in message["embeds"][0]["fields"]}
@@ -231,6 +237,25 @@ class MessageShapeTests(unittest.TestCase):
 
         self.assertLessEqual(len(message["content"]), HIGHEST_CONTENT_LENGTH)
         self.assertTrue(message["content"].endswith("..."))
+
+    def test_content_limit_keeps_the_single_feedback_footer(self):
+        progress = tuple(
+            _progress(f"interest {number} " + "x" * 200, 10, number)
+            for number in range(20)
+        )
+
+        message = build_message(
+            build_report(_candidates(), REPORT_ZONE, interest_progress=progress),
+            self.config,
+        )
+
+        self.assertLessEqual(len(message["content"]), HIGHEST_CONTENT_LENGTH)
+        self.assertEqual(message["content"].count("Optional feedback:"), 1)
+        self.assertTrue(
+            message["content"].endswith(
+                "`auction-lens feedback --help` for specific reasons."
+            )
+        )
 
     def test_a_concerning_tag_colours_the_card_differently(self):
         clear, worrying = _candidates(), _candidates()

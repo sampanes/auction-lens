@@ -7,12 +7,13 @@ import sys
 from .. import collect, daily, doctor, setup
 from ..config.environment import load_env_file
 from ..config.profile_wizard import profile
-from . import logistics, sold, watchlist
+from . import feedback, logistics, sold, watchlist
 from .exit_codes import OPERATOR_ERROR
 from .parser import (
     DAILY,
     DISCOVER,
     DOCTOR,
+    FEEDBACK,
     FETCH,
     LOGISTICS,
     PROFILE,
@@ -40,6 +41,7 @@ COMMANDS = {
     LOGISTICS: logistics.logistics,
     WATCH: watchlist.watch,
     WATCHLIST: watchlist.watchlist,
+    FEEDBACK: feedback.feedback,
     SOLD: sold.sold,
 }
 

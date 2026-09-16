@@ -55,6 +55,12 @@ UNREVIEWED_WIN = (
     "--fulfills or watch --clear-fulfillments."
 )
 
+FEEDBACK_HINT = (
+    "Optional feedback: copy a Watch key into "
+    "`auction-lens feedback yes --key WATCH-KEY`; run "
+    "`auction-lens feedback --help` for specific reasons."
+)
+
 
 def build_report(
     candidates: list[Candidate],
@@ -110,6 +116,7 @@ def build_report(
         notices=notices,
         outcomes=outcomes,
         delivery=delivery,
+        feedback_hint=FEEDBACK_HINT,
         groups=tuple(
             _group(name, items, harvest, searches)
             for name, items in sections.items()

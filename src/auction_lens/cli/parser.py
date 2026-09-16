@@ -5,12 +5,16 @@ from __future__ import annotations
 import argparse
 
 from .. import __version__
+from ..feedback.model import FeedbackLabel
+from ..feedback.review import DEFAULT_MINIMUM_DISTINCT_ITEMS
 from ..history.closing_prices import DEFAULT_WITHIN_MINUTES
 from ..local_files import (
     DEFAULT_CONFIG,
     DEFAULT_DATABASE,
     DEFAULT_ENV_FILE,
+    DEFAULT_FEEDBACK_FILE,
     DEFAULT_INBOX,
+    DEFAULT_PROPOSAL_DIR,
     PROGRAM,
 )
 from ..matching.logistics import OPERATOR_DECIDABLE
@@ -29,7 +33,9 @@ DISCOVER = "discover"
 LOGISTICS = "logistics"
 WATCH = "watch"
 WATCHLIST = "watchlist"
+FEEDBACK = "feedback"
 SOLD = "sold"
+REVIEW = "review"
 
 # Everything an operator may record, plus the word that removes a past answer.
 CLEAR = "clear"
@@ -41,6 +47,25 @@ LOGISTICS_STATUSES = (*(status.value for status in OPERATOR_DECIDABLE), CLEAR)
 DROP = "drop"
 VERDICTS = tuple(verdict.value for verdict in Verdict)
 WATCH_ACTIONS = (*VERDICTS, DROP)
+
+# Feedback records a small human judgement without changing the watchlist or
+# configuration. Review is deliberately in the same command: one obvious door
+# records evidence and shows any proposal that evidence supports.
+FEEDBACK_ACTIONS = (
+    *(label.value for label in FeedbackLabel),
+    CLEAR,
+    REVIEW,
+)
+
+
+class _RememberedOption(argparse.Action):
+    """Store a value and remember that the operator, rather than a default, set it."""
+
+    def __call__(self, _parser, namespace, values, option_string=None) -> None:
+        setattr(namespace, self.dest, values)
+        stated = set(getattr(namespace, "_stated_options", ()))
+        stated.add(option_string)
+        namespace._stated_options = frozenset(stated)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -66,6 +91,7 @@ def build_parser() -> argparse.ArgumentParser:
     _add_logistics(subparsers)
     _add_watch(subparsers)
     _add_watchlist(subparsers)
+    _add_feedback(subparsers)
     _add_sold(subparsers)
     return parser
 
@@ -268,6 +294,51 @@ def _add_watchlist(subparsers) -> None:
     _add_delivery_ledger(watchlist)
 
 
+def _add_feedback(subparsers) -> None:
+    """Record a reaction, or review evidence for a possible config change."""
+    feedback = subparsers.add_parser(
+        FEEDBACK,
+        help="record what a recommendation taught you, or review repeated evidence",
+        description=(
+            "Record whether one report recommendation helped. Use the specific "
+            "wrong-item, too-expensive, or logistics-impossible reason when known; "
+            "clear removes the current reaction, and review looks for repetition."
+        ),
+    )
+    feedback.add_argument("action", choices=FEEDBACK_ACTIONS)
+    _add_lot_identity(feedback)
+    _add_watchlist_file(feedback, remember=True)
+    _add_config(feedback)
+    feedback.add_argument(
+        "--feedback-file",
+        default=DEFAULT_FEEDBACK_FILE,
+        help="ignored JSON file holding feedback events",
+    )
+    feedback.add_argument(
+        "--interest",
+        help="configured interest id or name when a lot matched more than one",
+    )
+    feedback.add_argument("--note", help="optional context for this feedback")
+    feedback.add_argument(
+        "--minimum-evidence",
+        type=int,
+        default=DEFAULT_MINIMUM_DISTINCT_ITEMS,
+        action=_RememberedOption,
+        help="repeated examples required before review proposes a change",
+    )
+    feedback.add_argument(
+        "--save",
+        action="store_true",
+        help="save the reviewed proposal without changing configuration",
+    )
+    feedback.add_argument(
+        "--proposal-dir",
+        default=DEFAULT_PROPOSAL_DIR,
+        action=_RememberedOption,
+        help="ignored directory for immutable proposal artifacts",
+    )
+
+
 def _add_sold(subparsers) -> None:
     """The only question the observation database can answer that the report cannot."""
     sold = subparsers.add_parser(
@@ -365,10 +436,12 @@ def _add_database(command) -> None:
     )
 
 
-def _add_watchlist_file(command) -> None:
+def _add_watchlist_file(command, *, remember: bool = False) -> None:
     """The lots being followed. Named for the file, not the command of that name."""
+    options = {"action": _RememberedOption} if remember else {}
     command.add_argument(
         "--watchlist",
         default=DEFAULT_WATCHLIST_FILE,
         help="ignored JSON file recording the lots you are following",
+        **options,
     )

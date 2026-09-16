@@ -59,6 +59,9 @@ SHARED_REPORT_FACTS = (
     "1 more new or changed match was held back by this report's limit.",
     "soundbar: 1/2 fulfilled; 1 remaining",
     "1 won lot has an unreviewed finite-interest match",
+    "Optional feedback: copy a Watch key into "
+    "`auction-lens feedback yes --key WATCH-KEY`; run "
+    "`auction-lens feedback --help` for specific reasons.",
 )
 
 

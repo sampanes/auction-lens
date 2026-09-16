@@ -57,13 +57,25 @@ Two things remain open, and both are deliberately not config:
 
 ## Feedback-assisted tuning
 
-Status: reliable match provenance and explicit outcome allocation implemented;
-compact yes/maybe/no feedback and rule proposals remain planned.
+Status: compact feedback, correction history, and conservative proposal review
+are implemented. Proposal kinds remain deliberately limited.
 
-Reports should eventually accept compact feedback such as `yes`, `maybe`, `no`,
-`wrong model`, `too expensive`, and `logistics impossible`. Feedback remains an
-observation until a repeated pattern supports a proposed, reviewable config
-change. Auction Lens should never silently rewrite preferences.
+Every non-empty report gives one copyable route from a Watch key to `feedback`.
+The private append-only log accepts `yes`, `maybe`, `no`, `wrong-item`,
+`too-expensive`, and `logistics-impossible`; a later event corrects the effective
+answer without erasing the earlier one. `clear` explicitly leaves no effective
+answer.
+
+`feedback review` requires three distinct items by default. Repeated runs and
+corrections to one listing therefore cannot make one opinion look like a
+pattern. A review may explain a small configuration proposal, and `--save`
+preserves that reviewed output under the ignored `private/proposals/` directory.
+It never changes `config/local.toml`.
+
+This milestone intentionally stops short of inventing config edits for every
+label. Evidence the program cannot translate conservatively remains visible as
+evidence. Expanding proposal kinds should follow demonstrated repeated patterns,
+not the mere availability of more labels. See [Feedback-assisted tuning](FEEDBACK.md).
 
 ## Interests that retire themselves
 

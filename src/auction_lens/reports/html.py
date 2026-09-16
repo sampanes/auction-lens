@@ -40,6 +40,7 @@ SEARCH_NOTE_STYLE = "color:#666;font-size:12px"
 # The tail of a section: quieter than a card, because it is about the
 # lots that are not there.
 WITHHELD_STYLE = "color:#666;font-size:13px;margin:4px 0 18px 0"
+FEEDBACK_STYLE = "color:#666;font-size:13px;margin:18px 0 4px 0"
 OUTCOME_WARNING_STYLE = (
     "border-left:4px solid #c62828;background:#fff4f4;padding:10px;margin:12px 0"
 )
@@ -65,6 +66,10 @@ def render_html(report: Report) -> str:
         sections.extend(_card(finding) for finding in group.findings)
         sections.append(_rest_of_group(group))
     sections.append(_searches(report))
+    if report.feedback_hint:
+        sections.append(
+            f"<p style='{FEEDBACK_STYLE}'>{escape(report.feedback_hint)}</p>"
+        )
     return "".join(sections)
 
 

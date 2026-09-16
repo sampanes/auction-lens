@@ -7,6 +7,11 @@ open it, read it, and edit it by hand.
 It lives at `private/watchlist.json`, which is already ignored by git. Use
 `--watchlist` on `run`, `watch`, and `watchlist` to keep more than one.
 
+The watchlist records pursuit and purchase state. Recommendation reactions are
+kept separately in `private/feedback.json`; see
+[Feedback-assisted tuning](FEEDBACK.md) for why `feedback no` is not a watch
+verdict and `feedback logistics-impossible` is not a saved handling decision.
+
 ## What goes in it
 
 Every `run` appends one price reading per reported lot. Scan once an hour and a
@@ -248,6 +253,17 @@ and listing id into the one argument the command needs:
   --estimate 60 ^
   --note "worth it under 40 all in"
 ```
+
+That key also identifies the exact recommendation when recording optional
+feedback:
+
+```cmd
+.venv\Scripts\auction-lens.exe feedback maybe --key nellis/synthetic-001
+```
+
+Feedback is append-only evidence for later tuning. It never changes this
+watchlist verdict or rewrites configuration; the full workflow is documented in
+[Feedback-assisted tuning](FEEDBACK.md).
 
 Read the list, keenest first -- by verdict, then by the provider's rating.
 Red and amber tags are printed in colour when the output is a terminal, and in

@@ -24,6 +24,7 @@ PACKAGE = Path("src") / PACKAGE_NAME
 # An __init__ file is a signpost, not a second place to discover an API.
 EMPTY_PACKAGE_MARKERS = {
     "config",
+    "feedback",
     "history",
     "listings",
     "matching",
@@ -40,6 +41,7 @@ IO_OWNERS = {
     "config",
     "daily",
     "doctor",
+    "feedback",
     "history",
     "providers",
     "reports",
@@ -47,6 +49,7 @@ IO_OWNERS = {
     "watchlist",
 }
 PURE_RECORD_MODULES = {
+    "feedback.model",
     "listings.conditions",
     "listings.model",
     "matching.model",
@@ -59,6 +62,7 @@ PROVIDER_FORBIDDEN = {
     "collect",
     "daily",
     "doctor",
+    "feedback",
     "history",
     "matching",
     "pricing",

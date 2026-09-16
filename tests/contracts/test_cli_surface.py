@@ -25,6 +25,7 @@ COMMANDS = (
     "logistics",
     "watch",
     "watchlist",
+    "feedback",
     "sold",
 )
 
@@ -103,6 +104,20 @@ OPTIONS = {
         "--delivery-ledger",
         "--repeat-delivery",
     },
+    "feedback": {
+        "--help",
+        "--key",
+        "--source",
+        "--listing-id",
+        "--watchlist",
+        "--config",
+        "--feedback-file",
+        "--interest",
+        "--note",
+        "--minimum-evidence",
+        "--save",
+        "--proposal-dir",
+    },
     "sold": {"--help", "--database", "--within-minutes", "--match", "--limit", "--config"},
 }
 
@@ -120,6 +135,7 @@ MINIMUM_ARGUMENTS = {
     "logistics": ["--key", "example/123", "--status", "feasible"],
     "watch": ["--key", "example/123"],
     "watchlist": [],
+    "feedback": ["review"],
     "sold": [],
 }
 
@@ -156,6 +172,12 @@ PATH_DEFAULTS = {
         "config": "config/local.toml",
         "env_file": ".env",
         "delivery_ledger": "private/deliveries.sqlite3",
+    },
+    "feedback": {
+        "watchlist": "private/watchlist.json",
+        "config": "config/local.toml",
+        "feedback_file": "private/feedback.json",
+        "proposal_dir": "private/proposals",
     },
     "sold": {"database": "data/auction-lens.sqlite3", "config": "config/local.toml"},
 }

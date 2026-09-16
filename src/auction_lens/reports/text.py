@@ -42,6 +42,8 @@ def render_text(report: Report) -> str:
             lines.extend(_finding_lines(finding))
         lines.extend(_rest_of_group_lines(group))
     lines.extend(_search_lines(report))
+    if report.feedback_hint:
+        lines.extend(("", report.feedback_hint))
     return "\n".join(lines).rstrip() + "\n"
 
 
