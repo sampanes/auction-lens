@@ -155,14 +155,14 @@ still useless. Declare each person once, then let any interest name them:
 
 ```toml
 [[people]]
-name = "sam"
-sizes = ["M", "9.5", "32x30"]
+name = "alex"
+sizes = ["L", "11", "34x32"]
 styles = ["mens", "unisex"]
 
 [[interests]]
 name = "work jacket"
 any_terms = ["carhartt", "work jacket", "canvas jacket"]
-fits = "sam"
+fits = "alex"
 ```
 
 Sizes belong to the person rather than to the want, so the same answer governs

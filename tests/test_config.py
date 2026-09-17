@@ -169,13 +169,13 @@ class ConfigValidationTests(unittest.TestCase):
     def test_a_rule_can_name_the_person_it_has_to_fit(self):
         config = self._load_variant(
             'any_terms = ["soundbar", "sound bar"]',
-            'any_terms = ["soundbar", "sound bar"]\nfits = "sam"',
+            'any_terms = ["soundbar", "sound bar"]\nfits = "alex"',
         )
 
         person = config.interests[0].fits
         self.assertIsNotNone(person)
         # Written "M" and "mens"; compared as the one canonical spelling.
-        self.assertEqual(person.sizes, frozenset({"m", "9.5", "32x30"}))
+        self.assertEqual(person.sizes, frozenset({"l", "11", "34x32"}))
         self.assertEqual(person.styles, frozenset({"men", "unisex"}))
 
     def test_a_rule_that_names_nobody_does_not_check_sizes(self):
@@ -185,24 +185,24 @@ class ConfigValidationTests(unittest.TestCase):
 
     def test_naming_an_undeclared_person_is_refused_rather_than_ignored(self):
         """A typo must not look exactly like a size check that passed."""
-        with self.assertRaisesRegex(ValueError, "unknown person 'saam'"):
+        with self.assertRaisesRegex(ValueError, "unknown person 'alexx'"):
             self._load_variant(
                 'any_terms = ["soundbar", "sound bar"]',
-                'any_terms = ["soundbar", "sound bar"]\nfits = "saam"',
+                'any_terms = ["soundbar", "sound bar"]\nfits = "alexx"',
             )
 
     def test_two_people_cannot_share_one_name(self):
         with self.assertRaisesRegex(ValueError, "two people are both named"):
             self._load_variant(
-                '[[people]]\nname = "kid"',
-                '[[people]]\nname = "SAM"\nsizes = ["L"]\n\n'
-                '[[people]]\nname = "kid"',
+                '[[people]]\nname = "robin"',
+                '[[people]]\nname = "ALEX"\nsizes = ["L"]\n\n'
+                '[[people]]\nname = "robin"',
             )
 
     def test_an_unknown_size_is_refused_instead_of_disabling_the_check(self):
         with self.assertRaisesRegex(ValueError, "unknown size 'mediumm'"):
             self._load_variant(
-                'sizes = ["M", "9.5", "32x30"]',
+                'sizes = ["L", "11", "34x32"]',
                 'sizes = ["mediumm"]',
             )
 
