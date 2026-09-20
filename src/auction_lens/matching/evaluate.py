@@ -183,5 +183,9 @@ def _worth_collecting(candidates: list[Candidate], config: AppConfig) -> list[Ca
     return [
         candidate
         for candidate in candidates
-        if config.locations.worth_collecting(candidate.listing.location, candidate.score)
+        if config.locations.worth_collecting(
+            candidate.listing.location,
+            candidate.score,
+            candidate.listing.estimated_retail,
+        )
     ]

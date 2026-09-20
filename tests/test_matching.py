@@ -140,6 +140,66 @@ class InterestScoringTests(unittest.TestCase):
         )
         self.assertTrue(evaluate(self.listings[SOUNDBAR], config))
 
+    def test_a_small_lot_at_a_far_branch_is_not_worth_the_drive_however_cheap(self):
+        """The score cannot say this on its own.
+
+        A price anomaly scores a share of retail turned around, so a nearly
+        free lot scores nearly 100 no matter how small the thing is. The bar
+        below is set to 1 to prove the point: even with the score bar giving
+        the lot everything, a 129 dollar item does not justify the drive.
+        """
+        config = replace(
+            self.config,
+            locations=LocationPolicy(
+                far=("example warehouse",),
+                far_minimum_score=1,
+                far_minimum_retail=Decimal("500"),
+            ),
+        )
+        self.assertEqual(evaluate(self.listings[SOUNDBAR], config), [])
+
+    def test_a_big_enough_lot_at_a_far_branch_still_comes_through(self):
+        config = replace(
+            self.config,
+            locations=LocationPolicy(
+                far=("example warehouse",),
+                far_minimum_score=1,
+                far_minimum_retail=Decimal("100"),
+            ),
+        )
+        self.assertTrue(evaluate(self.listings[SOUNDBAR], config))
+
+    def test_a_far_lot_stating_no_retail_cannot_prove_it_is_worth_the_drive(self):
+        """Fails closed. An unstated size is not evidence of a large one."""
+        config = replace(
+            self.config,
+            locations=LocationPolicy(
+                far=("example warehouse",),
+                far_minimum_score=1,
+                far_minimum_retail=Decimal("100"),
+            ),
+        )
+        unpriced = replace(self.listings[SOUNDBAR], estimated_retail=None)
+        self.assertEqual(evaluate(unpriced, config), [])
+
+    def test_without_a_floor_an_unpriced_far_lot_is_judged_on_score_alone(self):
+        """The floor is what closes the door, so no floor leaves it open."""
+        config = replace(
+            self.config,
+            locations=LocationPolicy(far=("example warehouse",), far_minimum_score=1),
+        )
+        unpriced = replace(self.listings[SOUNDBAR], estimated_retail=None)
+        self.assertTrue(evaluate(unpriced, config))
+
+    def test_a_near_branch_is_never_held_to_the_retail_floor(self):
+        config = replace(
+            self.config,
+            locations=LocationPolicy(
+                far=("somewhere else",), far_minimum_retail=Decimal("5000")
+            ),
+        )
+        self.assertTrue(evaluate(self.listings[SOUNDBAR], config))
+
     def test_a_branch_already_being_visited_stops_costing_a_drive(self):
         # The drive is only a cost when it would not otherwise happen.
         listing = self.listings[SOUNDBAR]

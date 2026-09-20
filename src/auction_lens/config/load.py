@@ -257,6 +257,7 @@ def _locations(section: Section) -> LocationPolicy:
             allowed=section.lowercase_texts("allowed"),
             far=section.lowercase_texts("far"),
             far_minimum_score=section.integer("far_minimum_score", DEFAULT_FAR_MINIMUM_SCORE),
+            far_minimum_retail=section.decimal("far_minimum_retail", 0),
         )
 
 

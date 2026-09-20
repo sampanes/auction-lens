@@ -49,6 +49,7 @@ class LocationPolicy:
     allowed: tuple[str, ...] = ()
     far: tuple[str, ...] = ()
     far_minimum_score: int = DEFAULT_FAR_MINIMUM_SCORE
+    far_minimum_retail: Decimal = Decimal("0")
 
     def __post_init__(self) -> None:
         require_within(
@@ -56,6 +57,9 @@ class LocationPolicy:
             low=LOWEST_SCORE,
             high=HIGHEST_SCORE,
             field_name="far_minimum_score",
+        )
+        require_not_negative(
+            self.far_minimum_retail, field_name="far_minimum_retail"
         )
 
     def permits(self, location: str) -> bool:
@@ -75,11 +79,36 @@ class LocationPolicy:
         )
         return replace(self, far=staying_far)
 
-    def worth_collecting(self, location: str, score: int) -> bool:
-        """Whether this lot, at this score, justifies going to this branch."""
+    def worth_collecting(
+        self, location: str, score: int, retail: Decimal | None
+    ) -> bool:
+        """Whether this lot justifies going to this branch.
+
+        Two separate questions, because one number could not answer both.
+
+        The score says how good the lot looks. On a wanted match that is a
+        real quality bar. On a price anomaly it is not: that score is a share
+        of stated retail turned around, so a bar of 85 means "costs under 15%
+        of retail", which on a site whose median lot closes at 16% of retail
+        is the ordinary outcome rather than a surprise. Raising the bar does
+        not rescue it either, because a lot nobody has bid on yet costs almost
+        nothing and therefore scores almost 100.
+
+        The retail floor asks what the score cannot: is the thing big enough
+        to be worth the drive at all. A far lot has to pass both.
+
+        A lot with no stated retail cannot answer the second question, so it
+        fails it whenever a floor is set. That is deliberate -- the floor is
+        there to leave small things at a distance, and an unstated size is not
+        evidence of a large one.
+        """
         if not self.is_far(location):
             return True
-        return score >= self.far_minimum_score
+        if score < self.far_minimum_score:
+            return False
+        if not self.far_minimum_retail:
+            return True
+        return retail is not None and retail >= self.far_minimum_retail
 
 
 def _mentions(location: str, names: tuple[str, ...]) -> bool:

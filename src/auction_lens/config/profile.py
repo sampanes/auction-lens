@@ -175,7 +175,14 @@ def _locations(config: AppConfig) -> list[str]:
         f"- Far locations: {far}.",
         f"- A far location needs a minimum score of "
         f"{_minimum_score(config.locations.far_minimum_score)}.",
+        f"- A far location must also state a retail of at least "
+        f"{_far_retail(config.locations.far_minimum_retail)}.",
     ]
+
+
+def _far_retail(floor: Decimal) -> str:
+    """No floor reads better as words than as a dollar sign and a zero."""
+    return _money(floor) if floor else "any amount"
 
 
 def _handling(config: AppConfig) -> list[str]:

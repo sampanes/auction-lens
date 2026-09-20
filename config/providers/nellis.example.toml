@@ -52,6 +52,17 @@ processing_fee = 0.0
 # soon). Freshness can raise its reading priority to 90, but the far-branch gate
 # uses quality: a far_minimum_score of 88 or more excludes wanted matches.
 # Leave room under the quality ceiling.
+#
+# far_minimum_retail is the second half of the same question, and it exists
+# because the score cannot answer it alone. A price anomaly scores a share of
+# stated retail turned around, so a lot nobody has bid on yet costs almost
+# nothing and therefore scores almost 100 -- no score bar can tell a small
+# cheap thing from a large one. The retail floor asks whether the thing is big
+# enough to be worth the drive.
+#   far_minimum_retail = 750.0
+# A far lot must clear both. A far lot that states no retail cannot clear the
+# floor at all, which is deliberate: an unstated size is not evidence of a
+# large one. Leave it at 0 to judge far lots on score alone.
 # Empty means any location. Values are case-insensitive substrings.
 allowed = []
 
