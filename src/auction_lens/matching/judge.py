@@ -38,6 +38,14 @@ class Verdict:
 
     @classmethod
     def set_aside(cls, why: str) -> Verdict:
+        """Build a refusal. This is a constructor, not a question.
+
+        Ask a verdict what it decided with `.matches`. Reading `.set_aside` on
+        an instance hands back this bound method, which is always truthy, so a
+        caller testing it sees every lot as refused. A test harness written
+        that way once reported five different rule drafts as refusing all
+        seven of their own real examples.
+        """
         return cls(matches=False, why=why)
 
 
