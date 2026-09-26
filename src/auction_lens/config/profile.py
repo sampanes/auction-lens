@@ -19,7 +19,7 @@ from ..matching.model import (
     Person,
 )
 from .app import AppConfig
-from .interests import ConditionPolicy, InterestRule
+from .interests import ConditionPolicy, InterestRule, ScoringConfig
 from .logistics import LargeItemPolicy
 
 NONE = "none"
@@ -154,12 +154,23 @@ def _wanted_quantity(wanted: int | None) -> str:
     return f"{wanted}; retire after {wanted} explicitly assigned {noun}"
 
 
+def _large_lot(scoring: ScoringConfig) -> str:
+    """No second band reads better as words than as an absent number."""
+    if scoring.large_lot_minimum_retail is None:
+        return "no separate allowance; every bargain is judged on the one ratio"
+    return (
+        f"stated retail at least {_money(scoring.large_lot_minimum_retail)}, "
+        f"total cost at most {scoring.large_lot_maximum_ratio:.0%} of it"
+    )
+
+
 def _general_discovery(config: AppConfig) -> list[str]:
     scoring = config.scoring
     return [
         "- General bargains: stated retail at least "
         f"{_money(scoring.anomaly_minimum_retail)}, total cost at most "
         f"{scoring.anomaly_maximum_ratio:.0%} of it.",
+        f"- Larger bargains: {_large_lot(scoring)}.",
         f"- Relative importance: {_number(scoring.anomaly_weight)}.",
         "- Conditions for every purpose: "
         f"{_reject_and_penalties(scoring.rejected_conditions, scoring.condition_penalties)}.",

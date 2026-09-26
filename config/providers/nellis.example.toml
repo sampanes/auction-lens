@@ -109,6 +109,37 @@ minimum_report_score = 70
 ending_soon_minutes = 20
 anomaly_condition_profile = "ready_to_use"
 
+# A second, gentler band for lots big enough to deserve one. Both keys are
+# optional; leaving large_lot_minimum_retail unset means there is only the one
+# band, which is how scoring behaved before these existed.
+#
+# The pair above asks one question at one point: how small a share of stated
+# retail makes a lot worth reporting when no interest asked for it. A single
+# point answers it badly at the top end. A cheap item has to be a steal before
+# it earns a place in a report, but an expensive one is worth seeing at a
+# merely fair price, because what matters is the money saved and not the
+# percentage. With one band, an item stating a thousand and currently costing a
+# third of that is refused outright: no rule named it, and a third of retail is
+# not a steal. Nothing else in the pipeline ever sees it.
+#
+#   large_lot_minimum_retail = 800.0
+#   large_lot_maximum_ratio = 0.40
+#
+# Validation keeps the second band from contradicting the first. Its retail
+# floor may not sit below anomaly_minimum_retail, and its ratio may not be
+# stricter than anomaly_maximum_ratio -- a second band exists to be more
+# generous, never less.
+#
+# One interaction is worth knowing before choosing a ratio. An anomaly's score
+# IS its discount: a lot at 40% of stated retail scores 60. So a ratio of 0.40
+# beside a minimum_report_score of 70 would describe a band whose every lot is
+# refused by the floor, and the band would look broken while being configured
+# exactly as written. For a large lot only, the floor is lowered to whatever
+# the band's own ceiling can reach, so the two cannot disagree. The ordinary
+# band is left alone, including when its floor sits above its own ceiling:
+# that combination is a deliberate statement that a bare discount is not
+# enough on a small item, and it is not overruled.
+
 # Inherited by every [[interests]] rule below.
 #
 # An accessory is sold under the name of whatever it attaches to, so a monitor

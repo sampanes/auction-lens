@@ -7,7 +7,12 @@ from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
-from auction_lens.config.interests import ConditionPolicy, InterestDefaults, InterestRule
+from auction_lens.config.interests import (
+    ConditionPolicy,
+    InterestDefaults,
+    InterestRule,
+    ScoringConfig,
+)
 from auction_lens.config.logistics import LocationPolicy
 from auction_lens.listings.model import ObservationChange
 from auction_lens.matching.evaluate import estimate_total_cost, evaluate
@@ -669,6 +674,120 @@ class AnomalyScoringTests(unittest.TestCase):
         self.assertEqual(
             evaluate(listing, config, ObservationChange(True, False)), []
         )
+
+    def _anomaly(self, candidates):
+        return next(item for item in candidates if item.category == "anomaly")
+
+
+class LargeLotBandTests(unittest.TestCase):
+    """A big thing at a fair price has no way in through the one ratio."""
+
+    def setUp(self):
+        self.config = example_config()
+        self.listings = example_listings()
+
+    def _fair_priced_big_lot(self):
+        """Priced at a third of retail: a good buy, nowhere near a steal."""
+        return replace(
+            self.listings[LASER_LEVEL],
+            estimated_retail=Decimal("1000.00"),
+            current_bid=Decimal("290.00"),
+        )
+
+    def _with_band(self, retail, ratio):
+        return replace(
+            self.config,
+            scoring=replace(
+                self.config.scoring,
+                large_lot_minimum_retail=Decimal(retail),
+                large_lot_maximum_ratio=Decimal(ratio),
+            ),
+        )
+
+    def test_a_fair_price_on_a_big_lot_is_refused_without_the_band(self):
+        self.assertEqual(evaluate(self._fair_priced_big_lot(), self.config), [])
+
+    def test_the_band_lets_a_fair_price_on_a_big_lot_through(self):
+        config = self._with_band("800", "0.40")
+        candidate = self._anomaly(evaluate(self._fair_priced_big_lot(), config))
+        self.assertEqual(candidate.rule_name, "retail-ratio")
+
+    def test_a_lot_under_the_band_still_answers_to_the_ordinary_ratio(self):
+        """The band is a second door, never a replacement for the first."""
+        config = self._with_band("800", "0.40")
+        smaller = replace(
+            self.listings[LASER_LEVEL],
+            estimated_retail=Decimal("400.00"),
+            current_bid=Decimal("120.00"),
+        )
+        self.assertEqual(evaluate(smaller, config), [])
+
+    def test_the_band_does_not_admit_a_big_lot_at_any_price(self):
+        config = self._with_band("800", "0.40")
+        expensive = replace(
+            self.listings[LASER_LEVEL],
+            estimated_retail=Decimal("1000.00"),
+            current_bid=Decimal("600.00"),
+        )
+        self.assertEqual(evaluate(expensive, config), [])
+
+    def test_a_generous_band_is_not_vetoed_by_the_report_floor(self):
+        """The trap this band had to be designed around.
+
+        The anomaly score is the discount itself, so a ceiling of 40% of
+        retail can only ever score 60. A report floor of 70 would refuse
+        every lot the band admitted, and the band would look broken while
+        being configured correctly.
+        """
+        config = self._with_band("800", "0.40")
+        config = replace(
+            config, scoring=replace(config.scoring, minimum_report_score=70)
+        )
+        candidate = self._anomaly(evaluate(self._fair_priced_big_lot(), config))
+        self.assertLess(candidate.score, 70)
+
+    def test_the_ordinary_band_keeps_a_floor_set_above_its_own_ceiling(self):
+        """Relaxing the floor for the large band must not relax it for all.
+
+        A floor above what a bare discount can score is a deliberate
+        statement that a discount alone is not enough.
+        """
+        config = self._with_band("800", "0.40")
+        ordinary = self._anomaly(evaluate(self.listings[LASER_LEVEL], config))
+        strict = replace(
+            config,
+            scoring=replace(
+                config.scoring, minimum_report_score=ordinary.score + 1
+            ),
+        )
+        self.assertEqual(evaluate(self.listings[LASER_LEVEL], strict), [])
+
+    def test_a_band_cheaper_than_the_ordinary_one_is_refused(self):
+        with self.assertRaisesRegex(ValueError, "large_lot_minimum_retail"):
+            ScoringConfig(
+                anomaly_minimum_retail=Decimal("500"),
+                large_lot_minimum_retail=Decimal("100"),
+            )
+
+    def test_a_negative_ending_soon_window_is_refused(self):
+        """Not about the band. It is here because the band deleted this check.
+
+        Inserting the band's methods after __post_init__ left this validation
+        stranded below a return statement, where it could never run, and all
+        786 tests still passed because nothing asked for it. A validator with
+        no test is a validator that can be removed by accident.
+        """
+        with self.assertRaisesRegex(ValueError, "ending_soon_minutes"):
+            ScoringConfig(ending_soon_minutes=-1)
+
+    def test_a_band_stricter_than_the_ordinary_one_is_refused(self):
+        """A second band exists to be more generous, never less."""
+        with self.assertRaisesRegex(ValueError, "large_lot_maximum_ratio"):
+            ScoringConfig(
+                anomaly_maximum_ratio=Decimal("0.30"),
+                large_lot_minimum_retail=Decimal("800"),
+                large_lot_maximum_ratio=Decimal("0.20"),
+            )
 
     def _anomaly(self, candidates):
         return next(item for item in candidates if item.category == "anomaly")

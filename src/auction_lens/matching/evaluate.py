@@ -113,17 +113,20 @@ def score_retail_anomaly(
     if not policy_admits(context.conditions, scoring.anomaly_condition):
         return None
     retail = context.listing.estimated_retail
-    if retail is None or retail <= 0 or retail < scoring.anomaly_minimum_retail:
+    if retail is None or retail <= 0:
+        return None
+    ceiling = scoring.anomaly_ceiling(retail)
+    if ceiling is None:
         return None
     ratio = context.total_cost / retail
-    if ratio > scoring.anomaly_maximum_ratio:
+    if ratio > ceiling:
         return None
 
     penalty = context.baseline_penalty + penalty_for(
         context.conditions, scoring.anomaly_condition.penalties
     )
     score = clamp_score(_discount_score(ratio) + context.score_bonus - penalty)
-    if score < scoring.minimum_report_score:
+    if score < _report_floor(scoring, retail, ceiling):
         return None
     reasons = [f"estimated total is {ratio:.1%} of stated retail"]
     if context.is_ending_soon:
@@ -140,6 +143,26 @@ def score_retail_anomaly(
 
 def _discount_score(ratio: Decimal) -> int:
     return int((Decimal("1") - ratio) * HIGHEST_SCORE)
+
+
+def _report_floor(scoring: ScoringConfig, retail: Decimal, ceiling: Decimal) -> int:
+    """The score an unasked lot must reach, which is the configured floor.
+
+    It is lowered in exactly one case. This score is the discount itself, so a
+    ceiling implies the lowest score any lot admitted under it can reach: a
+    large-lot ceiling of 40% of retail scores 60, and a floor of 70 would
+    refuse every lot the band just admitted, turning a configured band off
+    without saying anything. Only the large band can be generous enough for
+    that to happen, so only the large band is given the lower number.
+
+    The ordinary band is left alone even when its own ceiling implies a score
+    below the floor. A floor set above what a lot can score is a deliberate
+    choice -- it says a bare discount is not enough and something else has to
+    argue for the lot -- and it is not this function's place to overrule it.
+    """
+    if not scoring.is_large_lot(retail):
+        return scoring.minimum_report_score
+    return min(scoring.minimum_report_score, _discount_score(ceiling))
 
 
 def build_context(

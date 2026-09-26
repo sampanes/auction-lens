@@ -138,6 +138,12 @@ def _scoring(section: Section, conditions: Section, profiles: Section) -> Scorin
         return ScoringConfig(
             anomaly_minimum_retail=section.decimal("anomaly_minimum_retail", 100),
             anomaly_maximum_ratio=section.decimal("anomaly_maximum_ratio", "0.20"),
+            large_lot_minimum_retail=section.optional_decimal(
+                "large_lot_minimum_retail"
+            ),
+            large_lot_maximum_ratio=section.decimal(
+                "large_lot_maximum_ratio", "0.40"
+            ),
             anomaly_weight=section.decimal("anomaly_weight", "0.4"),
             minimum_report_score=section.integer("minimum_report_score", 70),
             ending_soon_minutes=section.integer("ending_soon_minutes", 20),
