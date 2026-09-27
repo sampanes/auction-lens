@@ -8,10 +8,19 @@ REM
 REM install is idempotent: /f replaces a task of the same name rather than
 REM failing, so running it twice leaves exactly one of each.
 REM
-REM DEFAULT TIMES. Midday shows the board before bidding; two evening passes
-REM refresh it around common closing hours. The first evening task starts five
-REM minutes early because paced searches take time. The private delivery ledger
-REM prevents an unchanged lot from repeating across these overlapping passes.
+REM DEFAULT TIMES. Midday shows the board before bidding; three evening
+REM passes refresh it across the hours lots actually close in. The first
+REM evening task starts five minutes early because paced searches take time.
+REM The private delivery ledger prevents an unchanged lot from repeating across
+REM these overlapping passes.
+REM
+REM The last pass exists for the price history rather than for the mail. A
+REM stored bid is only worth calling a closing price if it was read shortly
+REM before the lot ended, and measured across 40,526 lots carrying history,
+REM just 14% were. Lots close across four local hours and the last of them is
+REM the busiest, so a schedule ending at 20:00 leaves the largest group of
+REM closes permanently unobserved and every estimate built on them is a lower
+REM bound wearing a price tag.
 REM Change only the RUN declarations below when a different cadence fits better.
 setlocal
 
@@ -24,6 +33,7 @@ REM so changing the schedule is changing this block and nothing else.
 set "RUN_1=Daily|13:00|midday digest: the board before bidding starts"
 set "RUN_2=Evening-1|17:55|first close: the board as the earliest lots go"
 set "RUN_3=Evening-2|20:00|second pass: prices that have had time to mean something"
+set "RUN_4=Evening-3|21:35|last look: the only pass that sees lots actually close"
 
 if /i "%~1"=="status"  goto :status
 if /i "%~1"=="install" goto :install
@@ -34,7 +44,7 @@ goto :usage
 :status
 echo Scheduled runs for %PREFIX%:
 echo.
-for %%R in ("%RUN_1%" "%RUN_2%" "%RUN_3%") do call :report %%R
+for %%R in ("%RUN_1%" "%RUN_2%" "%RUN_3%" "%RUN_4%") do call :report %%R
 echo.
 echo Provider budget is in config/local.toml as max_requests_per_day.
 goto :done
@@ -45,7 +55,7 @@ if not exist "%RUNNER%" (
     echo [X] no runner at %RUNNER%
     exit /b 1
 )
-for %%R in ("%RUN_1%" "%RUN_2%" "%RUN_3%") do call :create %%R
+for %%R in ("%RUN_1%" "%RUN_2%" "%RUN_3%" "%RUN_4%") do call :create %%R
 if errorlevel 1 exit /b 1
 echo.
 echo [OK] installed. Run "schedule.cmd status" to see the next fire times.
@@ -53,7 +63,7 @@ goto :done
 
 
 :remove
-for %%R in ("%RUN_1%" "%RUN_2%" "%RUN_3%") do call :destroy %%R
+for %%R in ("%RUN_1%" "%RUN_2%" "%RUN_3%" "%RUN_4%") do call :destroy %%R
 echo.
 echo [OK] removed. Nothing will fetch on a schedule until you install again.
 goto :done
