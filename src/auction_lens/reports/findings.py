@@ -255,6 +255,7 @@ def _finding(candidate: Candidate, zone: ZoneInfo, priority_rank: int) -> Findin
         title=candidate.listing.title,
         change=_change(candidate),
         score=candidate.score,
+        set_aside=candidate.set_aside,
         priority_rank=priority_rank,
         facts=_listing_facts(candidate, zone),
         reasons=candidate.reasons,

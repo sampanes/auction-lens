@@ -134,6 +134,71 @@ class TextReportTests(unittest.TestCase):
         self.assertIn("Decision key: nellis/synthetic-001", report)
 
 
+class SetAsideVisibilityTests(unittest.TestCase):
+    """A lot the judge refused is kept on purpose, so it has to look refused.
+
+    Its weight drops to a tenth so it sinks below anything real, but the score
+    printed beside it is the one its rule gave. A real report showed a blood
+    pressure monitor as "Score 80" under "matches use interest 'monitor'",
+    with the refusal last in a semicolon-joined list of reasons. Everything a
+    reader sees first read as an endorsement.
+    """
+
+    def setUp(self):
+        self.config = example_config()
+        self.listings = example_listings()
+
+    def _candidates(self, set_aside):
+        found = evaluate(self.listings[LASER_LEVEL], self.config)
+        self.assertTrue(found, "fixture should produce a candidate")
+        return [
+            replace(
+                item,
+                set_aside=set_aside,
+                reasons=(
+                    (*item.reasons, "set aside by the judge: a different thing")
+                    if set_aside
+                    else item.reasons
+                ),
+            )
+            for item in found
+        ]
+
+    def test_the_projection_carries_the_fact(self):
+        """Not parsed back out of the reason prose by whoever needs it."""
+        report = build_report(self._candidates(True), REPORT_ZONE)
+        findings = [f for group in report.groups for f in group.findings]
+        self.assertTrue(all(finding.set_aside for finding in findings))
+
+    def test_an_ordinary_candidate_is_not_marked(self):
+        report = build_report(self._candidates(False), REPORT_ZONE)
+        findings = [f for group in report.groups for f in group.findings]
+        self.assertTrue(all(not finding.set_aside for finding in findings))
+
+    def test_the_text_report_says_so_before_the_score(self):
+        rendered = render_text(build_report(self._candidates(True), REPORT_ZONE))
+        self.assertIn("SET ASIDE", rendered)
+        self.assertLess(
+            rendered.index("SET ASIDE"),
+            rendered.index("Score "),
+            "the refusal has to arrive before the score it undercuts",
+        )
+
+    def test_the_html_report_says_so_before_the_score(self):
+        rendered = render_html(build_report(self._candidates(True), REPORT_ZONE))
+        self.assertIn("Set aside", rendered)
+        self.assertLess(rendered.index("Set aside"), rendered.index("Score "))
+
+    def test_neither_report_cries_wolf_on_an_ordinary_lot(self):
+        candidates = self._candidates(False)
+        self.assertNotIn(
+            "SET ASIDE", render_text(build_report(candidates, REPORT_ZONE))
+        )
+        self.assertNotIn(
+            "Set aside", render_html(build_report(candidates, REPORT_ZONE))
+        )
+
+
 class OutcomeReportTests(unittest.TestCase):
     """A quiet candidate list still explains finite wants and fulfillments."""
 

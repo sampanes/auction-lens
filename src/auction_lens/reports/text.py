@@ -92,8 +92,13 @@ def _hint_note(hint: SearchHint) -> str:
     return f"finds {hint.finds}, plus {hint.also_finds} other lot(s)"
 
 
+SET_ASIDE_LABEL = "SET ASIDE -- the judge says this is not the thing"
+
+
 def _finding_lines(finding: Finding) -> Iterator[str]:
     yield f"[{finding.change.upper()}] {finding.title}"
+    if finding.set_aside:
+        yield SET_ASIDE_LABEL
     yield f"Score {finding.score}"
     yield from _fact_lines(finding.facts.full_report)
     yield f"Why: {'; '.join(finding.reasons)}"

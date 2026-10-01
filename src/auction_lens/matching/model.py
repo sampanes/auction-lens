@@ -79,6 +79,10 @@ class Candidate:
     valuation: ValuationSummary | None = None
     logistics: LogisticsAssessment | None = None
     weight: Decimal = Decimal("1")
+    # Whether the judge decided this lot is not the thing its rule asked for.
+    # Such a lot is kept rather than dropped, so that a rule wrongly matching
+    # something can be seen and fixed, but a reader has to be told plainly.
+    set_aside: bool = False
 
     @property
     def section(self) -> str:

@@ -137,11 +137,26 @@ def _note(hint: SearchHint) -> str:
     return f"finds {hint.finds}, plus {hint.also_finds} other lot(s)"
 
 
+SET_ASIDE_STYLE = (
+    "margin:0 0 6px 0;padding:4px 8px;border-left:3px solid #b00020;"
+    "background:#fdf0f0;color:#b00020;font-size:13px"
+)
+SET_ASIDE_TEXT = "Set aside: the judge says this is not the thing the rule asked for."
+
+
+def _set_aside_banner(finding: Finding) -> str:
+    """Nothing to say when the judge agreed with the rule."""
+    if not finding.set_aside:
+        return ""
+    return f"<p style='{SET_ASIDE_STYLE}'>{SET_ASIDE_TEXT}</p>"
+
+
 def _card(finding: Finding) -> str:
     return "".join(
         (
             f"<article style='{CARD_STYLE}'>",
             f"<h4 style='{HEADING_STYLE}'>{escape(finding.title)}</h4>",
+            _set_aside_banner(finding),
             f"<p><strong>Score {finding.score}{SEPARATOR}{escape(finding.change)}</strong></p>",
             f"<p>{_facts(finding.facts.full_report)}</p>",
             f"<p>{escape('; '.join(finding.reasons))}</p>",

@@ -290,6 +290,7 @@ def _apply_verdict(candidate: Candidate, verdict: Verdict | None) -> Candidate:
         candidate,
         weight=candidate.weight * SET_ASIDE_WEIGHT,
         reasons=(*candidate.reasons, f"set aside by the judge: {said}"),
+        set_aside=True,
     )
 
 

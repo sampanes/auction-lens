@@ -111,6 +111,10 @@ class Finding:
     title: str
     change: str
     score: int
+    # The judge decided this is not the thing its rule asked for. It is shown
+    # anyway, below everything real, so a rule that needs narrowing can be
+    # seen; the score beside it is the one the rule gave, not a verdict.
+    set_aside: bool
     priority_rank: int
     facts: ListingFacts
     reasons: tuple[str, ...]
