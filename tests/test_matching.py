@@ -602,6 +602,84 @@ class AccessoryTests(unittest.TestCase):
         self.assertEqual(self._matches("Guitar Wall Hanger 3 Pack", rule=rule), [])
 
 
+class DeclinedTermTests(unittest.TestCase):
+    """A broad recall term has to be paired with a way to say "not that one".
+
+    Measured against one real capture, nine of nine lots matched by a rule
+    whose only term was "monitor" were refused by the judge, every one of them
+    correctly: a doorbell, two blood pressure cuffs, a baby monitor, a security
+    camera. The rule was right about what it wanted and had no way to say so
+    before scoring, so the same five products were found, scored, asked about
+    and demoted every single run.
+    """
+
+    def setUp(self):
+        self.config = example_config()
+        self.listings = example_listings()
+
+    def _matches(self, title, rule):
+        config = replace(self.config, interests=(rule,))
+        listing = replace(
+            self.listings[SOUNDBAR], title=title, estimated_retail=Decimal("300")
+        )
+        scored = evaluate(listing, config)
+        return [item.rule_name for item in scored if item.category == "wanted"]
+
+    def _monitor_rule(self):
+        return InterestRule(
+            name="monitor",
+            any_terms=("monitor",),
+            none_terms=("blood pressure", "baby monitor"),
+        )
+
+    def test_a_declined_word_removes_the_lot(self):
+        self.assertEqual(
+            self._matches("Brightwell Blood Pressure Monitor for Home", self._monitor_rule()),
+            [],
+        )
+
+    def test_the_thing_itself_still_matches(self):
+        self.assertEqual(
+            self._matches("Northvale NV34UW 34in UltraWide Monitor", self._monitor_rule()),
+            ["monitor"],
+        )
+
+    def test_position_does_not_matter(self):
+        """Unlike an accessory word, which is only an accessory when adjacent."""
+        self.assertEqual(
+            self._matches("Monitor, Automatic Blood Pressure", self._monitor_rule()), []
+        )
+
+    def test_a_longer_word_that_merely_begins_the_same_is_not_it(self):
+        rule = InterestRule(name="tent", any_terms=("tent",), none_terms=("pet",))
+        self.assertEqual(
+            self._matches("Tallgrass 8-Person Tent, Petite Pack", rule), ["tent"]
+        )
+
+    def test_a_plural_of_a_declined_word_is_declined(self):
+        rule = InterestRule(name="aquarium", any_terms=("aquarium",), none_terms=("pond",))
+        self.assertEqual(
+            self._matches("Collapsible Garden Fish Ponds with Aquarium Liner", rule), []
+        )
+
+    def test_a_rule_that_declines_nothing_is_unchanged(self):
+        rule = InterestRule(name="monitor", any_terms=("monitor",))
+        self.assertEqual(
+            self._matches("Brightwell Blood Pressure Monitor for Home", rule), ["monitor"]
+        )
+
+    def test_a_declined_word_outranks_a_required_one(self):
+        """Both lists can be satisfied at once, and the refusal has to win."""
+        rule = InterestRule(
+            name="monitor",
+            all_terms=("monitor",),
+            none_terms=("blood pressure",),
+        )
+        self.assertEqual(
+            self._matches("Blood Pressure Monitor, Upper Arm", rule), []
+        )
+
+
 class InterestWeightTests(unittest.TestCase):
     """Weight decides what is read first, never what is allowed through."""
 

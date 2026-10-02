@@ -168,6 +168,8 @@ def matches_terms(listing: Listing, total_cost: Decimal, rule: InterestRule) -> 
         return False
     if rule.all_terms and not all(mentions(searchable, term) for term in rule.all_terms):
         return False
+    if names_something_else(searchable, rule):
+        return False
     if describes_an_accessory(searchable, rule):
         return False
     if not _worth_at_least(listing, rule.minimum_retail):
@@ -190,6 +192,27 @@ def _could_be_worn_by(listing: Listing, rule: InterestRule) -> bool:
     so nothing is lost by not reading them.
     """
     return fits(listing.title.lower(), rule.fits)
+
+
+def names_something_else(searchable: str, rule: InterestRule) -> bool:
+    """Whether the lot names a product this rule has already declined.
+
+    The counterpart to `any_terms`, and needed because of how that one has to
+    be written. A term is a recall net, so it is kept broad on purpose, and the
+    price of a broad word is every other product sold under it: "monitor" finds
+    an ultrawide display and also a baby monitor, a blood pressure cuff and a
+    security camera. Those are not borderline, they are known, and they are the
+    same ones every single day.
+
+    Naming them costs one word each and settles them before scoring, where the
+    alternative is a model reading the title on every run and arriving at the
+    same conclusion for a fee. It is also the only one of the two answers that
+    cannot change its mind.
+
+    Unlike an accessory word, position is irrelevant: a lot that says "blood
+    pressure" is not a display no matter where it says it.
+    """
+    return any(mentions(searchable, term) for term in rule.none_terms)
 
 
 def describes_an_accessory(searchable: str, rule: InterestRule) -> bool:

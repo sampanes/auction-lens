@@ -181,11 +181,26 @@ def is_judgeable(rule: InterestRule) -> bool:
 # What a set-aside lot's weight is multiplied by.
 #
 # The judge sets lots aside by down-weighting rather than deleting them. That
-# distinction is the whole safety of the thing. Measured against a real capture
-# it misclassifies something good about one time in fifteen -- a metal shed as
-# "wrong material", a hedge trimmer as "not a laser level". Deleting on that
-# accuracy would reproduce the exact failure it was built to end: a lot gone
-# from the report with nobody able to tell it was ever there.
+# distinction is the whole safety of the thing, and the measured error rate is
+# why. Across one capture a 7B judge was asked about 41 wanted matches, refused
+# 26, and was wrong about 6 of those refusals -- a powered hand tool called
+# "not a tool", a full-size tank called "too small". That is one wrong answer in
+# every seven asked and, worse, close to one in four of the refusals, which are
+# the only answers anyone acts on. Deleting on that accuracy would reproduce the
+# exact failure it was built to end: a lot gone from the report with nobody able
+# to tell it was ever there.
+#
+# Half of those six were one reproducible model fault, and it is worth knowing
+# because it looks like a judgement and is not. Given a rule wanting "a kayak, a
+# canoe, a paddleboard or a dinghy", the judge refused every paddleboard with
+# "not a kayak": it measures the lot against the first item of the list and
+# reads the rest as decoration. Moving the refused word to the front of the same
+# list turns those refusals into keeps. Instructing it not to do that did not
+# help, across four separate drafts of this brief; a 32B model answered the same
+# question correctly and named the matching item, which suggests capacity rather
+# than wording. So a rule offering alternatives should lead with a general
+# phrase rather than with one of them, and a reader who sees "not a <first thing
+# the rule lists>" should suspect this before suspecting the lot.
 #
 # Down-weighting degrades gently instead. Where a want has plenty of real lots,
 # the set-aside ones fall below reports.most_per_interest and are never seen.

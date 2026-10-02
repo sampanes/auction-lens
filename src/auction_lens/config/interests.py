@@ -37,6 +37,13 @@ class InterestRule:
     purpose: str = "use"
     any_terms: tuple[str, ...] = ()
     all_terms: tuple[str, ...] = ()
+    # Words that settle the question the other way: a lot saying any of these
+    # is not the thing, whatever else it says. A broad term has to be broad to
+    # find anything, and the cost of that is a known set of other products
+    # sold under the same word -- a blood pressure monitor, a baby monitor.
+    # Naming them here declines them before anything is scored or asked, which
+    # is cheaper than a judgement and, unlike one, always gives the same answer.
+    none_terms: tuple[str, ...] = ()
     # What this interest is actually after, in a sentence. The terms above
     # only have to be inclusive enough to find candidates; this is what
     # separates the thing from everything else wearing its name.

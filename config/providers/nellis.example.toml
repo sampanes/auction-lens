@@ -208,7 +208,20 @@ minimum_score = 70
 name = "monitor"
 purpose = "use"
 condition_profile = "ready_to_use"
+# A term is a recall net, so it is kept broad and finds more than it should.
 any_terms = ["monitor"]
+# none_terms is how a broad net says "but not that one". A lot naming any of
+# these is declined before it is scored, wherever in the title it says it.
+#
+# Use it for the other products sold under a word you had to keep broad -- the
+# same handful that turn up every day. Without it they are found, scored and,
+# where a local judge is configured, asked about and demoted on every run, for
+# the same answer each time. A word here gives that answer once and for free.
+#
+# It is not the place for a specification. "Not a 24 inch panel" belongs in
+# wants, which is prose a judge can weigh; this list is literal words, and a
+# word that appears in a title you want will quietly remove it.
+none_terms = ["blood pressure", "baby monitor", "pet monitor", "heart rate"]
 max_total_cost = 80
 minimum_score = 70
 

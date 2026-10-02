@@ -217,6 +217,7 @@ def _interest(
             purpose=item.text("purpose", "use"),
             any_terms=item.lowercase_texts("any_terms"),
             all_terms=item.lowercase_texts("all_terms"),
+            none_terms=item.lowercase_texts("none_terms"),
             wants=item.text("wants"),
             max_total_cost=item.optional_decimal("max_total_cost"),
             minimum_retail=item.optional_decimal("minimum_retail"),
