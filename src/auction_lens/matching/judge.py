@@ -202,11 +202,21 @@ def is_judgeable(rule: InterestRule) -> bool:
 # before suspecting the lot.
 #
 # The wording is probably not the lever. On ten cases chosen to include every
-# known 7B mistake, a 32B model scored ten of ten against the 7B's five, on this
-# exact brief with nothing reworded, and kept every refusal the 7B already had
-# right. That is a test built to be failed by the smaller model rather than a
-# fair sample, so read it as "the faults are capacity" and not as an accuracy
-# figure. Model choice stays in config; this note only records what was measured.
+# known 7B mistake, a 32B model scored ten of ten against the 7B's five, twice,
+# on this exact brief with nothing reworded, and kept every refusal the 7B
+# already had right. That is a test built to be failed by the smaller model
+# rather than a fair sample, so read it as "the faults are capacity" and not as
+# an accuracy figure.
+#
+# Capacity is not free, and the limit is memory rather than patience. A 32B at
+# four-bit quantization wants about 22 GB resident. Where that does not fit, the
+# remainder is served from the CPU and throughput collapses out of all
+# proportion to the shortfall: measured with roughly a third of the weights on
+# an accelerator, a fifteen-token answer took over two minutes, which is an hour
+# of judging for one ordinary run. So the useful question when a judge is
+# refusing good lots is not "is there a bigger model" but "what is the largest
+# model that fits entirely", and that is a fact about a machine rather than
+# about this file. Model choice stays in config.
 #
 # Down-weighting degrades gently instead. Where a want has plenty of real lots,
 # the set-aside ones fall below reports.most_per_interest and are never seen.
