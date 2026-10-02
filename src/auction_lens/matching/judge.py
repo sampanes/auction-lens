@@ -196,11 +196,17 @@ def is_judgeable(rule: InterestRule) -> bool:
 # "not a kayak": it measures the lot against the first item of the list and
 # reads the rest as decoration. Moving the refused word to the front of the same
 # list turns those refusals into keeps. Instructing it not to do that did not
-# help, across four separate drafts of this brief; a 32B model answered the same
-# question correctly and named the matching item, which suggests capacity rather
-# than wording. So a rule offering alternatives should lead with a general
-# phrase rather than with one of them, and a reader who sees "not a <first thing
-# the rule lists>" should suspect this before suspecting the lot.
+# help, across four separate drafts of this brief. So a rule offering
+# alternatives should lead with a general phrase rather than with one of them,
+# and a reader who sees "not a <first thing the rule lists>" should suspect this
+# before suspecting the lot.
+#
+# The wording is probably not the lever. On ten cases chosen to include every
+# known 7B mistake, a 32B model scored ten of ten against the 7B's five, on this
+# exact brief with nothing reworded, and kept every refusal the 7B already had
+# right. That is a test built to be failed by the smaller model rather than a
+# fair sample, so read it as "the faults are capacity" and not as an accuracy
+# figure. Model choice stays in config; this note only records what was measured.
 #
 # Down-weighting degrades gently instead. Where a want has plenty of real lots,
 # the set-aside ones fall below reports.most_per_interest and are never seen.
