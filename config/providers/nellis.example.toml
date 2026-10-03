@@ -230,6 +230,37 @@ enabled = true
 currency = "USD"
 
 # Sources are data, not code. Add, remove, disable, or reweight them here.
+
+# What this exact product has really closed at here before. The only source that
+# needs no network and no maintenance: it reads the observation history this tool
+# already keeps, so it grows on its own.
+#
+# It exists because stated retail is the seller's own number. Measured across
+# one real corpus, lots led by a recognisable maker fetched a median 27% of
+# their claimed retail while everything else fetched 15% -- the claim is
+# inflated hardest where it is least deserved, so a discount measured against it
+# flatters the worst goods. A median of real closes carries no such bias.
+#
+# Two products are the same when their titles match after case, punctuation and
+# warehouse shouting are removed. Digits are kept, so a 48-inch model is never
+# compared against a 60-inch one.
+[[valuation.sources]]
+id = "closing-history"
+label = "Observed closes here"
+adapter = "closing_history"
+weight = 2.0
+# Adapter settings sit flat on the source, like every other source here: any key
+# that is not id/adapter/enabled/label/categories/weight is passed to the adapter.
+# The observation database written by the daily run. Opened read-only.
+path = "data/auction-lens.sqlite3"
+# A stored bid is the last reading before the hammer, not the hammer. Only a
+# reading taken this close to the end is treated as a closing price; earlier
+# than that it is a lower bound that happens to be last.
+endpoint_minutes = 30
+# One prior close is an anecdote. Two is the fewest that can disagree, which is
+# the whole point of reporting a range. Raise it for fewer, firmer answers.
+minimum_closes = 2
+
 [[valuation.sources]]
 id = "reviewed-comps"
 label = "Reviewed comparable sales"

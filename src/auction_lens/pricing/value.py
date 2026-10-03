@@ -14,6 +14,7 @@ from importlib import import_module
 
 from ..config.pricing import ValuationConfig, ValuationSourceConfig
 from ..listings.model import Listing
+from .closing_history import ClosingHistoryAdapter
 from .http_json import HttpJsonAdapter
 from .model import (
     ResearchLink,
@@ -35,6 +36,7 @@ BAND_EDGES = ("low", "typical", "high")
 IMPORT_PATH_SEPARATOR = ":"
 
 BUILTIN_ADAPTERS = {
+    "closing_history": ClosingHistoryAdapter,
     "reference": ReferenceAdapter,
     "xml_catalog": XmlCatalogAdapter,
     "http_json": HttpJsonAdapter,

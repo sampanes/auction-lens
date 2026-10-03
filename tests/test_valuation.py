@@ -3,20 +3,32 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 import unittest
 from dataclasses import replace
+from datetime import datetime, timedelta
 from decimal import Decimal
+from pathlib import Path
 from unittest.mock import patch
 from urllib.request import Request
 
 from auction_lens.config.pricing import ValuationSourceConfig
 from auction_lens.http_safety import PublicHttpsRedirectHandler
 from auction_lens.matching.evaluate import evaluate
+from auction_lens.pricing.closing_history import (
+    ClosingHistoryAdapter,
+    _read_only,
+)
 from auction_lens.pricing.http_json import HttpJsonAdapter, read_path
 from auction_lens.pricing.model import ValuationObservation
 from auction_lens.pricing.reference import ReferenceAdapter
 from auction_lens.pricing.sources import fill_template
-from auction_lens.pricing.value import ValuationEngine, combine_into_bands, create_adapter
+from auction_lens.pricing.value import (
+    BUILTIN_ADAPTERS,
+    ValuationEngine,
+    combine_into_bands,
+    create_adapter,
+)
 from auction_lens.reports.findings import build_report
 from auction_lens.reports.html import render_html
 from auction_lens.reports.text import render_text
@@ -100,9 +112,18 @@ class EngineTests(unittest.TestCase):
         self.assertNotIn(private_detail, webhook)
 
     def test_an_unknown_adapter_names_the_built_in_choices(self):
+        """Every built-in, read from the registry so a new one cannot be missed.
+
+        Spelling the list out here made adding an adapter fail this test, which
+        says nothing about whether the message is useful.
+        """
         source = ValuationSourceConfig(source_id="mystery", adapter="mystery")
-        with self.assertRaisesRegex(ValueError, "built-ins: http_json, reference, xml_catalog"):
+        with self.assertRaises(ValueError) as refused:
             create_adapter(source)
+        said = str(refused.exception)
+        self.assertIn("unknown valuation adapter 'mystery'", said)
+        for name in BUILTIN_ADAPTERS:
+            self.assertIn(name, said)
 
     def configured_candidate(self):
         """One ordinary candidate to carry an engine result into both reports."""
@@ -284,6 +305,198 @@ class SourceSettingsTests(unittest.TestCase):
             ValueError, r"valuation\.sources\.sold-research\.url_template is required"
         ):
             ReferenceAdapter(source).collect(example_listings()[SOUNDBAR])
+
+
+class ClosingHistoryTests(unittest.TestCase):
+    """Pricing a lot from what the same product really fetched here before.
+
+    The point of the source is that stated retail is the seller's own number.
+    So these tests care about two things above all: that a price only counts
+    when it was read late enough to be a close, and that a lot can never be
+    its own evidence.
+    """
+
+    NOW = "2026-01-10T18:00:00+00:00"
+
+    def _database(self, directory, rows):
+        """Build a throwaway history. Each row is one lot and one reading."""
+        location = Path(directory) / "history.sqlite3"
+        connection = sqlite3.connect(location)
+        connection.execute(
+            "CREATE TABLE listings (source TEXT, listing_id TEXT, title TEXT, "
+            "ends_at TEXT)"
+        )
+        connection.execute(
+            "CREATE TABLE price_history (source TEXT, listing_id TEXT, "
+            "observed_at TEXT, current_bid TEXT)"
+        )
+        for listing_id, title, ends_at, observed_at, bid in rows:
+            connection.execute(
+                "INSERT INTO listings VALUES ('nellis', ?, ?, ?)",
+                (listing_id, title, ends_at),
+            )
+            connection.execute(
+                "INSERT INTO price_history VALUES ('nellis', ?, ?, ?)",
+                (listing_id, observed_at, bid),
+            )
+        connection.commit()
+        connection.close()
+        return location
+
+    def _adapter(self, location, **settings):
+        settings.setdefault("path", str(location))
+        return ClosingHistoryAdapter(
+            ValuationSourceConfig(
+                source_id="closing-history",
+                adapter="closing_history",
+                settings=settings,
+            )
+        )
+
+    def _closed(self, listing_id, title, bid, *, minutes_early=5):
+        """One lot that closed, read `minutes_early` before it ended."""
+        ends = datetime.fromisoformat(self.NOW)
+        seen = ends - timedelta(minutes=minutes_early)
+        return (listing_id, title, ends.isoformat(), seen.isoformat(), bid)
+
+    def _subject(self, title, listing_id="999"):
+        return replace(
+            example_listings()[SOUNDBAR], listing_id=listing_id, title=title
+        )
+
+    def test_it_reports_the_observed_spread(self):
+        with temporary_directory() as directory:
+            location = self._database(directory, [
+                self._closed("1", "Northvale Patio Heater 48in", "40.00"),
+                self._closed("2", "Northvale Patio Heater 48in", "60.00"),
+                self._closed("3", "Northvale Patio Heater 48in", "50.00"),
+            ])
+            found = self._adapter(location).collect(
+                self._subject("Northvale Patio Heater 48in")
+            )
+        self.assertEqual(len(found.observations), 1)
+        priced = found.observations[0]
+        self.assertEqual(priced.low, Decimal("40.00"))
+        self.assertEqual(priced.typical, Decimal("50.00"))
+        self.assertEqual(priced.high, Decimal("60.00"))
+        self.assertEqual(priced.sample_size, 3)
+
+    def test_an_even_number_of_closes_reports_the_midpoint(self):
+        """median_low would report the lower close as the typical price."""
+        with temporary_directory() as directory:
+            location = self._database(directory, [
+                self._closed("1", "Northvale Patio Heater 48in", "80.00"),
+                self._closed("2", "Northvale Patio Heater 48in", "300.00"),
+            ])
+            found = self._adapter(location).collect(
+                self._subject("Northvale Patio Heater 48in")
+            )
+        self.assertEqual(found.observations[0].typical, Decimal("190.00"))
+
+    def test_a_reading_taken_too_early_is_not_a_close(self):
+        """It is a lower bound that happens to be the last one recorded."""
+        with temporary_directory() as directory:
+            location = self._database(directory, [
+                self._closed("1", "Northvale Patio Heater 48in", "40.00"),
+                self._closed("2", "Northvale Patio Heater 48in", "60.00",
+                             minutes_early=240),
+                self._closed("3", "Northvale Patio Heater 48in", "50.00",
+                             minutes_early=240),
+            ])
+            found = self._adapter(location).collect(
+                self._subject("Northvale Patio Heater 48in")
+            )
+        self.assertEqual(found.observations, ())
+
+    def test_a_lot_is_never_its_own_comparable(self):
+        with temporary_directory() as directory:
+            location = self._database(directory, [
+                self._closed("1", "Northvale Patio Heater 48in", "40.00"),
+                self._closed("2", "Northvale Patio Heater 48in", "60.00"),
+            ])
+            found = self._adapter(location).collect(
+                self._subject("Northvale Patio Heater 48in", listing_id="2")
+            )
+        self.assertEqual(found.observations, ())
+
+    def test_too_few_closes_says_nothing_rather_than_guessing(self):
+        with temporary_directory() as directory:
+            location = self._database(directory, [
+                self._closed("1", "Northvale Patio Heater 48in", "40.00"),
+            ])
+            found = self._adapter(location).collect(
+                self._subject("Northvale Patio Heater 48in")
+            )
+        self.assertEqual(found.observations, ())
+
+    def test_a_lot_nobody_bid_on_says_nothing_about_the_product(self):
+        with temporary_directory() as directory:
+            location = self._database(directory, [
+                self._closed("1", "Northvale Patio Heater 48in", "0.00"),
+                self._closed("2", "Northvale Patio Heater 48in", "0.00"),
+                self._closed("3", "Northvale Patio Heater 48in", "45.00"),
+            ])
+            found = self._adapter(location).collect(
+                self._subject("Northvale Patio Heater 48in")
+            )
+        self.assertEqual(found.observations, ())
+
+    def test_a_missing_database_is_silence_not_a_crash(self):
+        with temporary_directory() as directory:
+            absent = Path(directory) / "nothing-here.sqlite3"
+            found = self._adapter(absent).collect(
+                self._subject("Northvale Patio Heater 48in")
+            )
+        self.assertEqual(found.observations, ())
+
+    def test_the_warehouse_shouting_does_not_split_a_product(self):
+        """A marker describes this copy or its collection, not the product."""
+        with temporary_directory() as directory:
+            location = self._database(directory, [
+                self._closed("1", "***FACTORY SEALED*** Northvale Heater 48in",
+                             "40.00"),
+                self._closed("2", "Northvale Heater - 48in", "60.00"),
+            ])
+            found = self._adapter(location).collect(
+                self._subject("Northvale Heater, 48in")
+            )
+        self.assertEqual(found.observations[0].sample_size, 2)
+
+    def test_a_different_model_is_a_different_product(self):
+        """The digits in a title are what separate one model from the next."""
+        with temporary_directory() as directory:
+            location = self._database(directory, [
+                self._closed("1", "Northvale Heater 48in", "40.00"),
+                self._closed("2", "Northvale Heater 60in", "60.00"),
+                self._closed("3", "Northvale Heater 72in", "80.00"),
+            ])
+            found = self._adapter(location).collect(
+                self._subject("Northvale Heater 48in")
+            )
+        self.assertEqual(found.observations, ())
+
+    def test_the_adapter_is_reachable_by_its_configured_name(self):
+        built = create_adapter(
+            ValuationSourceConfig(
+                source_id="closing-history",
+                adapter="closing_history",
+                settings={"path": "unused"},
+            )
+        )
+        self.assertIsInstance(built, ClosingHistoryAdapter)
+
+    def test_the_history_is_opened_read_only(self):
+        """A valuation source must not be able to alter the record it reads."""
+        with temporary_directory() as directory:
+            location = self._database(directory, [
+                self._closed("1", "Northvale Heater 48in", "40.00"),
+                self._closed("2", "Northvale Heater 48in", "60.00"),
+            ])
+            adapter = self._adapter(location)
+            adapter.collect(self._subject("Northvale Heater 48in"))
+            with _read_only(location) as connection:
+                with self.assertRaises(sqlite3.OperationalError):
+                    connection.execute("DELETE FROM listings")
 
 
 def _configured(**settings) -> ValuationSourceConfig:
