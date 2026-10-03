@@ -14,6 +14,7 @@ from ..config.interests import InterestRule
 from ..history.logistics import LogisticsDecisionStore
 from ..history.observations import ObservationStore
 from ..listings.model import Listing
+from ..pricing.closing_history import observed_ceiling
 from ..pricing.value import ValuationEngine
 from ..watchlist.store import FollowedListing, WatchlistStore
 from .evaluate import evaluate
@@ -209,7 +210,38 @@ def _with_valuation(
     if engine is None or not matches:
         return matches
     valuation = engine.value(listing)
-    return [replace(candidate, valuation=valuation) for candidate in matches]
+    priced = (replace(candidate, valuation=valuation) for candidate in matches)
+    return [
+        candidate for candidate in priced if not _already_costs_more(candidate, listing)
+    ]
+
+
+def _already_costs_more(candidate: Candidate, listing: Listing) -> bool:
+    """Whether evidence contradicts the only claim this candidate makes.
+
+    A price anomaly says one thing: nobody asked for this, but it is absurdly
+    cheap. That claim rests on stated retail, which is the seller's own number
+    and is inflated hardest on the goods that deserve it least. Where the same
+    product has really closed here before, there is a better witness, and if the
+    bidding has already passed every price it ever fetched then the lot is not
+    cheap and has nothing else to recommend it.
+
+    One real example scored 89 -- near the top of a report -- as 8% of a claimed
+    $84, for a bookshelf that had twice closed at $2 and $3.
+
+    A wanted match is deliberately left alone. Its claim is that somebody asked
+    for this, and no price can falsify that; whether it is worth the money is
+    what the rule's own cost ceiling is for. Two bars, two questions.
+
+    Compared in bid units, because that is what a stored close is. Premium, tax
+    and fee scale both sides identically, so no conversion can be got wrong.
+    """
+    if candidate.category is not CandidateCategory.ANOMALY:
+        return False
+    if candidate.valuation is None:
+        return False
+    ceiling = observed_ceiling(candidate.valuation)
+    return ceiling is not None and listing.current_bid > ceiling
 
 
 def follow_candidates(

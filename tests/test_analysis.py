@@ -5,6 +5,7 @@ from __future__ import annotations
 import unittest
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 from pathlib import Path
 
 from auction_lens.history.logistics import LogisticsDecisionStore
@@ -12,6 +13,8 @@ from auction_lens.history.observations import ObservationStore
 from auction_lens.matching.analyze import analyze_listings
 from auction_lens.matching.model import CandidateCategory
 from auction_lens.matching.progress import InterestRef
+from auction_lens.pricing.closing_history import BASIS
+from auction_lens.pricing.model import ValuationBand, ValuationSummary
 from auction_lens.pricing.value import ValuationEngine
 from auction_lens.watchlist.model import Verdict, WatchedItem
 from auction_lens.watchlist.store import WatchlistStore
@@ -130,6 +133,98 @@ class ReportCapTests(unittest.TestCase):
                 observations=ObservationStore(database),
                 decisions=LogisticsDecisionStore(database),
             )
+
+
+class ObservedCloseGateTests(unittest.TestCase):
+    """A bargain claim can be contradicted by what the thing really fetches.
+
+    A price anomaly rests entirely on stated retail, which is the seller's own
+    number. Where the same product has closed here before, that is a better
+    witness: one real lot scored 89 as 8% of a claimed $84 for a bookshelf that
+    had twice closed at $2 and $3.
+    """
+
+    def setUp(self):
+        self.config = example_config()
+        self.listings = example_listings()
+
+    def _engine(self, low, high, basis=BASIS):
+        """An engine that reports one band, so the test states the evidence."""
+
+        class OneBand:
+            def value(self, listing):
+                return ValuationSummary(
+                    bands=(
+                        ValuationBand(
+                            basis=basis,
+                            low=Decimal(low),
+                            typical=Decimal(low),
+                            high=Decimal(high),
+                            source_count=1,
+                            sample_size=2,
+                        ),
+                    )
+                )
+
+        return OneBand()
+
+    def _anomalies(self, bid, engine):
+        """Every anomaly surviving a run where the lot is bid up to `bid`."""
+        priced = [
+            replace(listing, current_bid=Decimal(bid)) for listing in self.listings
+        ]
+        with temporary_database() as database:
+            result = analyze_listings(
+                priced,
+                self.config,
+                observations=ObservationStore(database),
+                decisions=LogisticsDecisionStore(database),
+                valuation_engine=engine,
+            )
+        return [
+            item
+            for item in result.all_candidates
+            if item.category == CandidateCategory.ANOMALY
+        ]
+
+    def test_an_anomaly_bid_past_every_observed_close_is_dropped(self):
+        self.assertEqual(self._anomalies("30", self._engine("5", "24")), [])
+
+    def test_an_anomaly_still_under_the_ceiling_survives(self):
+        self.assertTrue(self._anomalies("1", self._engine("5", "24")))
+
+    def test_the_ceiling_itself_is_not_past_it(self):
+        """Equal is not greater; a lot at the best observed price still counts."""
+        self.assertTrue(self._anomalies("24", self._engine("5", "24")))
+
+    def test_evidence_of_another_kind_does_not_gate_anything(self):
+        """Only observed closes here are a witness to what this fetches."""
+        surviving = self._anomalies("30", self._engine("5", "24", basis="used_sold"))
+        self.assertTrue(surviving)
+
+    def test_a_wanted_match_is_never_dropped_by_price_evidence(self):
+        """Its claim is that somebody asked for this, which a price cannot deny."""
+        priced = [
+            replace(listing, current_bid=Decimal("30")) for listing in self.listings
+        ]
+        with temporary_database() as database:
+            result = analyze_listings(
+                priced,
+                self.config,
+                observations=ObservationStore(database),
+                decisions=LogisticsDecisionStore(database),
+                valuation_engine=self._engine("1", "2"),
+            )
+        wanted = [
+            item
+            for item in result.all_candidates
+            if item.category == CandidateCategory.WANTED
+        ]
+        self.assertTrue(wanted, "a wanted match should survive cheap comparables")
+
+    def test_without_an_engine_nothing_is_gated(self):
+        """The gate can only ever remove a lot it has evidence against."""
+        self.assertTrue(self._anomalies("30", None))
 
 
 class StillOpenTests(unittest.TestCase):

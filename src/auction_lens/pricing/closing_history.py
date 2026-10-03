@@ -24,13 +24,14 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
+from decimal import Decimal
 from pathlib import Path
 from statistics import median
 
 from ..config.pricing import ValuationSourceConfig
 from ..listings.model import Listing
 from ..values import CENTS, parse_decimal
-from .model import ValuationObservation
+from .model import ValuationObservation, ValuationSummary
 from .sources import SourceResult, settings_of
 
 # What the band is called on a report card. Not "sold", because a stored bid is
@@ -77,6 +78,23 @@ class Close:
 
     listing_id: str
     price: object
+
+
+def observed_ceiling(summary: ValuationSummary) -> Decimal | None:
+    """The most this product has ever actually fetched here, if that is known.
+
+    Lives here because this module decides what `observed_close` means, and a
+    caller should be able to ask the question without knowing the name of the
+    basis or which adapter produced it.
+
+    The answer is in bid units, like every stored close. A caller comparing it
+    against a bid needs no conversion, and premium, tax and fee scale both
+    sides identically, so the comparison is the same one either way.
+    """
+    for band in summary.bands:
+        if band.basis == BASIS:
+            return band.high
+    return None
 
 
 class ClosingHistoryAdapter:
