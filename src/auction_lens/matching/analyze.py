@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
+from zoneinfo import ZoneInfo
 
 from ..config.app import AppConfig
 from ..config.interests import InterestRule
@@ -47,6 +48,9 @@ class AnalysisResult:
     # Lots left unscored because they cannot be acted on at all: the auction
     # is over. Counted so a short report is never mistaken for a quiet day.
     lots_already_closed: int = 0
+    # Open lots held back because they close on a later day than this run's,
+    # when the report asks for today's closes only.
+    lots_closing_later: int = 0
     # Ways to reach these lots at the provider's end. Built from everything
     # that matched rather than from the part that fitted, because reaching
     # what the cap held back is the whole reason to offer a phrase.
@@ -67,11 +71,16 @@ class AnalysisResult:
     def listings_from_other_providers(self) -> int:
         """Everything read that this provider's configuration cannot speak for.
 
-        Three things account for every listing read: another provider's, one
-        whose auction already ended, and one actually scored. Naming two of
-        them leaves this one as the remainder.
+        Four things account for every listing read: another provider's, one
+        whose auction already ended, one held for a later day, and one actually
+        scored. Naming three of them leaves this one as the remainder.
         """
-        return self.listings_read - self.listings_scored - self.lots_already_closed
+        return (
+            self.listings_read
+            - self.listings_scored
+            - self.lots_already_closed
+            - self.lots_closing_later
+        )
 
     @property
     def matches_not_shown(self) -> int:
@@ -103,6 +112,7 @@ def analyze_listings(
     candidates: list[Candidate] = []
     scored = 0
     skipped = 0
+    later = 0
     for listing in listings:
         if listing.source != config.provider.provider_id:
             continue
@@ -112,6 +122,11 @@ def analyze_listings(
         change = observations.observe(listing)
         if not still_open(listing, now):
             skipped += 1
+            continue
+        if config.reports.closing_today_only and not closes_today(
+            listing, now, config.acquisition.zone
+        ):
+            later += 1
             continue
         scored += 1
         matches = evaluate(
@@ -150,6 +165,7 @@ def analyze_listings(
         matches_found=len(candidates),
         lots_followed=follow_candidates(reportable, candidates, watchlist),
         lots_already_closed=skipped,
+        lots_closing_later=later,
         interest_progress=plan.progress,
         unreviewed_wins=plan.unreviewed_wins,
         vetting=vetting,
@@ -199,6 +215,24 @@ def still_open(listing: Listing, now: datetime) -> bool:
     something the operator asked for.
     """
     return listing.ends_at is None or listing.ends_at > now
+
+
+def closes_today(listing: Listing, now: datetime, zone: ZoneInfo) -> bool:
+    """Whether the lot closes on the run's own calendar day at the provider.
+
+    This is the opt-in exception to ranking-not-cutting above, and it differs
+    from the window that was removed in the way that mattered: a day boundary
+    does not slide with the clock, so every run on one day agrees about which
+    lots belong to it. A morning run sees all of today; an evening run sees
+    what is left of it. Nothing closing tomorrow is lost, only deferred to
+    tomorrow's mail -- and until then its bid is not yet a price, which is how
+    a $0 lot with a day to run came to look like the bargain of the evening.
+
+    A lot stating no closing time is kept, for the same reason as above.
+    """
+    if listing.ends_at is None:
+        return True
+    return listing.ends_at.astimezone(zone).date() == now.astimezone(zone).date()
 
 
 def _with_valuation(

@@ -312,6 +312,78 @@ class StillOpenTests(unittest.TestCase):
         )
 
 
+class ClosingTodayOnlyTests(unittest.TestCase):
+    """An opt-in report of today's closes, measured on the provider's calendar.
+
+    The evening mail exists for lots closing tonight. A lot with a day still to
+    run shows a bid that is not yet a price -- often $0, which reads as the
+    bargain of the evening -- so it waits for the mail on the day it closes.
+    """
+
+    def setUp(self):
+        base = example_config()
+        # 21:00 on a Wednesday in Mesa, which is already Thursday in UTC. The
+        # provider's day decides, not the machine's or UTC's.
+        self.config = replace(
+            base,
+            acquisition=replace(base.acquisition, timezone="America/Phoenix"),
+            reports=replace(base.reports, closing_today_only=True),
+        )
+        self.lot = example_listings()[SOUNDBAR]
+        self.now = datetime(2026, 9, 10, 4, 0, tzinfo=UTC)
+
+    def test_a_lot_closing_tonight_is_reported(self):
+        tonight = replace(self.lot, ends_at=self.now + timedelta(hours=1))
+        result = self._run([tonight])
+        self.assertTrue(result.candidates)
+        self.assertEqual(result.lots_closing_later, 0)
+
+    def test_a_lot_with_a_day_to_run_is_held_and_counted(self):
+        tomorrow = replace(self.lot, ends_at=self.now + timedelta(hours=23))
+        result = self._run([tomorrow])
+        self.assertFalse(result.candidates)
+        self.assertEqual(result.listings_scored, 0)
+        self.assertEqual(result.lots_closing_later, 1)
+        # Held lots are their own count, not mistaken for another provider's.
+        self.assertEqual(result.listings_from_other_providers, 0)
+
+    def test_the_day_is_the_provider_s_rather_than_utc_s(self):
+        # 23:30 in Mesa is the next day in UTC, and still tonight here.
+        late = replace(self.lot, ends_at=self.now + timedelta(hours=2, minutes=30))
+        self.assertTrue(self._run([late]).candidates)
+
+    def test_a_lot_stating_no_closing_time_is_kept(self):
+        silent = replace(self.lot, ends_at=None)
+        result = self._run([silent])
+        self.assertTrue(result.candidates)
+        self.assertEqual(result.lots_closing_later, 0)
+
+    def test_off_by_default_so_a_later_close_is_still_reported(self):
+        config = replace(
+            self.config, reports=replace(self.config.reports, closing_today_only=False)
+        )
+        tomorrow = replace(self.lot, ends_at=self.now + timedelta(hours=23))
+        with temporary_database() as database:
+            result = analyze_listings(
+                [tomorrow],
+                config,
+                observations=ObservationStore(database),
+                decisions=LogisticsDecisionStore(database),
+                now=self.now,
+            )
+        self.assertTrue(result.candidates)
+
+    def _run(self, listings):
+        with temporary_database() as database:
+            return analyze_listings(
+                listings,
+                self.config,
+                observations=ObservationStore(database),
+                decisions=LogisticsDecisionStore(database),
+                now=self.now,
+            )
+
+
 class OutcomeAwareInterestTests(unittest.TestCase):
     """A confirmed purchase retires only the finite want it satisfies."""
 

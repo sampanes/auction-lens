@@ -73,6 +73,7 @@ class ProfileRenderingTests(unittest.TestCase):
             rendered,
         )
         self.assertIn("Length: all matches", rendered)
+        self.assertIn("Closing: every open lot", rendered)
         self.assertIn("Valuation: off", rendered)
 
     def test_it_does_not_expose_credentials_or_adapter_details(self):

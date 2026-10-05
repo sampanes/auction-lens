@@ -103,6 +103,7 @@ def _score_and_report(
     )
     _report_skipped(result.listings_from_other_providers, config.provider.provider_id)
     _report_already_closed(result.lots_already_closed)
+    _report_closing_later(result.lots_closing_later)
     _report_capped(result.matches_not_shown, len(result.candidates))
     _report_vetting(result.vetting)
     additionally_followed, delivery_failures = deliver_findings(
@@ -165,6 +166,15 @@ def _report_already_closed(count: int) -> None:
     """Account for the lots that were read but could no longer be bid on."""
     if count:
         print(f"Passed over {count} lot(s) that have already closed.")
+
+
+def _report_closing_later(count: int) -> None:
+    """Account for the open lots held back for the day they actually close."""
+    if count:
+        print(
+            f"Held back {count} lot(s) that close on a later day. "
+            "Set reports.closing_today_only = false to see them."
+        )
 
 
 def _report_capped(hidden: int, shown: int) -> None:

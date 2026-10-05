@@ -62,6 +62,10 @@ class ReportsConfig:
     # Reading order changes only what a person sees first, never admission.
     order: ReadingOrder = ReadingOrder.PRIORITY
     most_per_interest: int = DEFAULT_MOST_PER_INTEREST
+    # Keep only lots closing on the provider's current calendar day. A bid with
+    # a day still to run is not a price yet, and a lot that closes tomorrow can
+    # wait for tomorrow's mail.
+    closing_today_only: bool = False
 
     def __post_init__(self) -> None:
         settle_choice(self, "order", ReadingOrder)

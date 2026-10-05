@@ -289,6 +289,13 @@ url_template = "https://example.invalid/music-price-guide?q={query}"
 # short report is never mistaken for a quiet day.
 max_items = 30
 
+# Keep only lots closing on the provider's current calendar day. A lot with a
+# day still to run shows a bid that is not yet a price -- often $0, which reads
+# like a steal -- so it waits for the mail on the day it actually closes. The
+# boundary is the provider's midnight, so every run on one day agrees about
+# which lots are today's. Held-back lots are counted in the run output.
+closing_today_only = false
+
 # A webhook is the errand email is not: somebody ran the command and wants the
 # answer on their phone now. The address is a secret, so only the name of the
 # variable holding it appears here.

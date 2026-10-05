@@ -286,6 +286,7 @@ def _reports(section: Section) -> ReportsConfig:
             most_per_interest=section.positive_integer(
                 "most_per_interest", DEFAULT_MOST_PER_INTEREST
             ),
+            closing_today_only=section.flag("closing_today_only", False),
         )
 
 

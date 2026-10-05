@@ -226,7 +226,14 @@ def _report(config: AppConfig) -> list[str]:
         valuation_summary = (
             f"on in {valuation.currency}; {active} of {len(valuation.sources)} sources active"
         )
-    return [f"- Length: {length}.", f"- Valuation: {valuation_summary}."]
+    closing = (
+        "only lots closing today" if config.reports.closing_today_only else "every open lot"
+    )
+    return [
+        f"- Length: {length}.",
+        f"- Closing: {closing}.",
+        f"- Valuation: {valuation_summary}.",
+    ]
 
 
 def _temporary_circumstances() -> list[str]:
