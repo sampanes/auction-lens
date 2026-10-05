@@ -65,7 +65,7 @@ class ReportsConfig:
     # Keep only lots closing on the provider's current calendar day. A bid with
     # a day still to run is not a price yet, and a lot that closes tomorrow can
     # wait for tomorrow's mail.
-    closing_today_only: bool = False
+    closing_today_only: bool = True
 
     def __post_init__(self) -> None:
         settle_choice(self, "order", ReadingOrder)

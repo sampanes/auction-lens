@@ -352,6 +352,15 @@ class ConfigValidationTests(unittest.TestCase):
                 'mode = "authorized_http"\nrun_mode = "staging"',
             )
 
+    def test_a_config_written_before_closing_today_only_reports_only_today(self):
+        # A local file copied from the example before the setting existed
+        # never mentions it, and the evening mail is for tonight's closes.
+        config = self._load_variant("closing_today_only = false\n", "")
+        self.assertTrue(config.reports.closing_today_only)
+
+    def test_the_example_keeps_every_synthetic_lot_visible(self):
+        self.assertFalse(example_config().reports.closing_today_only)
+
     def _load_variant(
         self,
         original: str,

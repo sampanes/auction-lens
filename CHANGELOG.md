@@ -5,8 +5,9 @@ the exact source snapshots; this file explains what changed in human terms.
 
 ## Unreleased
 
-- Added `reports.closing_today_only`, which keeps a report to lots closing on
-  the provider's current day and counts the ones held for a later day.
+- Added `reports.closing_today_only`, on unless a config sets it to false,
+  which keeps a report to lots closing on the provider's current day and counts
+  the ones held for a later day.
 
 ## 0.9.0 - 2026-09-16
 

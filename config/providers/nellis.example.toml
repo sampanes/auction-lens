@@ -294,6 +294,8 @@ max_items = 30
 # like a steal -- so it waits for the mail on the day it actually closes. The
 # boundary is the provider's midnight, so every run on one day agrees about
 # which lots are today's. Held-back lots are counted in the run output.
+# Leaving this line out means true. The synthetic examples close across several
+# days, so this file turns it off to keep every one of them visible.
 closing_today_only = false
 
 # A webhook is the errand email is not: somebody ran the command and wants the
