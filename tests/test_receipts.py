@@ -31,12 +31,19 @@ def _route(
     report_kind: ReportKind = ReportKind.FINDINGS,
     channel: DeliveryChannel = DeliveryChannel.EMAIL,
     destination: str = "destination-a",
+    summary_scope: str = "",
 ) -> DeliveryRoute:
-    return DeliveryRoute(report_kind, channel, _digest(destination))
+    return DeliveryRoute(
+        report_kind,
+        channel,
+        _digest(destination),
+        summary_scope,
+    )
 
 
 ITEM = DeliveryItem("example", "listing-1", "18.00")
 SUMMARY = _digest("summary-one")
+OTHER_SUMMARY = _digest("summary-two")
 
 
 class DeliveryReadinessTests(unittest.TestCase):
@@ -153,6 +160,62 @@ class DeliverySessionTests(unittest.TestCase):
                         self.assertEqual(delivery.revisions([ITEM]), {})
                         self.assertTrue(delivery.summary_changed(SUMMARY))
 
+    def test_summary_scopes_are_independent_but_share_item_receipts(self):
+        nellis = _route(summary_scope="nellis")
+        vine = _route(summary_scope="vine")
+        with temporary_directory() as directory:
+            ledger = DeliveryLedger(directory / "deliveries.sqlite3")
+            with ledger.session(nellis) as delivery:
+                delivery.accept([ITEM], SUMMARY)
+
+            with ledger.session(vine) as delivery:
+                self.assertEqual(delivery.revisions([ITEM]), {ITEM.key: ITEM.revision})
+                self.assertTrue(delivery.summary_changed(OTHER_SUMMARY))
+                delivery.accept([], OTHER_SUMMARY)
+
+            with ledger.session(nellis) as delivery:
+                self.assertEqual(delivery.revisions([ITEM]), {ITEM.key: ITEM.revision})
+                self.assertFalse(delivery.summary_changed(SUMMARY))
+            with ledger.session(vine) as delivery:
+                self.assertEqual(delivery.revisions([ITEM]), {ITEM.key: ITEM.revision})
+                self.assertFalse(delivery.summary_changed(OTHER_SUMMARY))
+
+    def test_a_scoped_summary_can_inherit_an_exact_legacy_receipt(self):
+        legacy = _route()
+        matching_scope = _route(summary_scope="nellis")
+        differing_scope = _route(summary_scope="vine")
+        with temporary_directory() as directory:
+            path = directory / "deliveries.sqlite3"
+            ledger = DeliveryLedger(path)
+            with ledger.session(legacy) as delivery:
+                delivery.accept([ITEM], SUMMARY)
+
+            with ledger.session(matching_scope) as delivery:
+                self.assertEqual(delivery.revisions([ITEM]), {ITEM.key: ITEM.revision})
+                self.assertFalse(delivery.summary_changed(SUMMARY))
+
+            with closing(sqlite3.connect(path)) as connection:
+                summaries_before = connection.execute(
+                    "SELECT COUNT(*) FROM delivery_summaries"
+                ).fetchone()[0]
+            self.assertEqual(summaries_before, 1)
+
+            with ledger.session(differing_scope) as delivery:
+                self.assertEqual(delivery.revisions([ITEM]), {ITEM.key: ITEM.revision})
+                self.assertTrue(delivery.summary_changed(OTHER_SUMMARY))
+                delivery.accept([], OTHER_SUMMARY)
+
+            with ledger.session(matching_scope) as delivery:
+                self.assertFalse(delivery.summary_changed(SUMMARY))
+            with ledger.session(differing_scope) as delivery:
+                self.assertFalse(delivery.summary_changed(OTHER_SUMMARY))
+
+            with closing(sqlite3.connect(path)) as connection:
+                summaries_after = connection.execute(
+                    "SELECT COUNT(*) FROM delivery_summaries"
+                ).fetchone()[0]
+            self.assertEqual(summaries_after, 2)
+
     def test_accept_records_only_the_selected_events(self):
         omitted = DeliveryItem("example", "listing-2", "9.00")
         with temporary_directory() as directory:
@@ -228,10 +291,13 @@ class DeliverySessionTests(unittest.TestCase):
 
     def test_schema_and_file_contain_only_opaque_delivery_facts(self):
         raw_destination = "synthetic-recipient-marker"
+        raw_scope = "synthetic-provider-scope-marker"
         with temporary_directory() as directory:
             path = directory / "deliveries.sqlite3"
             ledger = DeliveryLedger(path)
-            with ledger.session(_route(destination=raw_destination)) as delivery:
+            with ledger.session(
+                _route(destination=raw_destination, summary_scope=raw_scope)
+            ) as delivery:
                 delivery.accept([ITEM], SUMMARY)
 
             with closing(sqlite3.connect(path)) as connection:
@@ -250,8 +316,13 @@ class DeliverySessionTests(unittest.TestCase):
             self.assertTrue(
                 {"recipient", "webhook", "title", "url", "photo"}.isdisjoint(columns)
             )
-            self.assertEqual(destinations, {_digest(raw_destination)})
+            self.assertIn(_digest(raw_destination), destinations)
+            self.assertEqual(len(destinations), 2)
+            self.assertTrue(
+                all(len(value) == 64 and value.isascii() for value in destinations)
+            )
             self.assertNotIn(raw_destination.encode("utf-8"), path.read_bytes())
+            self.assertNotIn(raw_scope.encode("utf-8"), path.read_bytes())
 
 
 if __name__ == "__main__":

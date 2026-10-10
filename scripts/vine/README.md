@@ -62,8 +62,10 @@ and says so in its console.
 
 **A sweep, which the operator starts.** With a Vine item page open in the active
 tab, click the toolbar button. The extension asks the sink for the plan, then
-visits one search per term at the configured spacing, recording each page. The
-badge counts the terms remaining. Clicking again stops it. It also stops when
+visits one search per term at the configured spacing, recording each page. A
+spacing below 30 seconds is rounded up to 30 seconds, Chrome's minimum durable
+alarm delay. The badge counts the terms remaining. Clicking again stops it. It
+also stops when
 the terms run out or the search budget is spent.
 
 **One sweep a day, which nobody starts.** Every half hour, while Chrome happens
@@ -137,16 +139,24 @@ backstop:
   reports what it did search, closes the tab it opened, and lets the next
   check start again; a sweep that searched nothing claims nothing, so the
   evening is retried rather than lost.
+- Moving to the next term is persisted before a uniquely named one-shot alarm
+  is armed. Chrome may discard a Manifest V3 worker between events, which
+  cancels its ordinary timers; the alarm wakes a fresh worker, and only the
+  exact alarm name stored with that transition may claim it. A late alarm from
+  an older transition is harmless, and stopping clears the alarm the current
+  transition owns.
 
-Those three are tested, in `scripts/vine/test-extension.js`:
+Those four are tested, in `scripts/vine/test-extension.js`:
 
     node scripts/vine/test-extension.js
 
 `scripts/check.py` runs it as its last step and refuses without Node rather
 than skipping it, because a gate that reports success over an unchecked half
 is worse than one that will not start. The test loads both files into stubbed
-page and worker contexts and drives a whole sweep through them, which is the
-only way to ask "does a term with no results reach the next term" without
+page and worker contexts and drives a whole sweep through them, including
+discarding one worker after it schedules the next term and delivering the
+alarm to a fresh worker. That is the only way to ask "does a term with no
+results reach the next term" without
 Amazon. It needs Node and nothing else: there is no package.json and no
 lockfile here, so no published package can change what that check does.
 
@@ -168,7 +178,9 @@ Two different consoles, which is the usual reason a message cannot be found:
   worker" link on the extension's card in `chrome://extensions`.
 
 Editing anything under `extension/` needs a **Reload** on that card before the
-change takes effect.
+change takes effect. The toolbar hover text includes the running manifest
+version; after reloading, it must match `extension/manifest.json`. Merely
+editing the files does not update the worker Chrome already registered.
 
 ## What a record holds
 
@@ -275,12 +287,14 @@ and `scripts\schedule.cmd` owns the time it runs at, as it does for every other
 run. It is the back half only: nothing in it asks Amazon for anything.
 
     doctor --email        refuse now if the mail or the judge is not ready
-    fresh-records.py      exit 1 if nothing arrived inside the 18h window
-    pull                  collapse the day's sightings into lots
+    fresh-records.py      atomically stage rows inside the 18h window
+    pull                  collapse those fresh sightings into lots
     run --email           score them and send what matters
 
 It sends nothing when no record has arrived in the last 18 hours, rather than
-mailing a digest of nothing new, and logs the skip to ignored
+mailing a digest of nothing new. The staging step also removes older rows, so
+one recent sighting cannot bring yesterday's records into today's report. It
+logs a skipped run to ignored
 `private/vine-run.log` -- because silence with no trace is how a dead pipeline
 goes unnoticed for weeks.
 

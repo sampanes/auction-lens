@@ -275,6 +275,40 @@ class DeliveryLedgerCommandTests(unittest.TestCase):
         self.assertIn("outcome summary is unchanged", second)
 
     @patch("auction_lens.reports.send.email_destination", return_value="a" * 64)
+    @patch("auction_lens.reports.send.send_email")
+    def test_two_providers_do_not_overwrite_one_mailbox_summary(
+        self, send_email, _email_destination
+    ):
+        with temporary_directory() as directory:
+            empty = directory / "empty.json"
+            empty.write_text('{"listings": []}', encoding="utf-8")
+            nellis_config = _config_copy(directory, email_enabled=True)
+            vine_config = directory / "vine.toml"
+            vine_text = nellis_config.read_text(encoding="utf-8")
+            vine_text = vine_text.replace('id = "nellis"', 'id = "vine"', 1)
+            vine_text = vine_text.replace("wanted = 1", "wanted = 2", 1)
+            vine_config.write_text(vine_text, encoding="utf-8")
+            nellis_argv, _ledger = self._run_argv(
+                directory,
+                nellis_config,
+                input_path=empty,
+            )
+            vine_argv, _ledger = self._run_argv(
+                directory,
+                vine_config,
+                input_path=empty,
+            )
+
+            run_cli([*nellis_argv, "--email"])
+            run_cli([*vine_argv, "--email"])
+            nellis_again = run_cli([*nellis_argv, "--email"])
+            vine_again = run_cli([*vine_argv, "--email"])
+
+        self.assertEqual(send_email.call_count, 2)
+        self.assertIn("Email report is up to date", nellis_again)
+        self.assertIn("Email report is up to date", vine_again)
+
+    @patch("auction_lens.reports.send.email_destination", return_value="a" * 64)
     @patch(
         "auction_lens.reports.send.send_email",
         side_effect=(OSError("synthetic SMTP failure"), None),

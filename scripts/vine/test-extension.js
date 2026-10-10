@@ -17,10 +17,10 @@
 // socket, writes a file, or reads anything outside this directory.
 //
 // What it models: one page load per navigation, the grid that page rendered,
-// the messages the two halves exchange, and the clock. What it does not
-// model: Amazon's markup, Chrome's service worker eviction, and real timing.
-// So it answers "does this control flow reach the next term", which is the
-// question the bugs were in, and not "does the selector still match".
+// the messages the two halves exchange, the clock, and eviction between worker
+// events. What it does not model: Amazon's markup and real timing. So it
+// answers "does this control flow reach the next term", which is the question
+// the bugs were in, and not "does the selector still match".
 
 const assert = require("node:assert");
 const fs = require("node:fs");
@@ -39,8 +39,8 @@ const PLAN = {
   terms: ["sundial", "birdhouse", "trivet"],
   max_searches: 3,
   max_pages_per_term: 1,
-  // Zero so the suite does not wait out the real spacing. The gap itself is
-  // the sink's to choose and is tested where it is read, not here.
+  // Deliberately below Chrome's alarm floor. The worker has to clamp it to a
+  // durable 30-second alarm; the harness fires that alarm without wall time.
   spacing_seconds: 0
 };
 
@@ -121,15 +121,32 @@ function loadPage(url, tiles, hasGrid, sendMessage) {
   };
 }
 
-function loadWorker() {
-  const store = {};
-  const log = [];
-  const visited = [];
-  const alarms = {};
-  const posted = [];
-  const tabs = { opened: 0, closed: [] };
-  const listeners = {};
-  let finished = null;
+function makeWorkerWorld() {
+  return {
+    store: {},
+    log: [],
+    visited: [],
+    alarms: {},
+    posted: [],
+    tabs: { opened: 0, closed: [] },
+    listeners: {},
+    finished: null,
+    alarmSerial: 0
+  };
+}
+
+function loadWorker(shared) {
+  // A fresh VM context with the same world models Chrome evicting a service
+  // worker: globals and listeners are recreated, while storage, alarms and
+  // tabs survive for the next event.
+  const world = shared || makeWorkerWorld();
+  const store = world.store;
+  const log = world.log;
+  const visited = world.visited;
+  const alarms = world.alarms;
+  const posted = world.posted;
+  const tabs = world.tabs;
+  const listeners = world.listeners;
 
   const context = {
     chrome: {
@@ -168,6 +185,7 @@ function loadWorker() {
         update: async (id, options) => { visited.push(options.url); }
       },
       runtime: {
+        getManifest: () => ({ version: "0.3.2" }),
         onMessage: { addListener: (fn) => { listeners.message = fn; } },
         onInstalled: { addListener: () => {} },
         onStartup: { addListener: () => {} }
@@ -186,13 +204,16 @@ function loadWorker() {
         return { ok: true, json: async () => ({ recorded: 1, file: "records.ndjson" }) };
       }
       if (url.endsWith("/swept")) {
-        finished = JSON.parse(options.body);
+        world.finished = JSON.parse(options.body);
         return { ok: true, json: async () => ({ date: "2026-01-01" }) };
       }
       throw new Error("the extension asked for something unexpected: " + url);
     },
     setTimeout: setTimeout,
     clearTimeout: clearTimeout,
+    crypto: {
+      randomUUID: () => "test-alarm-" + String(++world.alarmSerial)
+    },
     structuredClone: structuredClone,
     URLSearchParams: URLSearchParams,
     Date: Date,
@@ -217,17 +238,45 @@ function loadWorker() {
     posted: posted,
     tabs: tabs,
     settle: settle,
-    finished: () => finished,
+    finished: () => world.finished,
     state: () => store.sweep || {},
     forceState: (patch) => { store.sweep = Object.assign({}, store.sweep, patch); },
+    restart: () => loadWorker(world),
+    click: async () => {
+      await listeners.clicked();
+      await settle();
+    },
     wake: async () => {
       await listeners.alarm({ name: "vine-daily" });
       await settle();
     },
-    say: async (message) => {
-      await listeners.message(message, { tab: { id: 9 } });
+    fireAlarm: async (name) => {
+      const alarm = alarms[name];
+      if (!alarm) {
+        throw new Error("no alarm named " + name);
+      }
+      // Chrome removes a one-shot alarm before delivering its event. Periodic
+      // alarms remain registered.
+      if (!alarm.periodInMinutes) {
+        delete alarms[name];
+      }
+      await listeners.alarm({ name: name });
       await settle();
-    }
+    },
+    say: (message) => new Promise((resolve, reject) => {
+      const timeout = setTimeout(
+        () => reject(new Error("the worker left the message channel open")),
+        500
+      );
+      const keptOpen = listeners.message(message, { tab: { id: 9 } }, (response) => {
+        clearTimeout(timeout);
+        resolve(response);
+      });
+      if (keptOpen !== true) {
+        clearTimeout(timeout);
+        reject(new Error("the worker did not keep the message channel open"));
+      }
+    })
   };
 }
 
@@ -257,6 +306,10 @@ async function sweepOver(pages) {
       dom.rewrite(page.rewrittenTo);
       dom.fire();
       await worker.settle();
+    }
+    const continuation = worker.state().nextAlarm;
+    if (continuation && worker.alarms[continuation]) {
+      await worker.fireAlarm(continuation);
     }
   }
   await worker.settle();
@@ -300,6 +353,89 @@ const CASES = [
       check("every term posted its batch", worker.posted, [1, 1, 1]);
       check("it ended on its own", worker.state().active, false);
       check("the last search was counted", (worker.finished() || {}).searches, 3);
+    }
+  ],
+  [
+    "an evicted worker resumes only its owned continuation alarm",
+    async (check) => {
+      const worker = loadWorker();
+      await worker.wake();
+      const response = await worker.say({
+        type: "tiles",
+        items: [],
+        context: {
+          queue: "encore",
+          search_term: "sundial",
+          page: 1,
+          pages_available: 1
+        }
+      });
+
+      check("the message was answered after state was saved", response.ok, true);
+      check("the next term was persisted", worker.state().index, 1);
+      check("no worker timer navigated in the background", worker.visited.length, 1);
+      const firstAlarm = worker.state().nextAlarm;
+      check("a unique continuation alarm was stored", Boolean(firstAlarm), true);
+      check("the stored continuation alarm was armed", firstAlarm in worker.alarms, true);
+      check(
+        "Chrome's minimum durable spacing was honored",
+        worker.alarms[firstAlarm].delayInMinutes,
+        0.5
+      );
+
+      const restarted = worker.restart();
+      await restarted.fireAlarm(firstAlarm);
+      check("the fresh worker reached the second term", /search=birdhouse/.test(worker.visited[1]), true);
+      check("the delivered alarm gave up ownership", restarted.state().nextAlarm, "");
+
+      await restarted.say({
+        type: "tiles",
+        items: [],
+        context: {
+          queue: "encore",
+          search_term: "birdhouse",
+          page: 1,
+          pages_available: 1
+        }
+      });
+      const secondAlarm = restarted.state().nextAlarm;
+      check("the newer transition has a different owner", secondAlarm !== firstAlarm, true);
+      check("the newer continuation alarm was armed", secondAlarm in restarted.alarms, true);
+
+      // Chrome may already have queued the older event when its alarm was
+      // cleared or replaced. Deliver it after the newer transition exists: it
+      // must not claim that transition merely because both mean "next".
+      restarted.alarms[firstAlarm] = { delayInMinutes: 0.5 };
+      await restarted.fireAlarm(firstAlarm);
+      check("the stale alarm did not navigate", worker.visited.length, 2);
+      check("the newer transition kept its owner", restarted.state().nextAlarm, secondAlarm);
+      check("the newer alarm remained armed", secondAlarm in restarted.alarms, true);
+
+      await restarted.fireAlarm(secondAlarm);
+      check("the owned alarm reached the third term", /search=trivet/.test(worker.visited[2]), true);
+    }
+  ],
+  [
+    "stopping during the gap clears the owned continuation alarm",
+    async (check) => {
+      const worker = loadWorker();
+      await worker.wake();
+      await worker.say({
+        type: "tiles",
+        items: [],
+        context: {
+          queue: "encore",
+          search_term: "sundial",
+          page: 1,
+          pages_available: 1
+        }
+      });
+      const ownedAlarm = worker.state().nextAlarm;
+      check("the gap had an owned alarm", ownedAlarm in worker.alarms, true);
+
+      await worker.click();
+      check("the sweep stopped", worker.state().active, false);
+      check("its owned alarm was cleared", ownedAlarm in worker.alarms, false);
     }
   ],
   [

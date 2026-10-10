@@ -24,6 +24,8 @@ from ..watchlist.model import WatchedItem
 UNKNOWN_REVISION = "unknown"
 SHA256_HEX_LENGTH = 64
 LOWERCASE_HEX = frozenset("0123456789abcdef")
+_SUMMARY_ROUTE_DOMAIN = "auction-lens-summary-route-v1"
+_TAXABLE_VALUE_REVISION_PREFIX = "taxable-value-v1:"
 
 
 class ReportKind(StrEnum):
@@ -47,6 +49,11 @@ class DeliveryRoute:
     report_kind: ReportKind
     channel: DeliveryChannel
     destination_fingerprint: str
+    # Findings from two providers can share a mailbox without sharing one
+    # progress summary.  This public scope is hashed into a summary-only route;
+    # item receipts deliberately remain on the destination route because their
+    # source and listing id already keep providers independent.
+    summary_scope: str = ""
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -67,15 +74,36 @@ class DeliveryRoute:
                 "destination_fingerprint must be a full lowercase SHA-256 fingerprint"
             )
         object.__setattr__(self, "destination_fingerprint", fingerprint)
+        scope = self.summary_scope
+        if not isinstance(scope, str):
+            raise ValueError("summary_scope must be text")
+        if scope and not scope.strip():
+            raise ValueError("summary_scope must be empty or non-whitespace text")
+        object.__setattr__(self, "summary_scope", scope.strip())
 
     @property
     def key(self) -> tuple[str, str, str]:
-        """The non-personal identity suitable for a private delivery ledger."""
+        """The stable item-receipt identity suitable for a private ledger."""
         return (
             str(self.report_kind),
             str(self.channel),
             self.destination_fingerprint,
         )
+
+    @property
+    def summary_key(self) -> tuple[str, str, str]:
+        """The opaque summary stream, optionally separated by public scope."""
+        if not self.summary_scope:
+            return self.key
+        canonical = json.dumps(
+            (self.destination_fingerprint, self.summary_scope),
+            ensure_ascii=False,
+            separators=(",", ":"),
+        )
+        scoped = hashlib.sha256(
+            f"{_SUMMARY_ROUTE_DOMAIN}\0{canonical}".encode()
+        ).hexdigest()
+        return str(self.report_kind), str(self.channel), scoped
 
 
 @dataclass(frozen=True)
@@ -111,6 +139,7 @@ class CandidateDeliveryPlan:
     # they were waiting on is one of them.
     unchanged: tuple[Candidate, ...] = ()
     held_back_matches: int = 0
+    set_aside_matches: int = 0
 
     @property
     def unchanged_matches(self) -> int:
@@ -163,21 +192,34 @@ def plan_candidates(
 
     eligible: list[Candidate] = []
     unchanged: list[Candidate] = []
+    set_aside_matches = 0
     for candidate in candidates:
+        if candidate.set_aside:
+            # The local report keeps judge refusals visible so a noisy rule
+            # can be repaired.  An automatic destination is for actionable
+            # matches only, including when repetition was explicitly forced.
+            set_aside_matches += 1
+            continue
         item = _candidate_item(candidate)
         previous = delivered.get(item.key)
         unseen = item.key not in delivered
-        changed = not unseen and not _same_price(previous, candidate.listing.current_bid)
-        if not (unseen or changed or repeat):
+        revision_changed = not unseen and not _same_revision(previous, item.revision)
+        if not (unseen or revision_changed or repeat):
             unchanged.append(candidate)
             continue
+        previous_bid = None if unseen else _revision_bid(previous)
+        price_changed = (
+            not unseen
+            and previous_bid is not None
+            and previous_bid != candidate.listing.current_bid
+        )
         eligible.append(
             replace(
                 candidate,
                 change=ObservationChange(
                     is_new=unseen,
-                    price_changed=changed,
-                    previous_bid=None if unseen else _decimal(previous),
+                    price_changed=price_changed,
+                    previous_bid=previous_bid,
                 ),
             )
         )
@@ -191,6 +233,7 @@ def plan_candidates(
         receipts=candidate_items(selected),
         unchanged=tuple(ranked(unchanged)),
         held_back_matches=len(eligible) - len(selected),
+        set_aside_matches=set_aside_matches,
     )
 
 
@@ -266,8 +309,25 @@ def _candidate_item(candidate: Candidate) -> DeliveryItem:
     return DeliveryItem(
         source=listing.source,
         listing_id=listing.listing_id,
-        revision=_price_revision(listing.current_bid),
+        revision=_candidate_revision(candidate),
     )
+
+
+def _candidate_revision(candidate: Candidate) -> str:
+    """Track the actionable value once a received item declares one.
+
+    A received item has no auction price, so its bid remains zero forever.
+    Until its taxable value is known, retain that legacy numeric revision so
+    existing unknown-value receipts remain current.  Once the value appears,
+    tag both bid and value so learning or correcting either fact is delivered
+    exactly once without pretending an ETV-only update was a price change.
+    """
+    listing = candidate.listing
+    bid = _price_revision(listing.current_bid)
+    if not listing.value_is_taxable_income or listing.estimated_retail is None:
+        return bid
+    value = _price_revision(listing.estimated_retail)
+    return f"{_TAXABLE_VALUE_REVISION_PREFIX}{bid}:{value}"
 
 
 def _watchlist_item(item: WatchedItem) -> DeliveryItem:
@@ -287,11 +347,6 @@ def _price_revision(amount: Decimal) -> str:
     return rendered.rstrip("0").rstrip(".") if "." in rendered else rendered
 
 
-def _same_price(previous: str | None, current: Decimal) -> bool:
-    parsed = _decimal(previous)
-    return parsed is not None and parsed == current
-
-
 def _same_revision(previous: str, current: str) -> bool:
     """Compare numeric revisions by value while preserving ``unknown``."""
     previous_price = _decimal(previous)
@@ -299,6 +354,18 @@ def _same_revision(previous: str, current: str) -> bool:
     if previous_price is not None and current_price is not None:
         return previous_price == current_price
     return previous == current
+
+
+def _revision_bid(revision: str | None) -> Decimal | None:
+    """Recover a delivered bid without mistaking taxable value for a bid."""
+    if revision is None:
+        return None
+    if revision.startswith(_TAXABLE_VALUE_REVISION_PREFIX):
+        fields = revision.removeprefix(_TAXABLE_VALUE_REVISION_PREFIX).split(":")
+        if len(fields) != 2 or _decimal(fields[1]) is None:
+            return None
+        return _decimal(fields[0])
+    return _decimal(revision)
 
 
 def _decimal(value: str | None) -> Decimal | None:

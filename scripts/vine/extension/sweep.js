@@ -35,6 +35,14 @@ const SWEPT_URL = SINK + "/swept";
 const DAILY_ALARM = "vine-daily";
 const CHECK_EVERY_MINUTES = 30;
 
+// A service worker timer dies with the worker. Chrome alarms survive that
+// boundary, but Chrome will not fire one more often than every 30 seconds.
+// Keep the next search in persisted state and let a uniquely named, one-shot
+// alarm wake a fresh worker to perform it. The exact name is ownership: an old
+// event already queued by Chrome cannot consume a newer transition.
+const NEXT_ALARM_PREFIX = "vine-next:";
+const MIN_ALARM_SECONDS = 30;
+
 // Search was observed to return the same results whichever queue is named, so
 // one queue covers the catalog. Checked 2026-10-06 against encore and
 // last_chance for the same term; if that stops holding, this is the line that
@@ -74,6 +82,10 @@ const IDLE_STATE = {
   maxPages: 1,
   spacingSeconds: 0,
   backoffStep: 0,
+  // Set together only while one exact continuation alarm owns the next
+  // navigation. Both are cleared before that navigation is made.
+  nextAlarm: "",
+  nextAt: 0,
   // When the answer this sweep is waiting for stops being merely late.
   quietUntil: 0,
   // Pages that reported while this sweep was running but did not come from
@@ -100,13 +112,8 @@ function setBadge(text, color) {
 }
 
 function setStatus(text) {
-  chrome.action.setTitle({ title: "Auction Lens Vine companion\n" + text });
-}
-
-function sleep(seconds) {
-  return new Promise(function (resolve) {
-    setTimeout(resolve, seconds * 1000);
-  });
+  const version = chrome.runtime.getManifest().version;
+  chrome.action.setTitle({ title: "Auction Lens Vine companion v" + version + "\n" + text });
 }
 
 function searchUrl(term, page) {
@@ -180,6 +187,9 @@ async function reportSwept(searches, reason, strays) {
 async function stopSweep(reason) {
   const state = await readState();
   await writeState(Object.assign({}, IDLE_STATE));
+  if (state.nextAlarm) {
+    await chrome.alarms.clear(state.nextAlarm);
+  }
   await chrome.alarms.clear(BACKOFF_ALARM);
   await reportSwept(state.searches || 0, reason, state.strayReports || 0);
   if (state.ownTab && state.tabId !== null) {
@@ -196,6 +206,10 @@ async function stopSweep(reason) {
 
 async function visitCurrent(state) {
   const term = state.terms[state.index];
+  // Claim the navigation before making it. If an old continuation alarm is
+  // delivered again, its name no longer owns anything in the stored state.
+  state.nextAlarm = "";
+  state.nextAt = 0;
   // Written before the navigation, so a page that never answers is already
   // on the clock rather than waiting on a deadline that was never stored.
   state.quietUntil = Date.now() + PAGE_DEADLINE_SECONDS * 1000;
@@ -297,6 +311,7 @@ async function continueSweep(state, context) {
   // turning a twelve-search sweep into fifty.
   state.searches = state.searches + 1;
   state.backoffStep = 0;
+  await chrome.alarms.clear(BACKOFF_ALARM);
 
   const depth = Math.min(context.pages_available || 1, state.maxPages);
   if (context.page < depth) {
@@ -305,6 +320,9 @@ async function continueSweep(state, context) {
     state.index = state.index + 1;
     state.page = 1;
   }
+
+  state.nextAlarm = "";
+  state.nextAt = 0;
 
   // Stored before either way out, because stopSweep reads the count back from
   // storage to report it. Writing only on the continuing path lost the last
@@ -319,15 +337,18 @@ async function continueSweep(state, context) {
     await stopSweep("search budget spent");
     return;
   }
-  // Awaiting here is what keeps this worker alive across the gap. The spacing
-  // is seconds, well inside the idle window, so it does not need an alarm --
-  // and an alarm could not express it, since Chrome floors those at 30s.
-  await sleep(state.spacingSeconds);
-  const current = await readState();
-  if (!current.active) {
-    return;
-  }
-  await visitCurrent(current);
+  // Timers belong to the service worker and are cancelled when Chrome evicts
+  // it. Persist the continuation instead; the alarm may wake a different
+  // worker, which reads this state before navigating. Chrome floors alarms at
+  // 30 seconds, so a shorter configured spacing becomes 30 seconds here.
+  const delaySeconds = Math.max(state.spacingSeconds || 0, MIN_ALARM_SECONDS);
+  state.nextAlarm = NEXT_ALARM_PREFIX + crypto.randomUUID();
+  state.nextAt = Date.now() + delaySeconds * 1000;
+  state.quietUntil = state.nextAt + PAGE_DEADLINE_SECONDS * 1000;
+  await writeState(state);
+  await chrome.alarms.create(state.nextAlarm, { delayInMinutes: delaySeconds / 60 });
+  console.log("[vine] next search in", delaySeconds, "seconds");
+  setStatus("Next search in " + delaySeconds + "s");
 }
 
 async function backOff(state) {
@@ -337,6 +358,8 @@ async function backOff(state) {
     return;
   }
   state.backoffStep = state.backoffStep + 1;
+  state.nextAlarm = "";
+  state.nextAt = 0;
   // A sweep waiting out a throttle is not stalled, so its deadline covers the
   // wait it actually asked for as well as the answer that follows.
   state.quietUntil = Date.now() + (seconds + PAGE_DEADLINE_SECONDS) * 1000;
@@ -377,10 +400,18 @@ async function handleMessage(message, sender) {
   }
 }
 
-chrome.runtime.onMessage.addListener(function (message, sender) {
-  // Returning true holds the message port open, which is also what keeps this
-  // worker from being evicted while the handler is still waiting.
-  handleMessage(message, sender);
+chrome.runtime.onMessage.addListener(function (message, sender, sendResponse) {
+  // Returning true keeps the response channel open only until sendResponse is
+  // called. Always close it after the persisted state has been written.
+  handleMessage(message, sender).then(
+    function () {
+      sendResponse({ ok: true });
+    },
+    function (error) {
+      console.log("[vine] message failed:", error.message);
+      sendResponse({ ok: false, error: error.message });
+    }
+  );
   return true;
 });
 
@@ -433,6 +464,14 @@ chrome.alarms.onAlarm.addListener(async function (alarm) {
   if (alarm.name === DAILY_ALARM) {
     await endIfStalled();
     await checkWhetherOwed();
+    return;
+  }
+  if (alarm.name.indexOf(NEXT_ALARM_PREFIX) === 0) {
+    const state = await readState();
+    if (!state.active || !state.nextAt || alarm.name !== state.nextAlarm) {
+      return;
+    }
+    await visitCurrent(state);
     return;
   }
   if (alarm.name !== BACKOFF_ALARM) {

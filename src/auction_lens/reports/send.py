@@ -114,7 +114,12 @@ def deliver_findings(
     for channel, fingerprint in destinations.items():
         attempt = _DeliveryAttempt(channel)
         try:
-            route = DeliveryRoute(ReportKind.FINDINGS, channel, fingerprint)
+            route = DeliveryRoute(
+                ReportKind.FINDINGS,
+                channel,
+                fingerprint,
+                summary_scope=config.provider.provider_id,
+            )
             with ledger.session(route) as delivery:
                 proposed = candidate_items(result.all_candidates)
                 plan = plan_candidates(

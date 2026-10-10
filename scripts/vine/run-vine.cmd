@@ -13,6 +13,7 @@ set "ROOT=%~dp0..\.."
 set "AUCTION_LENS=%ROOT%\.venv\Scripts\auction-lens.exe"
 set "CONFIG=%ROOT%\config\vine.toml"
 set "RECORDS=%ROOT%\private\vine"
+set "FRESH_RECORDS=%ROOT%\private\vine-fresh.ndjson"
 set "LISTINGS=%ROOT%\private\vine-listings.json"
 set "STAMP=%RECORDS%\last-sweep.json"
 set "LOG=%ROOT%\private\vine-run.log"
@@ -50,7 +51,7 @@ REM An exit code, not a captured string. Capturing output here means nesting
 REM quotes inside a `for /f`, which is exactly what the first version of this
 REM got wrong: both values came out empty, empty compared equal to empty, and
 REM the gate let a run through on the one morning it existed to stop.
-"%ROOT%\.venv\Scripts\python.exe" "%ROOT%\scripts\vine\fresh-records.py"
+"%ROOT%\.venv\Scripts\python.exe" "%ROOT%\scripts\vine\fresh-records.py" --output "%FRESH_RECORDS%"
 if errorlevel 1 (
     echo     sending nothing; the companion records when Chrome is next open
     echo %DATE% %TIME% nothing fresh recorded, nothing sent>>"%LOG%"
@@ -58,16 +59,16 @@ if errorlevel 1 (
     exit /b 0
 )
 
-REM Collapse every sighting on disk into one lot per item, then score and mail.
+REM Collapse only fresh sightings into one lot per item, then score and mail.
 REM The private delivery ledger is what stops a lot already accepted at this
 REM value from being mailed a second time.
-"%AUCTION_LENS%" pull --config "%CONFIG%" --input "%RECORDS%" --output "%LISTINGS%"
+"%AUCTION_LENS%" pull --config "%CONFIG%" --input "%FRESH_RECORDS%" --output "%LISTINGS%"
 if errorlevel 1 goto :failed
 
 "%AUCTION_LENS%" run --config "%CONFIG%" --input "%LISTINGS%" --email
 if errorlevel 1 goto :failed
 
-echo %DATE% %TIME% fresh records confirmed, report sent>>"%LOG%"
+echo %DATE% %TIME% fresh-record run completed>>"%LOG%"
 popd
 exit /b 0
 

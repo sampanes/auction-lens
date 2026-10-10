@@ -1,4 +1,4 @@
-"""Exit 0 if the companion has recorded something recently, 1 if it has not.
+"""Stage recent companion records, or exit 1 when there are none.
 
 An exit code rather than printed text on purpose. The scheduled runner is a
 .cmd file, and capturing a program's output there means nesting quotes inside
@@ -19,22 +19,28 @@ it after a term or two and it abandons the attempt -- so a night that recorded
 hundreds of rows across fifteen searches still reported nothing to send.
 
 So this asks the reader's actual question: has anything arrived lately. The
-records answer it themselves. `providers/vine/swept.py` holds the whole reason.
+records answer it themselves. Only those recent rows are written to the staged
+file, so one new row cannot carry older sightings into the morning report.
+`providers/vine/swept.py` holds the whole reason.
 
-Usage: python scripts/vine/fresh-records.py
+Usage: python scripts/vine/fresh-records.py --output private/vine-fresh.ndjson
 """
 
 from __future__ import annotations
 
+import argparse
 import json
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator, Sequence
+from datetime import datetime
 from pathlib import Path
 
+from auction_lens.files import write_bytes_atomically
 from auction_lens.providers.vine.swept import (
+    CLOCK_TOLERANCE,
     MAIL_WINDOW_HOURS,
     describe_age,
     is_recent,
-    newest_moment,
+    moment_from,
     now_utc,
 )
 
@@ -47,14 +53,16 @@ RECORD_DIR = ROOT / "private" / "vine"
 ARRIVAL_FIELD = "received_at"
 
 
-def arrival_times() -> Iterator[str]:
-    """Every arrival stamp in the companion's records, readable or not.
+def record_rows(record_dir: Path | None = None) -> Iterator[dict[str, object]]:
+    """Every readable object in the companion's record files.
 
-    Unreadable lines are skipped here and unreadable stamps are skipped by the
-    caller, so one corrupt line cannot hide a day that otherwise collected.
+    One corrupt line or unreadable file cannot hide a day that otherwise
+    collected. Rows with unreadable arrival stamps remain visible to the
+    freshness decision, which declines them rather than guessing their age.
     """
+    directory = record_dir if record_dir is not None else RECORD_DIR
     try:
-        files = sorted(RECORD_DIR.glob("queue-*.ndjson"))
+        files = sorted(directory.glob("queue-*.ndjson"))
     except OSError:
         return
     for path in files:
@@ -70,20 +78,79 @@ def arrival_times() -> Iterator[str]:
             except ValueError:
                 continue
             if isinstance(row, dict):
-                yield row.get(ARRIVAL_FIELD)
+                yield row
 
 
-def main() -> int:
-    """Report whether anything arrived inside the window, as an exit code."""
+def fresh_rows(
+    rows: Iterable[dict[str, object]], now: datetime
+) -> list[dict[str, object]]:
+    """Rows inside the mail window, newest first for first-wins deduplication."""
+    accepted: list[tuple[datetime, dict[str, object]]] = []
+    for row in rows:
+        moment = moment_from(row.get(ARRIVAL_FIELD))
+        if moment is not None and is_recent(moment, now):
+            accepted.append((moment, row))
+    accepted.sort(key=lambda found: found[0], reverse=True)
+    return [row for _moment, row in accepted]
+
+
+def _newest_usable(
+    rows: Iterable[dict[str, object]], now: datetime
+) -> datetime | None:
+    """Newest readable arrival no further ahead than ordinary clock skew."""
+    newest = None
+    for row in rows:
+        moment = moment_from(row.get(ARRIVAL_FIELD))
+        if moment is None or moment - now > CLOCK_TOLERANCE:
+            continue
+        if newest is None or moment > newest:
+            newest = moment
+    return newest
+
+
+def stage_fresh_records(
+    output: Path,
+    *,
+    now: datetime | None = None,
+    record_dir: Path | None = None,
+) -> tuple[int, datetime | None]:
+    """Atomically replace the stage with recent rows and return count/newest."""
+    measured_at = now if now is not None else now_utc()
+    rows = list(record_rows(record_dir))
+    fresh = fresh_rows(rows, measured_at)
+    newest = _newest_usable(fresh if fresh else rows, measured_at)
+    contents = "".join(
+        json.dumps(row, ensure_ascii=False) + "\n" for row in fresh
+    ).encode("utf-8")
+    # Replace even with an empty file. A failed gate must not leave yesterday's
+    # stage looking usable to a person debugging the next morning's run.
+    write_bytes_atomically(output, contents)
+    return len(fresh), newest
+
+
+def _arguments(argv: Sequence[str] | None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Stage only Vine companion records fresh enough to mail"
+    )
+    parser.add_argument("--output", required=True, help="fresh NDJSON staging file")
+    return parser.parse_args(argv)
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    """Stage fresh records and report whether the stage contains anything."""
+    args = _arguments(argv)
     now = now_utc()
-    newest = newest_moment(arrival_times())
+    count, newest = stage_fresh_records(Path(args.output), now=now)
     age = describe_age(newest, now)
-    if not is_recent(newest, now):
-        print(f"[!] nothing recorded in the last {MAIL_WINDOW_HOURS}h; newest is {age}")
+    if count == 0:
+        print(
+            f"[!] nothing recorded in the last {MAIL_WINDOW_HOURS}h; "
+            f"newest usable is {age}"
+        )
         return 1
     print(
-        f"[OK] the companion recorded something {age}, "
-        f"inside the {MAIL_WINDOW_HOURS}h window"
+        f"[OK] staged {count} record(s) from the last {MAIL_WINDOW_HOURS}h; "
+        f"newest is {age}"
     )
     return 0
 

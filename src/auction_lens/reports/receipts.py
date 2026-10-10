@@ -145,7 +145,7 @@ class DeliveryLedger:
         transport.  A concurrent run therefore waits, then reads the receipt
         written by the first run instead of sending the same report twice.
         """
-        route_key = _validated_route(route)
+        route_key, summary_key = _validated_route(route)
         # Schema validation happens only after taking the write lock. On the
         # very first run, another process may have created the file but not yet
         # committed its schema; reading it early would mistake that brief state
@@ -168,7 +168,7 @@ class DeliveryLedger:
                     connection.commit()
                     connection.execute("BEGIN IMMEDIATE")
 
-                delivery = DeliverySession(connection, route_key)
+                delivery = DeliverySession(connection, route_key, summary_key)
                 try:
                     yield delivery
                 except BaseException:
@@ -193,9 +193,11 @@ class DeliverySession:
         self,
         connection: sqlite3.Connection,
         route_key: tuple[str, str, str],
+        summary_key: tuple[str, str, str],
     ):
         self._connection = connection
         self._route_key = route_key
+        self._summary_key = summary_key
         self._accepted = False
 
     @property
@@ -218,7 +220,12 @@ class DeliverySession:
     def summary_changed(self, fingerprint: str) -> bool:
         """Say whether this route has accepted a different report summary."""
         _require_digest(fingerprint, field_name="summary fingerprint")
-        row = self._connection.execute(_SELECT_SUMMARY, self._route_key).fetchone()
+        row = self._connection.execute(_SELECT_SUMMARY, self._summary_key).fetchone()
+        if row is None and self._summary_key != self._route_key:
+            # A pre-scope ledger has one findings summary at the destination
+            # route.  It is safe to inherit only when the exact outcome agrees;
+            # a differing provider sends once and then owns its scoped row.
+            row = self._connection.execute(_SELECT_SUMMARY, self._route_key).fetchone()
         return row is None or row[0] != fingerprint
 
     def accept(
@@ -241,7 +248,7 @@ class DeliverySession:
             )
         self._connection.execute(
             _UPSERT_SUMMARY,
-            (*self._route_key, summary_fingerprint, timestamp),
+            (*self._summary_key, summary_fingerprint, timestamp),
         )
         self._accepted = True
 
@@ -317,7 +324,9 @@ def _check_location(path: Path) -> bool:
     return True
 
 
-def _validated_route(route: DeliveryRoute) -> tuple[str, str, str]:
+def _validated_route(
+    route: DeliveryRoute,
+) -> tuple[tuple[str, str, str], tuple[str, str, str]]:
     if not isinstance(route, DeliveryRoute):
         raise TypeError("route must be a DeliveryRoute")
     if not isinstance(route.report_kind, ReportKind):
@@ -328,11 +337,14 @@ def _validated_route(route: DeliveryRoute) -> tuple[str, str, str]:
         route.destination_fingerprint,
         field_name="destination fingerprint",
     )
-    return (
+    route_key = (
         route.report_kind.value,
         route.channel.value,
         route.destination_fingerprint,
     )
+    summary_key = route.summary_key
+    _require_digest(summary_key[2], field_name="summary route fingerprint")
+    return route_key, summary_key
 
 
 def _validated_items(

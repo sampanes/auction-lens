@@ -70,6 +70,66 @@ class CandidatePlanTests(unittest.TestCase):
         self.assertEqual(change.previous_bid, Decimal("10.00"))
         self.assertEqual(plan.receipts[0].revision, "12")
 
+    def test_a_taxable_value_appearing_is_delivered_once(self):
+        unknown = _candidate("received", bid="0", taxable=True)
+        valued = _candidate(
+            "received",
+            bid="0",
+            retail="80.00",
+            taxable=True,
+        )
+
+        before_value = plan_candidates(
+            [unknown], {("example", "received"): "0.00"}
+        )
+        learned_value = plan_candidates(
+            [valued], {("example", "received"): "0"}
+        )
+        after_delivery = plan_candidates(
+            [valued],
+            {("example", "received"): learned_value.receipts[0].revision},
+        )
+
+        self.assertEqual(before_value.candidates, ())
+        self.assertEqual(
+            learned_value.receipts,
+            (DeliveryItem("example", "received", "taxable-value-v1:0:80"),),
+        )
+        self.assertFalse(learned_value.candidates[0].change.price_changed)
+        self.assertEqual(learned_value.candidates[0].change.previous_bid, Decimal("0"))
+        self.assertEqual(after_delivery.candidates, ())
+        self.assertEqual(after_delivery.unchanged_matches, 1)
+
+    def test_a_changed_taxable_value_is_not_mislabeled_as_a_price_change(self):
+        valued = _candidate(
+            "received",
+            bid="0",
+            retail="90",
+            taxable=True,
+        )
+
+        plan = plan_candidates(
+            [valued],
+            {("example", "received"): "taxable-value-v1:0:80"},
+        )
+
+        self.assertEqual(
+            plan.receipts,
+            (DeliveryItem("example", "received", "taxable-value-v1:0:90"),),
+        )
+        self.assertFalse(plan.candidates[0].change.price_changed)
+        self.assertEqual(plan.candidates[0].change.previous_bid, Decimal("0"))
+
+    def test_non_taxable_retail_is_not_a_delivery_revision(self):
+        candidate = _candidate("auction", bid="10", retail="90")
+
+        plan = plan_candidates(
+            [candidate], {("example", "auction"): "10.00"}
+        )
+
+        self.assertEqual(plan.candidates, ())
+        self.assertEqual(plan.unchanged_matches, 1)
+
     def test_delivery_relative_news_controls_reading_order(self):
         already_observed = ObservationChange(is_new=False, price_changed=False)
         price_changed = replace(
@@ -124,6 +184,21 @@ class CandidatePlanTests(unittest.TestCase):
         self.assertEqual([item.rule_id for item in plan.candidates], ["first", "second"])
         self.assertEqual(plan.receipts, (DeliveryItem("example", "shared", "10"),))
         self.assertEqual(plan.held_back_matches, 1)
+
+    def test_set_asides_stay_in_the_local_report_only_even_when_repeated(self):
+        refused = replace(_candidate("refused", score=90), set_aside=True)
+        actionable = _candidate("actionable", score=40)
+
+        plan = plan_candidates([refused, actionable], {}, repeat=True)
+
+        self.assertEqual(_ids(plan.candidates), ["actionable"])
+        self.assertEqual(
+            plan.receipts,
+            (DeliveryItem("example", "actionable", "10"),),
+        )
+        self.assertEqual(plan.set_aside_matches, 1)
+        self.assertEqual(plan.unchanged_matches, 0)
+        self.assertEqual(plan.held_back_matches, 0)
 
     def test_one_crowded_want_cannot_spend_the_whole_delivery(self):
         """A delivery caps each want first, exactly as the printed report does.
@@ -307,6 +382,16 @@ class DeliveryRecordTests(unittest.TestCase):
         self.assertIs(route.report_kind, ReportKind.FINDINGS)
         self.assertIs(route.channel, DeliveryChannel.EMAIL)
         self.assertEqual(route.key, ("findings", "email", fingerprint))
+        self.assertEqual(route.summary_key, route.key)
+
+    def test_summary_scopes_do_not_split_item_receipt_routes(self):
+        fingerprint = "a" * 64
+        nellis = DeliveryRoute("findings", "email", fingerprint, "nellis")
+        vine = DeliveryRoute("findings", "email", fingerprint, "vine")
+
+        self.assertEqual(nellis.key, vine.key)
+        self.assertNotEqual(nellis.summary_key, vine.summary_key)
+        self.assertNotEqual(nellis.summary_key, nellis.key)
 
     def test_a_route_or_receipt_cannot_have_an_empty_identity(self):
         with self.assertRaisesRegex(ValueError, "destination_fingerprint"):
@@ -321,6 +406,13 @@ class DeliveryRecordTests(unittest.TestCase):
             )
         with self.assertRaisesRegex(ValueError, "listing_id"):
             DeliveryItem("example", "", "10")
+        with self.assertRaisesRegex(ValueError, "summary_scope"):
+            DeliveryRoute(
+                ReportKind.FINDINGS,
+                DeliveryChannel.EMAIL,
+                "a" * 64,
+                " ",
+            )
 
 
 def _candidate(
@@ -331,6 +423,7 @@ def _candidate(
     rule_id: str = "wanted",
     inventory_id: str = "",
     retail: str | None = None,
+    taxable: bool = False,
 ) -> Candidate:
     listing = Listing(
         source="example",
@@ -340,6 +433,7 @@ def _candidate(
         url=f"https://example.invalid/{listing_id}",
         current_bid=Decimal(bid),
         estimated_retail=None if retail is None else Decimal(retail),
+        value_is_taxable_income=taxable,
     )
     return Candidate(
         listing=listing,
