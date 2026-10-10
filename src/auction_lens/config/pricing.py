@@ -20,11 +20,17 @@ class EconomicsConfig:
     premium_is_taxable: bool = True
     sales_tax_rate: Decimal = Decimal("0")
     processing_fee: Decimal = Decimal("0")
+    # Not a fee any provider charges: the operator's own marginal rate, which
+    # is what a lot received rather than bought actually costs them. It sits
+    # beside sales tax because this is the one authority for the difference
+    # between what a lot is listed at and what taking it comes to.
+    income_tax_rate: Decimal = Decimal("0")
 
     def __post_init__(self) -> None:
         require_rate(self.default_buyer_premium, field_name="default_buyer_premium")
         require_rate(self.sales_tax_rate, field_name="sales_tax_rate")
         require_not_negative(self.processing_fee, field_name="processing_fee")
+        require_rate(self.income_tax_rate, field_name="income_tax_rate")
 
 
 @dataclass(frozen=True)

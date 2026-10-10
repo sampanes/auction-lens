@@ -199,7 +199,62 @@ def is_judgeable(rule: InterestRule) -> bool:
 # help, across four separate drafts of this brief. So a rule offering
 # alternatives should lead with a general phrase rather than with one of them,
 # and a reader who sees "not a <first thing the rule lists>" should suspect this
-# before suspecting the lot.
+# before suspecting the lot. A rule naming one thing only is the same fault at
+# its smallest: with a single item there is nothing for the rest of the sentence
+# to decorate, so a title using a synonym of that one word fails a comparison of
+# words rather than a reading of products.
+#
+# The repair for that is to say the synonyms are one word, and it is specifically
+# not to list what is unwanted. Measured on one interest over sixteen lots that
+# its condition policy passes and eighteen accessories: the bare noun kept
+# fifteen and leaked five, the same sentence ending in a list of parts that do
+# not count kept only thirteen, and a version adding just the synonyms kept all
+# sixteen and leaked none. The middle case is why the list hurts. A whole product
+# advertises its own components, so a rule declaring a component unwanted teaches
+# the judge to refuse the product that names one -- it rejected an entire machine
+# for stating the sort of tyre it rides on, and another for stating that its
+# battery comes out. Where a rule must exclude something, prefer `none_terms`,
+# which is literal and settles it before the judge is paid at all.
+#
+# A rule offering two kinds of thing is the same fault again, and the cure is
+# not prose. One rule here wanted either of two kinds and gave a measurement
+# for each; over ninety-nine recorded lots it wanted, it refused thirty-two,
+# nearly all of them the kind named second, because whichever kind is second
+# is the decoration. Three rewrites moved that to twenty and then fourteen and
+# no further. Splitting it into one rule per kind took the choice away from
+# the judge entirely, and each kind's own terms then settled what the prose
+# had been arguing about: they recalled every one of that kind's lots in the
+# corpus and pulled in none of the fifteen hundred near-misses.
+#
+# Say only what qualifies. Naming a dimension puts it in the judge's attention
+# even when the sentence says it does not matter. A draft listing the
+# measurements a lot's own figures should not be judged against kept
+# fifty-three of sixty-eight, refusing real lots for an unfamiliar brand and
+# for a figure being too high -- both things that draft had declared
+# irrelevant. Replacing each with "any of them counts" kept sixty-six. The
+# negative form is a disqualifier the model will find a way to apply.
+#
+# Name alternative products; never name a specification. The two halves of
+# that split rule measured in opposite directions, and the difference was what
+# the names were. One kind goes by several product names, each a thing a
+# seller might title it: listing those is what stops the judge refusing a lot
+# that used one, worth sixty-eight of seventy-two against sixty-seven without.
+# The other kind's alternative names were tokens out of its specification, and
+# listing those cost it: naming the measurements kept thirteen of thirty-one,
+# naming just the shorthand tokens kept thirty-two while refusing real
+# examples for not stating one of them, and naming none kept all thirty-seven.
+# A token in the sentence becomes one the judge demands of every title, and
+# the rule's own terms already guarantee the title said one.
+#
+# Shorter is not the lesson either: cutting that rule down to "any size, any
+# shape, any brand counts" fell back to thirty-four and began refusing on
+# brand. Say what the thing is, then say what does not matter about it.
+#
+# Where a rule wants a consumable or a part in its own right, say so outright:
+# the brief above discards "an accessory or part sold on its own", so a rule
+# that leaves it unsaid is asking the judge to refuse exactly what it searched
+# for. Naming each member affirmatively is what fixed such a rule here, in two
+# passes, from five refusals in ten real lots down to none on a clean lot.
 #
 # The wording is probably not the lever. On ten cases chosen to include every
 # known 7B mistake, a 32B model scored ten of ten against the 7B's five, twice,

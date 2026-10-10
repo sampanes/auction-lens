@@ -18,6 +18,16 @@ from .nellis.discover import check_discovery_ready as check_nellis_discovery_rea
 from .nellis.discover import discover_searches as discover_nellis_searches
 from .nellis.parse import read_saved_page as read_nellis_saved_page
 from .nellis.parse import read_search_page as read_nellis_search_page
+from .vine.read import check_discovery_ready as check_vine_discovery_ready
+from .vine.read import discover_searches as discover_vine_searches
+from .vine.read import read_records as read_vine_records
+
+# Most providers are read from pages saved off the web. One is read from the
+# records a browser companion wrote, which is a different extension and
+# therefore a different glob; naming it here keeps the collection workflow from
+# holding an opinion about any single provider's files.
+HTML_PAGES = ".html"
+JSON_RECORDS = ".ndjson"
 
 
 class SearchPageCapture(Protocol):
@@ -68,6 +78,13 @@ class ProviderAdapter:
     check_discovery_ready: ReadinessCheck
     read_search_page: SearchPageReader
     read_saved_page: SavedPageReader
+    saved_page_suffix: str = HTML_PAGES
+    # Whether asking this provider for lots is something the program does at
+    # all. Stated here rather than discovered by calling the refusal and
+    # catching it, because a preflight needs the answer before it decides which
+    # checks even apply: the request pacing and the production run mode guard
+    # requests, and a provider that makes none has nothing for them to guard.
+    discovers: bool = True
 
 
 # Registration is deliberately written out. Adding a provider should be an
@@ -78,6 +95,16 @@ _PROVIDER_ADAPTERS: dict[str, ProviderAdapter] = {
         check_discovery_ready=check_nellis_discovery_ready,
         read_search_page=read_nellis_search_page,
         read_saved_page=read_nellis_saved_page,
+    ),
+    # Read-only by construction. Both discovery callables refuse, so no
+    # configuration and no flag can make this program request a Vine page.
+    "vine": ProviderAdapter(
+        discover_searches=discover_vine_searches,
+        check_discovery_ready=check_vine_discovery_ready,
+        read_search_page=read_vine_records,
+        read_saved_page=read_vine_records,
+        saved_page_suffix=JSON_RECORDS,
+        discovers=False,
     ),
 }
 

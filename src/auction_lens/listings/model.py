@@ -39,6 +39,10 @@ PRICE_CHANGE_PRIORITY_BONUS = 2
 # wrong one still looked like a key, so the mistake survived being read.
 KEY_SEPARATOR = "/"
 
+# CSV has no booleans, so a hand-written or exported row has to say one in
+# words. JSON states a real one and is taken as it stands.
+TRUE_WORDS = frozenset({"true", "yes", "on", "1"})
+
 
 def key_of(source: str, identifier: str) -> str:
     """Name one lot: a provider, and one of its own ids.
@@ -76,6 +80,12 @@ class Listing:
     photo_urls: tuple[str, ...] = ()
     grade: Grade | None = None
     buyer_premium_rate: Decimal | None = None
+    # A lot received rather than bought: nothing is bid, and the value declared
+    # for it is income to whoever takes it. Two consequences follow, and both
+    # belong to whoever asks rather than to this record: the cost is a tax rate
+    # applied to that value, and there is no purchase price that could be
+    # anomalously low, so a bargain claim about such a lot means nothing.
+    value_is_taxable_income: bool = False
     brand: str = ""
     model: str = ""
     category: str = ""
@@ -162,6 +172,7 @@ class Listing:
             buyer_premium_rate=parse_optional_rate(
                 data.get("buyer_premium_rate"), field_name="buyer_premium_rate"
             ),
+            value_is_taxable_income=_flag(data, "value_is_taxable_income"),
             brand=_text(data, "brand"),
             model=_text(data, "model"),
             category=_text(data, "category").lower(),
@@ -208,6 +219,14 @@ def _condition_words(data: dict[str, Any], grade: Grade | None) -> tuple[str, ..
     if grade is not None:
         return grade.words
     return parse_labels(data.get("conditions"))
+
+
+def _flag(data: dict[str, Any], key: str) -> bool:
+    """Read a boolean that may have arrived as JSON or as a word in a CSV cell."""
+    value = data.get(key)
+    if isinstance(value, bool):
+        return value
+    return str(value or "").strip().lower() in TRUE_WORDS
 
 
 def _text(data: dict[str, Any], key: str) -> str:

@@ -21,14 +21,7 @@ def doctor(args: argparse.Namespace) -> int:
     """Check a daily run's local prerequisites without changing state or using network."""
     config = load_config(args.config)
     adapter = resolve_provider(config.provider.provider_id)
-    if config.acquisition.run_mode != RunMode.PRODUCTION:
-        raise RuntimeError(
-            "scheduled runs require [provider.acquisition] run_mode = \"production\""
-        )
-    adapter.check_discovery_ready(
-        config.provider, config.acquisition, search_terms(config, [])
-    )
-    print(f"[OK] {args.config}: discovery is configured and authorized.")
+    _check_acquisition(config, adapter, args.config)
 
     requested = _destinations(config, args)
     destinations = preflight_reports(
@@ -50,6 +43,33 @@ def doctor(args: argparse.Namespace) -> int:
     _check_judging(config)
     print("[OK] no network requests were made.")
     return 0
+
+
+def _check_acquisition(config: AppConfig, adapter, name: str) -> None:
+    """Check how this run gets its lots, which is not the same for every provider.
+
+    A provider that cannot be asked for lots has nothing to authorize and no
+    pacing to respect, so the production run mode and the readiness check both
+    have nothing to say about it. Refusing here anyway would make this command
+    useless to the one provider whose run is entirely unattended: its records
+    arrive from a browser companion, and the mail settings below are exactly
+    what such a run fails on at seven in the morning.
+
+    The refusal still stands where it means something. Nothing in this branch
+    makes the program able to fetch; it only stops a preflight from reporting
+    the absence of a fetch as a fault.
+    """
+    if not adapter.discovers:
+        print(f"[OK] {name}: this provider is read from records; nothing here fetches.")
+        return
+    if config.acquisition.run_mode != RunMode.PRODUCTION:
+        raise RuntimeError(
+            "scheduled runs require [provider.acquisition] run_mode = \"production\""
+        )
+    adapter.check_discovery_ready(
+        config.provider, config.acquisition, search_terms(config, [])
+    )
+    print(f"[OK] {name}: discovery is configured and authorized.")
 
 
 def _check_judging(config: AppConfig) -> None:

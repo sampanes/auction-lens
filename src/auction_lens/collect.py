@@ -22,7 +22,6 @@ from .providers.http import METADATA_SUFFIX, ResponseCache, fetch_authorized_pag
 from .providers.registry import ProviderAdapter, resolve_provider
 from .providers.search_terms import search_terms
 
-PAGE_SUFFIX = ".html"
 LISTINGS_KEY = "listings"
 NAMED_FAILED_PAGES = 5
 
@@ -141,7 +140,7 @@ def pull(args: argparse.Namespace) -> int:
     """Read saved provider pages into the canonical file that `run` analyses."""
     config = load_config(args.config)
     adapter = resolve_provider(config.provider.provider_id)
-    pages = _saved_pages(Path(args.input))
+    pages = _saved_pages(Path(args.input), adapter.saved_page_suffix)
     rows, failures = [], []
     for page in pages:
         try:
@@ -165,10 +164,16 @@ def pull(args: argparse.Namespace) -> int:
     return 0
 
 
-def _saved_pages(source: Path) -> list[Path]:
-    """Accept one page or a directory of them, so a batch is not a special case."""
+def _saved_pages(source: Path, suffix: str) -> list[Path]:
+    """Accept one page or a directory of them, so a batch is not a special case.
+
+    The suffix comes from the adapter because what a saved page is depends on
+    the provider: pages off the web are HTML, and the Vine companion's records
+    are not. A directory with none of the right files is an empty day rather
+    than an error, and the caller says how many it read.
+    """
     if source.is_dir():
-        return sorted(source.glob(f"*{PAGE_SUFFIX}"))
+        return sorted(source.glob(f"*{suffix}"))
     if not source.is_file():
         raise ValueError(f"{source} is not a saved page or a directory of them")
     return [source]

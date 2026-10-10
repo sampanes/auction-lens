@@ -97,6 +97,7 @@ def _economics(section: Section) -> EconomicsConfig:
             premium_is_taxable=section.flag("premium_is_taxable", True),
             sales_tax_rate=section.decimal("sales_tax_rate", 0),
             processing_fee=section.decimal("processing_fee", 0),
+            income_tax_rate=section.decimal("income_tax_rate", 0),
         )
 
 

@@ -95,7 +95,25 @@ def estimate_total_cost(listing: Listing, economics: EconomicsConfig) -> Decimal
     )
     tax = taxable * economics.sales_tax_rate
     total = listing.current_bid + premium + tax + economics.processing_fee
-    return total.quantize(CENTS)
+    return (total + _income_tax(listing, economics)).quantize(CENTS)
+
+
+def _income_tax(listing: Listing, economics: EconomicsConfig) -> Decimal:
+    """What a lot received rather than bought still costs, which is the tax on it.
+
+    A lot nobody bid on is not free, and reporting its cost as zero states the
+    one thing about it that is certainly untrue -- after which every ranking
+    built on cost puts it first, and a cost ceiling cannot decline it. The
+    declared value is the figure whoever gave the lot reports as income, so the
+    rate applied to it is the operator's own rather than anything a provider
+    charges. A lot that declares no value is left alone: the cost of an unknown
+    is not zero either, but inventing a figure for it would be worse than
+    saying so, and the value floors on individual rules are what decline a lot
+    nothing is known about.
+    """
+    if not listing.value_is_taxable_income or listing.estimated_retail is None:
+        return NO_PREMIUM
+    return listing.estimated_retail * economics.income_tax_rate
 
 
 def ending_soon_bonus(listing: Listing, within_minutes: int, now: datetime) -> int:
@@ -111,6 +129,13 @@ def score_retail_anomaly(
 ) -> Candidate | None:
     """Match an unusually cheap listing even when no interest named it."""
     if not policy_admits(context.conditions, scoring.anomaly_condition):
+        return None
+    if context.listing.value_is_taxable_income:
+        # Nothing was bid, so the cost is the tax and the ratio is the rate --
+        # the same number for every such lot, whatever the lot is. That is not
+        # a discount anybody offered, and a path that scores it admits an
+        # entire catalogue at one identical score. A want still matches these
+        # lots on their own words; only the bargain claim is withheld.
         return None
     retail = context.listing.estimated_retail
     if retail is None or retail <= 0:

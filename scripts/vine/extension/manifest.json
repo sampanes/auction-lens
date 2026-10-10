@@ -1,0 +1,32 @@
+{
+  "manifest_version": 3,
+  "name": "Auction Lens Vine companion",
+  "version": "0.3.1",
+  "description": "Records the Vine item grid you are already viewing, and runs one sweep of your configured terms a day. Reads only; never requests an item.",
+  "permissions": [
+    "tabs",
+    "storage",
+    "alarms"
+  ],
+  "host_permissions": [
+    "https://www.amazon.com/vine/*",
+    "http://127.0.0.1/*"
+  ],
+  "background": {
+    "service_worker": "sweep.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://www.amazon.com/vine/vine-items*"
+      ],
+      "js": [
+        "harvest.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_title": "Sweep my Auction Lens terms now"
+  }
+}

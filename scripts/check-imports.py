@@ -31,6 +31,7 @@ EMPTY_PACKAGE_MARKERS = {
     "pricing",
     "providers",
     "providers.nellis",
+    "providers.vine",
     "reports",
     "watchlist",
 }

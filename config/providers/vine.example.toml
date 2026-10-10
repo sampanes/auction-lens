@@ -1,0 +1,132 @@
+# Amazon Vine, which is read from records rather than fetched.
+#
+# This provider cannot discover anything. Vine sits behind a personal shopping
+# login, so the program never requests one of its pages: the companion in
+# scripts/vine/ reads the queues already open in the operator's own browser and
+# writes what it saw, and this configuration is for reading those records.
+#
+#     scripts\vine\start-sink.cmd
+#     ... browse or sweep, then:
+#     .venv\Scripts\python.exe -m auction_lens pull --config config\vine.toml ^
+#         --input private\vine --output private\vine-listings.json
+#     .venv\Scripts\python.exe -m auction_lens run --config config\vine.toml ^
+#         --input private\vine-listings.json
+#
+# scripts\vine\run-vine.cmd is those two as one unattended run, and
+# scripts\schedule.cmd owns the time it fires. It mails nothing on a day the
+# companion did not sweep.
+#
+# `discover` and `daily` both refuse under this provider, by design and not by
+# omission: there is nothing here to poll. `doctor` does run, because an
+# unattended run needs a preflight more than most -- it reports the inability
+# to fetch as a fact and then checks the mail settings and the judge, which are
+# what such a run actually fails on.
+#
+# Everything this file leaves out -- interests, people, conditions, logistics,
+# reports, valuation -- means the same as it does in nellis.example.toml and is
+# not restated. Copy the sections you want from there.
+
+[provider]
+id = "vine"
+display_name = "Amazon Vine"
+enabled = true
+
+[provider.acquisition]
+# Nothing fetches, so nothing here is a grant of anything. The mode is stated
+# only because a run reads it, and manual is the truthful answer: a person
+# opened the pages.
+mode = "manual"
+
+# The recall net: what gets typed into Vine's own search box. A different list
+# from any rule's terms, and the two cannot stand in for each other. Required
+# here, and the sink refuses to start without it rather than falling back to
+# flattening every rule's any_terms: a rule that pins a product line in
+# all_terms and lists the fittings made for it would get its fittings searched
+# and the product line never searched at all, while reporting success.
+#
+# A list longer than max_searches is served a window per sweep and the sink
+# remembers where it stopped, so the whole list comes round over several
+# sweeps rather than the first window being searched every time.
+#   searches = ["desk lamp", "paper shredder", "cordless drill ah"]
+#
+# A trick aimed at the search engine belongs here: a stray unit like "ah" or
+# "mph" makes Amazon surface titles that happen to state a specification. The
+# specification itself belongs in a rule's `wants`.
+
+# ONE TRAP WORTH KNOWING BEFORE WRITING RULES FOR THIS PROVIDER
+#
+# Normally a lot that says the wanted word only after "for" is an accessory and
+# is refused: "Weed Wacker for DeWalt Battery" is not a DeWalt. That is correct
+# at an auction, where the article itself is on offer.
+#
+# It is wrong here whenever the article is not sold at all. Amazon does not
+# sell sailboats, so every hit for a boat model is something FOR that boat --
+# and the accessory test would refuse the whole category, including the sail
+# track slides that were the point. When the thing you want IS an accessory,
+# put the host in `all_terms`, which is exempt from the accessory test, and
+# name the accessory in `any_terms`:
+#
+#   [[interests]]
+#   name = "gear for one product line"
+#   all_terms = ["<the host product>"]             # pins fitment, never positioned
+#   any_terms = ["sail track slide", "boom vang"]  # names the thing you want
+#   none_terms = ["antifouling paint", "teak oil", "hull wax"]   # the daily junk
+#   wants = "Accessories ARE wanted here; do not discard a lot for being a part."
+#
+# Note the `wants` sentence. The judge's standing brief discards "an accessory
+# or part sold on its own", so a rule that wants parts has to say so or the
+# judge will throw away the very lots the rule was written to find.
+#
+# A second spelling of the same host needs its own rule: `all_terms` requires
+# every word it names, and one title cannot say both spellings.
+
+[economics]
+# A Vine item has no bid, no premium and no sales tax: nothing is bought. What
+# it costs is income tax on the value Amazon declares for it, which is reported
+# at the end of the year whether or not the item turned out to be useful.
+#
+# Set this to your own marginal rate, federal and state together. Leaving it at
+# zero tells the program every item is free, which is the one thing about a
+# Vine item that is certainly untrue -- and a cost ceiling on an interest
+# cannot decline a lot that costs nothing.
+income_tax_rate = 0.0
+
+# A declared value is not a price somebody set, so the bargain path declines to
+# judge a Vine lot at all: the cost is the rate times the value, which makes
+# the discount identical for every item in the catalogue. These lots reach a
+# report because an interest asked for them. The anomaly keys below therefore
+# do nothing here, and the interests are what matter.
+[scoring]
+minimum_report_score = 70
+# No Vine item closes at an announced time, so there is no closing bonus to
+# give and nothing ends soon.
+ending_soon_minutes = 0
+
+[judging]
+# The term lists find candidates; this is what decides whether a candidate is
+# the thing. It is the only reader that sees a rule's `wants` prose, so with it
+# off every one of those sentences is dead weight and the rules decide by word
+# match alone.
+#
+# It earns more here than at an auction. A Vine search returns whatever Amazon
+# decides the words mean, and most of what comes back is an accessory for the
+# thing rather than the thing: measured on one real queue, nine titles in ten
+# that matched a rule on words alone were not the article at all.
+#
+# Each refusal it makes is also a reading of a rule. A refusal the rule could
+# have made itself belongs in that rule's none_terms, where it is literal and
+# free, instead of being paid for on every run.
+#
+# Needs `ollama serve` running. If nothing answers, the run keeps every lot and
+# says so in the report rather than quietly showing a shorter list.
+enabled = false
+
+[conditions]
+# Every Vine item is offered new and unused, which the reader states on each
+# row. A rejection list still applies if a title says otherwise.
+reject = []
+
+[locations]
+# A Vine item is delivered. There is no branch to drive to and no lot to
+# collect, so location gating and the far-branch bars have nothing to judge.
+allowed = []

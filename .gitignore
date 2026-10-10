@@ -17,6 +17,11 @@ build/
 *.toml*.tmp
 *.bak
 config/local.toml
+config/vine.toml
+# Nothing here needs npm: the companion's tests use Node's own modules
+# and this repository has no package.json. Ignored so that a stray
+# install cannot put a tree of third-party code into a commit.
+node_modules/
 data/inbox/*
 !data/inbox/.gitkeep
 private/
