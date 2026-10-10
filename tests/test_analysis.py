@@ -10,7 +10,12 @@ from pathlib import Path
 
 from auction_lens.history.logistics import LogisticsDecisionStore
 from auction_lens.history.observations import ObservationStore
-from auction_lens.matching.analyze import analyze_listings
+from auction_lens.matching.analyze import (
+    analyze_listings,
+    select_automatic_candidates,
+)
+from auction_lens.matching.evaluate import evaluate
+from auction_lens.matching.judge import VettingOutcome
 from auction_lens.matching.model import CandidateCategory
 from auction_lens.matching.progress import InterestRef
 from auction_lens.pricing.closing_history import BASIS
@@ -77,6 +82,42 @@ class AnalysisRunTests(unittest.TestCase):
             decisions=LogisticsDecisionStore(database),
             valuation_engine=valuation_engine,
         )
+
+
+class AutomaticCandidateSelectionTests(unittest.TestCase):
+    def setUp(self):
+        found = evaluate(example_listings()[SOUNDBAR], example_config())
+        self.wanted = next(
+            item for item in found if item.category is CandidateCategory.WANTED
+        )
+        self.anomaly = next(
+            item for item in found if item.category is CandidateCategory.ANOMALY
+        )
+
+    def test_judge_refusals_remain_diagnostic_only(self):
+        refused = replace(self.wanted, set_aside=True)
+
+        selection = select_automatic_candidates(
+            [refused, self.anomaly],
+            VettingOutcome(candidates=(refused, self.anomaly)),
+        )
+
+        self.assertEqual(selection.candidates, (self.anomaly,))
+        self.assertEqual(selection.set_aside_matches, 1)
+        self.assertEqual(selection.unvetted_matches, 0)
+
+    def test_a_judge_outage_fails_closed_only_for_wanted_matches(self):
+        selection = select_automatic_candidates(
+            [self.wanted, self.anomaly],
+            VettingOutcome(
+                candidates=(self.wanted, self.anomaly),
+                unavailable="synthetic outage",
+            ),
+        )
+
+        self.assertEqual(selection.candidates, (self.anomaly,))
+        self.assertEqual(selection.set_aside_matches, 0)
+        self.assertEqual(selection.unvetted_matches, 1)
 
 
 class ReportCapTests(unittest.TestCase):

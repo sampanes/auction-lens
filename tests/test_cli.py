@@ -23,6 +23,8 @@ from auction_lens.config.load import load_config
 from auction_lens.history.database import Database
 from auction_lens.history.observations import ObservationStore
 from auction_lens.listings.files import load_listings
+from auction_lens.matching.judge import VettingOutcome
+from auction_lens.matching.model import CandidateCategory
 from auction_lens.matching.progress import InterestRef
 from auction_lens.providers.nellis.discover import SearchCapture
 from auction_lens.providers.registry import resolve_provider
@@ -307,6 +309,61 @@ class DeliveryLedgerCommandTests(unittest.TestCase):
         self.assertEqual(send_email.call_count, 2)
         self.assertIn("Email report is up to date", nellis_again)
         self.assertIn("Email report is up to date", vine_again)
+
+    @patch("auction_lens.reports.send.email_destination", return_value="a" * 64)
+    @patch("auction_lens.reports.send.send_email")
+    def test_a_judge_outage_withholds_wanted_matches_and_reports_once(
+        self, send_email, _email_destination
+    ):
+        def unavailable(candidates, _config, _rules):
+            return VettingOutcome(
+                candidates=tuple(candidates),
+                unavailable="synthetic outage",
+            )
+
+        with temporary_directory() as directory:
+            config = _config_copy(directory, email_enabled=True)
+            argv, _ledger = self._run_argv(directory, config)
+            with patch(
+                "auction_lens.matching.analyze.vet_wanted",
+                side_effect=unavailable,
+            ):
+                run_cli([*argv, "--email"])
+                second = run_cli([*argv, "--email"])
+
+        self.assertEqual(send_email.call_count, 1)
+        report = _emailed(send_email)
+        self.assertGreater(report.delivery.unvetted_matches, 0)
+        self.assertTrue(report.groups)
+        self.assertNotIn("Soundbar", {group.title for group in report.groups})
+        self.assertIn("Email report is up to date", second)
+
+    @patch("auction_lens.reports.send.email_destination", return_value="a" * 64)
+    @patch("auction_lens.reports.send.send_email")
+    def test_judge_refusals_stay_out_of_automatic_email(
+        self, send_email, _email_destination
+    ):
+        def refuse_wanted(candidates, _config, _rules):
+            judged = tuple(
+                replace(candidate, set_aside=True)
+                if candidate.category is CandidateCategory.WANTED
+                else candidate
+                for candidate in candidates
+            )
+            return VettingOutcome(candidates=judged, asked=1)
+
+        with temporary_directory() as directory:
+            config = _config_copy(directory, email_enabled=True)
+            argv, _ledger = self._run_argv(directory, config)
+            with patch(
+                "auction_lens.matching.analyze.vet_wanted",
+                side_effect=refuse_wanted,
+            ):
+                run_cli([*argv, "--email"])
+
+        report = _emailed(send_email)
+        self.assertEqual(report.delivery.set_aside_matches, 1)
+        self.assertNotIn("Soundbar", {group.title for group in report.groups})
 
     @patch("auction_lens.reports.send.email_destination", return_value="a" * 64)
     @patch(

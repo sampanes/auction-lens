@@ -15,7 +15,11 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ..config.app import AppConfig
-from ..matching.analyze import AnalysisResult, follow_candidates
+from ..matching.analyze import (
+    AnalysisResult,
+    follow_candidates,
+    select_automatic_candidates,
+)
 from ..matching.model import Candidate, harvest_of
 from ..watchlist.model import WatchedItem
 from ..watchlist.store import WatchlistStore
@@ -38,6 +42,10 @@ from .webhook import (
     send_webhook,
     webhook_destination,
     webhook_item_limit,
+)
+
+JUDGE_UNAVAILABLE_SUMMARY = (
+    "Wanted matches were withheld because the local judge was unavailable."
 )
 
 
@@ -103,11 +111,17 @@ def deliver_findings(
     if not destinations:
         return 0, []
 
+    automatic = select_automatic_candidates(result.all_candidates, result.vetting)
+    summary_notices = notices
+    if automatic.unvetted_matches:
+        # This stable fact sends one status report for the outage, without
+        # mailing every fluctuating word match while the judge is down.
+        summary_notices = (*notices, JUDGE_UNAVAILABLE_SUMMARY)
     ledger = DeliveryLedger(Path(args.delivery_ledger))
     summary = outcome_fingerprint(
         result.interest_progress,
         result.unreviewed_wins,
-        notices=notices,
+        notices=summary_notices,
     )
     additionally_followed = 0
     failures = []
@@ -121,9 +135,9 @@ def deliver_findings(
                 summary_scope=config.provider.provider_id,
             )
             with ledger.session(route) as delivery:
-                proposed = candidate_items(result.all_candidates)
+                proposed = candidate_items(automatic.candidates)
                 plan = plan_candidates(
-                    result.all_candidates,
+                    automatic.candidates,
                     delivery.revisions(proposed),
                     limit=_delivery_limit(channel, config),
                     repeat=args.repeat_delivery,
@@ -142,6 +156,10 @@ def deliver_findings(
                         candidate.listing.title for candidate in plan.unchanged
                     ),
                     held_back_matches=plan.held_back_matches,
+                    set_aside_matches=(
+                        automatic.set_aside_matches + plan.set_aside_matches
+                    ),
+                    unvetted_matches=automatic.unvetted_matches,
                 )
                 with attempt.transport():
                     _send_findings(
@@ -151,10 +169,11 @@ def deliver_findings(
                         result,
                         note,
                         notices,
+                        automatic.candidates,
                     )
                 additionally_followed += follow_candidates(
                     plan.candidates,
-                    result.all_candidates,
+                    automatic.candidates,
                     watchlist,
                 )
                 delivery.accept(plan.receipts, summary)
@@ -229,13 +248,19 @@ def _send_findings(
     result: AnalysisResult,
     delivery: DeliverySummary,
     notices: tuple[str, ...],
+    all_candidates: tuple[Candidate, ...],
 ) -> None:
     """Cross one transport boundary; its caller owns receipt persistence."""
     selected = list(candidates)
+    sections = {candidate.section for candidate in all_candidates}
     report = build_report(
         selected,
         config.acquisition.zone,
-        searches=result.searches,
+        searches=tuple(
+            hint
+            for hint in result.searches
+            if hint.rule in sections
+        ),
         order=config.reports.order,
         interest_progress=result.interest_progress,
         unreviewed_wins=result.unreviewed_wins,
@@ -243,7 +268,7 @@ def _send_findings(
         notices=notices,
         # Counted against what this destination is actually being sent, so a
         # suppressed lot is not described as one still on the page.
-        harvest=harvest_of(list(result.all_candidates), selected),
+        harvest=harvest_of(list(all_candidates), selected),
     )
     if channel == DeliveryChannel.EMAIL:
         send_email(report, config.email)

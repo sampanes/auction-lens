@@ -166,7 +166,7 @@ def _truncate(text: str, limit: int) -> str:
 def _headline(found: int, shown: int, delivery: DeliverySummary) -> str:
     if not found:
         if delivery.active and not delivery.repeated:
-            return "No new or price-changed matches for this destination."
+            return "No new or changed matches for this destination."
         return "Nothing matched this run."
     if shown < found:
         return f"{found} matches; the best {shown} follow."
@@ -180,13 +180,26 @@ def _card(finding: Finding) -> dict[str, Any]:
     app on a phone, so no second, app-flavoured address is needed here.
     """
     facts = finding.facts
+    cost_label = (
+        "Cost"
+        if facts.total_cost_label == "Estimated total"
+        else facts.total_cost_label
+    )
     return {
         "title": finding.title[:HIGHEST_TITLE_LENGTH],
         "url": finding.url,
         "color": COLOURS[facts.condition_severity],
         "fields": [
-            {"name": "Cost", "value": facts.total_cost, "inline": True},
-            {"name": "Retail", "value": _retail(facts), "inline": True},
+            {
+                "name": cost_label,
+                "value": facts.total_cost,
+                "inline": True,
+            },
+            {
+                "name": facts.retail_label,
+                "value": _retail(facts),
+                "inline": True,
+            },
             {"name": "Where", "value": facts.location or "unstated", "inline": True},
             {"name": "Closes", "value": facts.closes or "unstated", "inline": True},
             {"name": "Condition", "value": facts.conditions, "inline": False},

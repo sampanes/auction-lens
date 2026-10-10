@@ -37,7 +37,7 @@ from .records import (
 )
 
 EMPTY_REPORT = "Auction Lens found no listings meeting the configured criteria."
-EMPTY_DELIVERY = "Auction Lens found no new or price-changed listings for this destination."
+EMPTY_DELIVERY = "Auction Lens found no new or changed listings for this destination."
 
 # Day, hour, and the zone's own name: enough to act on, short enough to sit on
 # one line. The zone is named because a report is read wherever the reader is.
@@ -301,6 +301,23 @@ def _change(candidate: Candidate) -> str:
 def _listing_facts(candidate: Candidate, zone: ZoneInfo) -> ListingFacts:
     """Project every listing value a report medium may need exactly once."""
     listing = candidate.listing
+    if listing.value_is_taxable_income:
+        value_known = listing.estimated_retail is not None
+        return ListingFacts(
+            bid="",
+            total_cost=f"${candidate.total_cost}" if value_known else "unknown",
+            retail=(
+                f"${listing.estimated_retail}" if value_known else "unknown"
+            ),
+            retail_ratio="",
+            closes=closing_time(listing.ends_at, zone),
+            location=listing.location,
+            conditions=_conditions(listing),
+            condition_severity=_condition_severity(listing),
+            watch_key=listing.key,
+            total_cost_label="Estimated income tax",
+            retail_label="Taxable value",
+        )
     return ListingFacts(
         bid=f"${listing.current_bid}",
         total_cost=f"${candidate.total_cost}",

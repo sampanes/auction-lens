@@ -70,6 +70,48 @@ class TextReportTests(unittest.TestCase):
         self.assertIn("Example Laser Level Kit", report)
         self.assertIn("Watch key: nellis/synthetic-002", report)
 
+    def test_an_unvalued_taxable_item_does_not_claim_to_cost_zero(self):
+        candidate = evaluate(self.listings[SOUNDBAR], self.config)[0]
+        candidate = replace(
+            candidate,
+            listing=replace(
+                candidate.listing,
+                current_bid=Decimal("0"),
+                estimated_retail=None,
+                value_is_taxable_income=True,
+            ),
+            total_cost=Decimal("0"),
+            retail_ratio=None,
+        )
+
+        plain = render_text(build_report([candidate], REPORT_ZONE))
+        markup = render_html(build_report([candidate], REPORT_ZONE))
+
+        for report in (plain, markup):
+            self.assertIn("Taxable value: unknown", report)
+            self.assertIn("Estimated income tax: unknown", report)
+            self.assertNotIn("Bid: $0", report)
+
+    def test_a_known_taxable_value_names_value_and_estimated_tax(self):
+        candidate = evaluate(self.listings[SOUNDBAR], self.config)[0]
+        candidate = replace(
+            candidate,
+            listing=replace(
+                candidate.listing,
+                current_bid=Decimal("0"),
+                estimated_retail=Decimal("80"),
+                value_is_taxable_income=True,
+            ),
+            total_cost=Decimal("20"),
+            retail_ratio=Decimal("0.25"),
+        )
+
+        report = render_text(build_report([candidate], REPORT_ZONE))
+
+        self.assertIn("Taxable value: $80", report)
+        self.assertIn("Estimated income tax: $20", report)
+        self.assertNotIn("Retail:", report)
+
     def test_empty_report_says_so_plainly(self):
         self.assertIn("no listings", render_text(build_report([], REPORT_ZONE)))
 
@@ -280,10 +322,22 @@ class DeliverySummaryTests(unittest.TestCase):
         markup = render_html(build_report([], REPORT_ZONE, delivery=delivery))
 
         for report in (plain, markup):
-            self.assertIn("no new or price-changed listings", report.lower())
-            self.assertIn("Only new or price-changed matches", report)
+            self.assertIn("no new or changed listings", report.lower())
+            self.assertIn("Only new or changed matches", report)
             self.assertIn("12 unchanged matches", report)
             self.assertIn("3 more new or changed matches", report)
+
+    def test_automatic_safety_omissions_are_explained(self):
+        delivery = DeliverySummary(
+            active=True,
+            set_aside_matches=2,
+            unvetted_matches=3,
+        )
+
+        report = render_text(build_report([], REPORT_ZONE, delivery=delivery))
+
+        self.assertIn("2 judge-rejected matches were omitted", report)
+        self.assertIn("3 unvetted wanted matches were withheld", report)
 
     def test_an_explicit_repeat_says_the_filter_was_bypassed(self):
         delivery = DeliverySummary(active=True, repeated=True)
@@ -295,6 +349,8 @@ class DeliverySummaryTests(unittest.TestCase):
     def test_invalid_counts_and_labels_are_refused_at_the_view_model_boundary(self):
         with self.assertRaisesRegex(ValueError, "unchanged_matches"):
             DeliverySummary(unchanged_matches=-1)
+        with self.assertRaisesRegex(ValueError, "unvetted_matches"):
+            DeliverySummary(unvetted_matches=-1)
         with self.assertRaisesRegex(ValueError, "item_plural"):
             DeliverySummary(item_plural=" ")
 
@@ -685,7 +741,7 @@ class EmailDeliveryTests(unittest.TestCase):
             message.get_body(preferencelist=("plain",)).get_content(),
             message.get_body(preferencelist=("html",)).get_content(),
         ):
-            self.assertIn("Only new or price-changed selected lots", body)
+            self.assertIn("Only new or changed selected lots", body)
             self.assertIn("2 unchanged selected lots", body)
             self.assertIn("Changed monitor", body)
 

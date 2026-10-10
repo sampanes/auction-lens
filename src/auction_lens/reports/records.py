@@ -38,16 +38,19 @@ class ListingFacts:
     conditions: str
     condition_severity: Tag
     watch_key: str
+    bid_label: str = "Bid"
+    total_cost_label: str = "Estimated total"
+    retail_label: str = "Retail"
 
     @property
     def full_report(self) -> tuple[Fact, ...]:
         """The complete labelled row used by text and HTML reports."""
-        facts = [
-            Fact("Bid", self.bid),
-            Fact("Estimated total", self.total_cost),
-        ]
+        facts = []
+        if self.bid:
+            facts.append(Fact(self.bid_label, self.bid))
+        facts.append(Fact(self.total_cost_label, self.total_cost))
         if self.retail:
-            facts.append(Fact("Retail", self.retail))
+            facts.append(Fact(self.retail_label, self.retail))
         if self.closes:
             facts.append(Fact("Closes", self.closes))
         facts.extend(
@@ -170,6 +173,8 @@ class DeliverySummary:
     repeated: bool = False
     unchanged_matches: int = 0
     held_back_matches: int = 0
+    set_aside_matches: int = 0
+    unvetted_matches: int = 0
     # Titles of the unchanged matches, so the count can be checked rather than
     # only believed. Optional: the watchlist route counts without naming, and
     # a count with no names still reads correctly.
@@ -178,7 +183,12 @@ class DeliverySummary:
     item_plural: str = "matches"
 
     def __post_init__(self) -> None:
-        for field_name in ("unchanged_matches", "held_back_matches"):
+        for field_name in (
+            "unchanged_matches",
+            "held_back_matches",
+            "set_aside_matches",
+            "unvetted_matches",
+        ):
             value = getattr(self, field_name)
             if isinstance(value, bool) or not isinstance(value, int) or value < 0:
                 raise ValueError(f"{field_name} must be a non-negative integer")
@@ -200,10 +210,24 @@ class DeliverySummary:
             (
                 "Delivery filter bypassed for this requested repeat."
                 if self.repeated
-                else f"Only new or price-changed {self.item_plural} are included "
+                else f"Only new or changed {self.item_plural} are included "
                 "in this delivery."
             )
         ]
+        if self.set_aside_matches:
+            noun = self._noun(self.set_aside_matches)
+            verb = "was" if self.set_aside_matches == 1 else "were"
+            lines.append(
+                f"{self.set_aside_matches} judge-rejected {noun} {verb} omitted "
+                "from automatic delivery."
+            )
+        if self.unvetted_matches:
+            noun = self._noun(self.unvetted_matches)
+            verb = "was" if self.unvetted_matches == 1 else "were"
+            lines.append(
+                f"{self.unvetted_matches} unvetted wanted {noun} {verb} withheld "
+                "because the local judge was unavailable."
+            )
         if self.unchanged_matches:
             noun = self._noun(self.unchanged_matches)
             verb = "was" if self.unchanged_matches == 1 else "were"

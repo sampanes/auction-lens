@@ -66,6 +66,30 @@ class MessageShapeTests(unittest.TestCase):
 
         self.assertEqual(fields["Watch key"], "nellis/synthetic-001")
 
+    def test_a_taxable_item_uses_tax_facts_instead_of_purchase_facts(self):
+        candidate = _candidates()[0]
+        candidate = replace(
+            candidate,
+            listing=replace(
+                candidate.listing,
+                current_bid=Decimal("0"),
+                estimated_retail=None,
+                value_is_taxable_income=True,
+            ),
+            total_cost=Decimal("0"),
+            retail_ratio=None,
+        )
+
+        message = build_message(build_report([candidate], REPORT_ZONE), self.config)
+        fields = {
+            field["name"]: field["value"]
+            for field in message["embeds"][0]["fields"]
+        }
+
+        self.assertEqual(fields["Taxable value"], "unknown")
+        self.assertEqual(fields["Estimated income tax"], "unknown")
+        self.assertNotIn("Cost", fields)
+
     def test_feedback_is_one_message_footer_not_per_card(self):
         message = build_message(build_report(_candidates(2), REPORT_ZONE), self.config)
 
@@ -220,8 +244,8 @@ class MessageShapeTests(unittest.TestCase):
             self.config,
         )
 
-        self.assertIn("No new or price-changed matches", message["content"])
-        self.assertIn("Only new or price-changed matches", message["content"])
+        self.assertIn("No new or changed matches", message["content"])
+        self.assertIn("Only new or changed matches", message["content"])
         self.assertIn("7 unchanged matches", message["content"])
 
     def test_outcome_status_never_exceeds_the_service_content_limit(self):

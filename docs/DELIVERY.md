@@ -12,6 +12,9 @@ The default ledger is `private/deliveries.sqlite3`. It is a local SQLite file
 under an ignored directory; it does not belong in Git. The ledger stores a
 SHA-256 fingerprint of each destination, never an email address or webhook URL,
 and stores listing ids and bid revisions rather than titles, links, or photos.
+Findings summary receipts are additionally scoped by provider through another
+opaque fingerprint, so two providers using one mailbox cannot overwrite each
+other's quiet baseline. Item receipts keep their original route and schema.
 
 ## What counts as new
 
@@ -26,6 +29,8 @@ For findings:
 - the same auction id at the same bid is unchanged and omitted;
 - the same auction id at a different bid is included, with the last delivered
   bid available as its comparison;
+- for an item received as taxable income, a newly learned or corrected taxable
+  value is included once without being mislabeled as a bid change;
 - a new auction id is new, even when it is a relisting of the same inventory
   item.
 
@@ -38,6 +43,11 @@ Unchanged findings are removed before the report limit is applied. An old,
 high-ranked listing therefore cannot occupy a slot that could carry a new or
 changed one. The delivered report says how many unchanged findings were omitted
 and how many eligible findings its limit held back.
+
+Judge refusals remain in the local diagnostic report but are excluded from
+automatic delivery, including an explicit repeat. When judging is configured
+but unavailable, wanted matches fail closed and one summary-status delivery
+reports how many were withheld; later runs with the same outage stay quiet.
 
 Watchlist email uses the same price-revision rule, but remains separate from
 findings. The full watchlist and each `--verdict` selection also have separate

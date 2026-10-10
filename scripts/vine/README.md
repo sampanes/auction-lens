@@ -278,7 +278,9 @@ this one cannot fetch:
 
 `pull` reads `*.ndjson` here rather than saved HTML, because the adapter names
 its own file shape. Every sighting in a day's file is kept on disk; `pull`
-collapses them to one lot per ASIN, keeping the earliest.
+collapses them to one lot per ASIN, keeping the first. The morning stage writes
+fresh sightings newest-first, so its first copy carries the newest title,
+photo, and ETV rather than an older copy of the same ASIN.
 
 ## The morning mail
 
@@ -297,6 +299,12 @@ one recent sighting cannot bring yesterday's records into today's report. It
 logs a skipped run to ignored
 `private/vine-run.log` -- because silence with no trace is how a dead pipeline
 goes unnoticed for weeks.
+
+Automatic delivery is stricter than the diagnostic terminal report. A match
+the judge set aside stays visible locally so its rule can be repaired, but it
+is never emailed or automatically followed. If the configured judge is down,
+wanted matches fail closed; one status report says how many were withheld,
+while independently useful non-wanted findings may still be delivered.
 
 The gate asks about records rather than sweeps because a sweep finishing is not
 what the reader cares about. Amazon throttles a sweep after a term or two and
@@ -343,9 +351,12 @@ cost is the rate times the value, so the discount is the rate for every item in
 the catalogue alike -- identical, and therefore no evidence about any of them.
 A Vine lot reaches a report because an interest asked for it.
 
-Until ETV is read, `etv` is null on every row, so `estimated_retail` is unset
-and no Vine lot has a cost at all. Terms and conditions still match; money does
-not. That is the next thing worth building.
+Until ETV is read, `etv` is null on every row, so `estimated_retail` is unset.
+Terms and conditions still match; money does not. Reports say `Taxable value:
+unknown` and `Estimated income tax: unknown` rather than claiming both are
+zero. If a later capture starts carrying ETV, that value becomes a delivery
+revision and the item is reported once more with its newly actionable cost.
+Reading ETV from Amazon remains the next thing worth building.
 
 ## Observed page contract
 

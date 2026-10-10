@@ -79,6 +79,47 @@ class AnalysisResult:
         return max(self.matches_found - len(self.candidates), 0)
 
 
+@dataclass(frozen=True)
+class AutomaticCandidateSelection:
+    """Candidates safe for automatic mail and watchlist side effects.
+
+    The local report deliberately retains judge refusals so a noisy rule can
+    be diagnosed. Automatic actions have a different job: act only on matches
+    the judge accepted, and fail closed on wanted matches when judging was
+    configured but unavailable.
+    """
+
+    candidates: tuple[Candidate, ...]
+    set_aside_matches: int = 0
+    unvetted_matches: int = 0
+
+
+def select_automatic_candidates(
+    candidates: list[Candidate] | tuple[Candidate, ...],
+    vetting: VettingOutcome,
+) -> AutomaticCandidateSelection:
+    """Remove diagnostic-only and unvetted wanted matches from automation."""
+    selected = []
+    set_aside_matches = 0
+    unvetted_matches = 0
+    for candidate in candidates:
+        if candidate.set_aside:
+            set_aside_matches += 1
+            continue
+        if (
+            vetting.unavailable
+            and candidate.category is CandidateCategory.WANTED
+        ):
+            unvetted_matches += 1
+            continue
+        selected.append(candidate)
+    return AutomaticCandidateSelection(
+        candidates=tuple(selected),
+        set_aside_matches=set_aside_matches,
+        unvetted_matches=unvetted_matches,
+    )
+
+
 def analyze_listings(
     listings: list[Listing],
     config: AppConfig,
@@ -140,6 +181,8 @@ def analyze_listings(
         best_of_each(candidates, config.reports.most_per_interest),
         config.reports.max_items,
     )
+    automatic = select_automatic_candidates(candidates, vetting)
+    automatic_reportable = select_automatic_candidates(reportable, vetting)
     return AnalysisResult(
         candidates=reportable,
         searches=search_hints(candidates, listings, plan.active_rules),
@@ -148,7 +191,11 @@ def analyze_listings(
         listings_scored=scored,
         all_candidates=tuple(candidates),
         matches_found=len(candidates),
-        lots_followed=follow_candidates(reportable, candidates, watchlist),
+        lots_followed=follow_candidates(
+            automatic_reportable.candidates,
+            automatic.candidates,
+            watchlist,
+        ),
         lots_already_closed=skipped,
         interest_progress=plan.progress,
         unreviewed_wins=plan.unreviewed_wins,
