@@ -294,6 +294,41 @@ class InterestScoringTests(unittest.TestCase):
         return next(item for item in candidates if item.category == "wanted")
 
 
+class UnknownConditionTests(unittest.TestCase):
+    """A policy strict about the unknown is also strict about the flawless.
+
+    A grade contributes only its answers that are not good news, so the lot
+    with nothing wrong with it and the lot nobody graded arrive looking the
+    same: no labels either way. These pin which way that reads, because the
+    flag's name suggests it reaches only the second one.
+    """
+
+    def setUp(self):
+        self.config = example_config()
+        self.listings = example_listings()
+
+    def _matches(self, conditions, policy):
+        rule = InterestRule(
+            name="soundbar", any_terms=("sound bar",), condition=policy
+        )
+        config = replace(self.config, interests=(rule,))
+        listing = replace(self.listings[SOUNDBAR], conditions=conditions)
+        scored = evaluate(listing, config, now=anomaly_clock())
+        return [item.rule_name for item in scored if item.category == "wanted"]
+
+    def test_a_flawless_lot_is_admitted(self):
+        self.assertEqual(self._matches((), ConditionPolicy()), ["soundbar"])
+
+    def test_refusing_the_unknown_refuses_the_flawless_lot_too(self):
+        self.assertEqual(self._matches((), ConditionPolicy(allow_unknown=False)), [])
+
+    def test_a_rejection_is_how_a_policy_declines_a_stated_fault(self):
+        """The strict reading that does not also throw away the good lots."""
+        policy = ConditionPolicy(reject=frozenset({"used"}))
+        self.assertEqual(self._matches(("used",), policy), [])
+        self.assertEqual(self._matches((), policy), ["soundbar"])
+
+
 class MinimumRetailTests(unittest.TestCase):
     """The floor that separates a thing from its accessories."""
 

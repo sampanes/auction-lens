@@ -78,7 +78,14 @@ class ScoringContext:
 
 
 def policy_admits(conditions: Iterable[str], policy: ConditionPolicy) -> bool:
-    """Whether one interest's condition policy accepts these labels."""
+    """Whether one interest's condition policy accepts these labels.
+
+    A graded lot contributes only the answers that are not good news, so a
+    flawless lot arrives carrying no labels at all -- indistinguishable here
+    from one nobody graded. That makes ``allow_unknown`` govern the perfect lot
+    as well as the unexamined one, and turning it off refuses both. A policy
+    meaning "nothing wrong with it" is written as rejections instead.
+    """
     labels = frozenset(conditions)
     if labels & policy.reject:
         return False
