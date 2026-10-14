@@ -35,6 +35,7 @@ class ScoringContext:
     logistics: LogisticsAssessment
     baseline_penalty: int
     ending_soon_bonus: int
+    minutes_remaining: float | None = None
 
     @property
     def is_ending_soon(self) -> bool:

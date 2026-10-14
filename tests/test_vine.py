@@ -35,6 +35,7 @@ from auction_lens.providers.vine.swept import (
 from support import (
     EXAMPLE_CONFIG,
     SOUNDBAR,
+    anomaly_clock,
     example_config,
     example_listings,
     temporary_directory,
@@ -295,7 +296,10 @@ class ReceivedLotIsNoBargainTests(unittest.TestCase):
         )
 
     def _categories(self, listing):
-        return {candidate.category for candidate in evaluate(listing, self.config)}
+        # The clock is given so that a withheld bargain claim here can only
+        # mean the Vine reason, never that the fixture closes far away.
+        found = evaluate(listing, self.config, now=anomaly_clock())
+        return {candidate.category for candidate in found}
 
     def test_bought_at_that_price_the_same_lot_is_a_bargain(self):
         bought = replace(self.lot, value_is_taxable_income=False, current_bid=Decimal("10"))

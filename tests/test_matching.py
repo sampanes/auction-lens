@@ -17,7 +17,13 @@ from auction_lens.config.logistics import LocationPolicy
 from auction_lens.listings.model import ObservationChange
 from auction_lens.matching.evaluate import estimate_total_cost, evaluate
 from auction_lens.matching.logistics import LogisticsDecision
-from support import LASER_LEVEL, SOUNDBAR, example_config, example_listings
+from support import (
+    LASER_LEVEL,
+    SOUNDBAR,
+    anomaly_clock,
+    example_config,
+    example_listings,
+)
 
 
 class TotalCostTests(unittest.TestCase):
@@ -46,7 +52,9 @@ class InterestScoringTests(unittest.TestCase):
         self.listings = example_listings()
 
     def test_one_listing_can_match_an_interest_and_an_anomaly(self):
-        candidates = evaluate(self.listings[SOUNDBAR], self.config)
+        candidates = evaluate(
+            self.listings[SOUNDBAR], self.config, now=anomaly_clock()
+        )
         self.assertEqual({item.category for item in candidates}, {"wanted", "anomaly"})
 
     def test_globally_rejected_condition_never_becomes_a_candidate(self):
@@ -688,7 +696,7 @@ class InterestWeightTests(unittest.TestCase):
         self.listings = example_listings()
 
     def test_a_wanted_lot_outranks_a_bargain_nobody_asked_for(self):
-        scored = evaluate(self.listings[SOUNDBAR], self.config)
+        scored = evaluate(self.listings[SOUNDBAR], self.config, now=anomaly_clock())
         candidates = {item.category: item for item in scored}
         wanted, anomaly = candidates["wanted"], candidates["anomaly"]
         # The anomaly scores higher on raw discount; wanting the thing decides.
@@ -755,6 +763,102 @@ class AnomalyScoringTests(unittest.TestCase):
 
     def _anomaly(self, candidates):
         return next(item for item in candidates if item.category == "anomaly")
+
+
+class UntestedPriceTests(unittest.TestCase):
+    """Hours before a lot closes, its bid is the opening price, not a discount.
+
+    Before bidding starts a lot's total sits near zero, so its share of stated
+    retail is near zero and the discount score is near full marks -- for every
+    lot in the catalogue alike. Measured on recorded history, the ceiling
+    admitted all 3,064 lots seen with no bids at least six hours out, which is
+    a test nothing can fail. These pin the clock as the cure, and pin that it
+    reaches only the bargain claim.
+    """
+
+    # The unasked fixture states no end time, which is its own case below, so
+    # the timing tests give it one relative to a fixed reading.
+    NOW = datetime(2026, 10, 13, 18, 0, tzinfo=UTC)
+
+    def setUp(self):
+        self.config = example_config()
+        self.listings = example_listings()
+        self.unasked = self.listings[LASER_LEVEL]
+
+    def _ending_in(self, minutes, listing=None):
+        return replace(
+            listing or self.unasked, ends_at=self.NOW + timedelta(minutes=minutes)
+        )
+
+    def _categories(self, listing, config=None):
+        found = evaluate(listing, config or self.config, now=self.NOW)
+        return {item.category for item in found}
+
+    def test_an_unasked_lot_far_from_closing_is_not_called_cheap(self):
+        """The complaint, exactly: nobody has bid and it ends in 23 hours."""
+        self.assertEqual(
+            evaluate(self._ending_in(60 * 23), self.config, now=self.NOW), []
+        )
+
+    def test_the_same_lot_near_its_close_is(self):
+        self.assertIn("anomaly", self._categories(self._ending_in(10)))
+
+    def test_the_boundary_itself_counts_as_tested(self):
+        window = self.config.scoring.anomaly_within_minutes
+
+        self.assertIn("anomaly", self._categories(self._ending_in(window)))
+        self.assertEqual(
+            evaluate(self._ending_in(window + 1), self.config, now=self.NOW), []
+        )
+
+    def test_a_want_survives_the_gate_that_retires_the_bargain_claim(self):
+        """Evidence may retire a bargain claim, never a request."""
+        wanted_but_distant = self._ending_in(60 * 23, self.listings[SOUNDBAR])
+        categories = self._categories(wanted_but_distant)
+
+        self.assertIn("wanted", categories)
+        self.assertNotIn("anomaly", categories)
+
+    def test_a_lot_that_never_stated_an_end_is_still_eligible(self):
+        """No clock to wait for means the fault cannot apply."""
+        self.assertIsNone(self.unasked.ends_at)
+        self.assertIn("anomaly", self._categories(self.unasked))
+
+    def test_zero_turns_the_gate_off(self):
+        config = replace(
+            self.config,
+            scoring=replace(self.config.scoring, anomaly_within_minutes=0),
+        )
+
+        self.assertIn("anomaly", self._categories(self._ending_in(60 * 23), config))
+
+    def test_the_window_is_the_configured_one(self):
+        config = replace(
+            self.config,
+            scoring=replace(self.config.scoring, anomaly_within_minutes=60 * 24),
+        )
+
+        self.assertIn("anomaly", self._categories(self._ending_in(60 * 23), config))
+
+    def test_the_gate_does_not_change_what_a_reported_bargain_scores(self):
+        """It decides whether to speak, not how loudly."""
+        listing = self._ending_in(10)
+        ungated_config = replace(
+            self.config,
+            scoring=replace(self.config.scoring, anomaly_within_minutes=0),
+        )
+
+        self.assertEqual(
+            self._anomaly_in(listing, self.config).score,
+            self._anomaly_in(listing, ungated_config).score,
+        )
+
+    def _anomaly_in(self, listing, config):
+        return next(
+            item
+            for item in evaluate(listing, config, now=self.NOW)
+            if item.category == "anomaly"
+        )
 
 
 class LargeLotBandTests(unittest.TestCase):

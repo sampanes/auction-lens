@@ -9,6 +9,7 @@ from __future__ import annotations
 import tempfile
 from collections.abc import Iterator
 from contextlib import contextmanager
+from datetime import datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -39,6 +40,21 @@ def example_config() -> AppConfig:
 
 def example_listings() -> list[Listing]:
     return load_listings(SYNTHETIC_LISTINGS)
+
+
+def anomaly_clock(minutes_before: int = 30) -> datetime:
+    """A moment shortly before the shared anomaly fixture closes.
+
+    The anomaly path asks whether a lot is near enough its end for its price
+    to be evidence rather than an opening bid, so a test about that path has
+    to say when it is looking. The soundbar fixture ends far in the future on
+    purpose, which is the untested case; this reads its end time rather than
+    restating it, so the fixture stays the one authority for the date.
+    """
+    ends_at = example_listings()[SOUNDBAR].ends_at
+    if ends_at is None:
+        raise AssertionError("the anomaly fixture needs an end time")
+    return ends_at - timedelta(minutes=minutes_before)
 
 
 @contextmanager

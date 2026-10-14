@@ -23,7 +23,13 @@ from auction_lens.pricing.model import ValuationBand, ValuationSummary
 from auction_lens.pricing.value import ValuationEngine
 from auction_lens.watchlist.model import Verdict, WatchedItem
 from auction_lens.watchlist.store import WatchlistStore
-from support import SOUNDBAR, example_config, example_listings, temporary_database
+from support import (
+    SOUNDBAR,
+    anomaly_clock,
+    example_config,
+    example_listings,
+    temporary_database,
+)
 
 
 class AnalysisRunTests(unittest.TestCase):
@@ -86,7 +92,9 @@ class AnalysisRunTests(unittest.TestCase):
 
 class AutomaticCandidateSelectionTests(unittest.TestCase):
     def setUp(self):
-        found = evaluate(example_listings()[SOUNDBAR], example_config())
+        found = evaluate(
+            example_listings()[SOUNDBAR], example_config(), now=anomaly_clock()
+        )
         self.wanted = next(
             item for item in found if item.category is CandidateCategory.WANTED
         )
@@ -480,6 +488,7 @@ class OutcomeAwareInterestTests(unittest.TestCase):
             observations=ObservationStore(database),
             decisions=LogisticsDecisionStore(database),
             watchlist=store,
+            now=anomaly_clock(),
         )
 
 

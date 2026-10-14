@@ -116,12 +116,19 @@ def _income_tax(listing: Listing, economics: EconomicsConfig) -> Decimal:
     return listing.estimated_retail * economics.income_tax_rate
 
 
+def minutes_remaining(listing: Listing, now: datetime) -> float | None:
+    """How long this lot has left, or None when it never said."""
+    if listing.ends_at is None:
+        return None
+    return (listing.ends_at - now).total_seconds() / SECONDS_PER_MINUTE
+
+
 def ending_soon_bonus(listing: Listing, within_minutes: int, now: datetime) -> int:
     """Reward an actionable closing listing, but never one already closed."""
-    if listing.ends_at is None:
+    remaining = minutes_remaining(listing, now)
+    if remaining is None:
         return 0
-    minutes_remaining = (listing.ends_at - now).total_seconds() / SECONDS_PER_MINUTE
-    return ENDING_SOON_BONUS if 0 <= minutes_remaining <= within_minutes else 0
+    return ENDING_SOON_BONUS if 0 <= remaining <= within_minutes else 0
 
 
 def score_retail_anomaly(
@@ -136,6 +143,13 @@ def score_retail_anomaly(
         # a discount anybody offered, and a path that scores it admits an
         # entire catalogue at one identical score. A want still matches these
         # lots on their own words; only the bargain claim is withheld.
+        return None
+    if not scoring.anomaly_price_is_tested(context.minutes_remaining):
+        # The same fault with the clock in place of the tax rate: hours before
+        # a lot closes its bid is the opening price, so the ratio is near zero
+        # for everything alike and the discount score is near full marks for
+        # everything alike. Withheld until the price has been tested, by which
+        # time it is also something the reader can still act on.
         return None
     retail = context.listing.estimated_retail
     if retail is None or retail <= 0:
@@ -219,6 +233,7 @@ def build_context(
         logistics=logistics,
         baseline_penalty=penalty_for(conditions, config.scoring.condition_penalties),
         ending_soon_bonus=ending_soon_bonus(listing, config.scoring.ending_soon_minutes, now),
+        minutes_remaining=minutes_remaining(listing, now),
     )
 
 

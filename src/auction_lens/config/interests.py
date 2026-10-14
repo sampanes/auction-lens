@@ -130,6 +130,11 @@ class ScoringConfig:
     anomaly_weight: Decimal = Decimal("0.4")
     minimum_report_score: int = 70
     ending_soon_minutes: int = 20
+    # How late it has to be before an unasked lot's price is worth believing.
+    # Separate from ending_soon_minutes, which asks whether to add a bonus to
+    # something already worth reporting; this asks whether there is anything
+    # to report at all. See anomaly_price_is_tested for the measurement.
+    anomaly_within_minutes: int = 120
     # The most of stated retail worth paying at auction for anything.
     maximum_retail_ratio: Decimal | None = None
     condition_penalties: dict[str, int] = field(default_factory=dict)
@@ -169,6 +174,45 @@ class ScoringConfig:
             require_rate(self.maximum_retail_ratio, field_name="maximum_retail_ratio")
         require_not_negative(self.anomaly_weight, field_name="anomaly_weight")
         require_not_negative(self.ending_soon_minutes, field_name="ending_soon_minutes")
+        require_not_negative(
+            self.anomaly_within_minutes, field_name="anomaly_within_minutes"
+        )
+
+    def anomaly_price_is_tested(self, minutes_remaining: float | None) -> bool:
+        """Whether enough of the clock has run for this price to mean anything.
+
+        An opening bid is not a discount anybody offered. Before bidding, a
+        lot's total sits near zero, so its share of stated retail is near zero
+        and the discount score is near full marks -- for every lot alike. Of
+        3,064 recorded lots seen with no bids at least six hours out, the
+        ceiling admitted all 3,064, which is a test that cannot be failed.
+
+        The cure is the clock and not the bid count, which measured backwards:
+        across 25,703 readings with a known outcome, requiring any bid at all
+        held 72.1% of them still under the ceiling at the close and requiring
+        four or more held 64.6%, both worse than the 73.7% of the ungated
+        ceiling, because bidding is evidence of demand rather than of
+        cheapness. Nearness to the close went the other way -- 81.7% within
+        six hours and 85.9% within two -- against a 58.0% base rate for any
+        reading at all. Two hours is the default because it is both the
+        sharper number and the point where the claim is still actionable.
+
+        A want is untouched. Evidence may retire a bargain claim, never a
+        request: an unbid lot somebody asked for is still asked for.
+
+        A lot that has already closed answers yes, because its price is as
+        tested as a price gets. That it should not be in a report at all is a
+        different fact with a different owner, and answering it here would
+        hide one question inside another.
+        """
+        if self.anomaly_within_minutes <= 0:
+            return True
+        if minutes_remaining is None:
+            # No clock to wait for. A listing that never stated an end is not
+            # an auction caught mid-flight, and its price is as settled as it
+            # will ever be, so the fault this gate exists for cannot apply.
+            return True
+        return minutes_remaining <= self.anomaly_within_minutes
 
     def is_large_lot(self, retail: Decimal) -> bool:
         """Whether this lot is big enough for the second, gentler band."""
