@@ -80,6 +80,11 @@ those decisions.
   sources and combines comparable observations.
 - [`pricing/sources.py`](../src/auction_lens/pricing/sources.py) defines the small
   adapter contract and shared source settings.
+- [`pricing/closing_history.py`](../src/auction_lens/pricing/closing_history.py)
+  prices a lot from the observation history: its product's past closes, or lots
+  read at the same stage. `likely_close` turns either into the bids a lot is
+  likely to finish at, which `matching/analyze.py` costs as the card's likely
+  total.
 - [`pricing/reference.py`](../src/auction_lens/pricing/reference.py),
   [`pricing/xml_catalog.py`](../src/auction_lens/pricing/xml_catalog.py), and
   [`pricing/http_json.py`](../src/auction_lens/pricing/http_json.py) are the

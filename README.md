@@ -206,6 +206,13 @@ Closing-price output is deliberately a floor, not a claimed sale price: it can
 only report the last bid observed before a listing disappeared. The `sold`
 command names how close that observation was to closing.
 
+A report card shows two totals. "Total now" is the current bid plus premium,
+tax and fees. "Likely total" is the same sum at the bids the lot is likely to
+close at: the product's own past closes here when it has at least two, or else
+the middle half of what lots read at the same stage went on to fetch. It needs
+the `closing_history` valuation source and says so when there is not enough
+history yet.
+
 ## Email and Windows scheduling
 
 Guided SMTP setup keeps the password hidden and writes credentials only to the

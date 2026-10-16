@@ -88,7 +88,7 @@ class MessageShapeTests(unittest.TestCase):
 
         self.assertEqual(fields["Taxable value"], "unknown")
         self.assertEqual(fields["Estimated income tax"], "unknown")
-        self.assertNotIn("Cost", fields)
+        self.assertNotIn("Cost now", fields)
 
     def test_feedback_is_one_message_footer_not_per_card(self):
         message = build_message(build_report(_candidates(2), REPORT_ZONE), self.config)
@@ -404,7 +404,7 @@ class PostingTests(unittest.TestCase):
         costs = [
             field["value"]
             for field in payload["embeds"][0]["fields"]
-            if field["name"] == "Cost"
+            if field["name"] == "Cost now"
         ]
         self.assertEqual(costs, ["$20.70"])
 

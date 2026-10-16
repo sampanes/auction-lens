@@ -14,16 +14,19 @@ from auction_lens.matching.analyze import (
     analyze_listings,
     select_automatic_candidates,
 )
-from auction_lens.matching.evaluate import evaluate
+from auction_lens.matching.evaluate import estimate_total_cost, evaluate
 from auction_lens.matching.judge import VettingOutcome
 from auction_lens.matching.model import CandidateCategory
 from auction_lens.matching.progress import InterestRef
-from auction_lens.pricing.closing_history import BASIS
+from auction_lens.pricing.closing_history import BASIS, STAGE_BASIS
 from auction_lens.pricing.model import ValuationBand, ValuationSummary
 from auction_lens.pricing.value import ValuationEngine
+from auction_lens.reports.findings import build_report
+from auction_lens.reports.text import render_text
 from auction_lens.watchlist.model import Verdict, WatchedItem
 from auction_lens.watchlist.store import WatchlistStore
 from support import (
+    REPORT_ZONE,
     SOUNDBAR,
     anomaly_clock,
     example_config,
@@ -274,6 +277,85 @@ class ObservedCloseGateTests(unittest.TestCase):
     def test_without_an_engine_nothing_is_gated(self):
         """The gate can only ever remove a lot it has evidence against."""
         self.assertTrue(self._anomalies("30", None))
+
+
+class LikelyTotalTests(unittest.TestCase):
+    """What winning a lot is likely to cost, beside what it costs right now."""
+
+    def setUp(self):
+        self.config = example_config()
+        self.listing = example_listings()[SOUNDBAR]
+
+    def _candidates(self, band):
+        class OneBand:
+            def value(self, listing):
+                return ValuationSummary(bands=(band,) if band else ())
+
+        with temporary_database() as database:
+            result = analyze_listings(
+                [self.listing],
+                self.config,
+                observations=ObservationStore(database),
+                decisions=LogisticsDecisionStore(database),
+                valuation_engine=OneBand(),
+            )
+        return result.all_candidates
+
+    def _band(self, basis, low, typical, high, sample_size=40):
+        return ValuationBand(
+            basis=basis,
+            low=Decimal(low),
+            typical=Decimal(typical),
+            high=Decimal(high),
+            source_count=1,
+            sample_size=sample_size,
+        )
+
+    def _total_at(self, bid):
+        moved = replace(self.listing, current_bid=Decimal(bid))
+        return estimate_total_cost(moved, self.config.economics)
+
+    def test_the_likely_total_is_the_total_at_the_likely_bids(self):
+        """Premium, tax and fee are charged on the bid it closes at, not today's."""
+        candidate = self._candidates(self._band(STAGE_BASIS, "40", "55", "80"))[0]
+        likely = candidate.likely_total
+        self.assertEqual(
+            (likely.low, likely.typical, likely.high),
+            (self._total_at("40"), self._total_at("55"), self._total_at("80")),
+        )
+        self.assertGreater(likely.typical, candidate.total_cost)
+
+    def test_the_report_names_what_the_range_is_made_of(self):
+        candidates = self._candidates(self._band(STAGE_BASIS, "40", "55", "80"))
+        text = render_text(build_report(list(candidates), REPORT_ZONE))
+        self.assertIn(
+            f"Likely total: ${self._total_at('55'):,.0f} "
+            f"(${self._total_at('40'):,.0f}-${self._total_at('80'):,.0f}, "
+            "middle half of 40 lots at this stage)",
+            text,
+        )
+        self.assertIn(f"Total now: ${candidates[0].total_cost}", text)
+
+    def test_the_product_s_own_closes_are_named_as_such(self):
+        candidates = self._candidates(self._band(BASIS, "40", "55", "80", 3))
+        text = render_text(build_report(list(candidates), REPORT_ZONE))
+        self.assertIn("this product's 3 past closes", text)
+
+    def test_a_lot_with_no_history_says_so_rather_than_repeating_the_bid(self):
+        candidates = self._candidates(None)
+        text = render_text(build_report(list(candidates), REPORT_ZONE))
+        self.assertIn("Likely total: not enough closes recorded yet", text)
+
+    def test_without_a_price_source_nothing_is_claimed_about_history(self):
+        with temporary_database() as database:
+            result = analyze_listings(
+                [self.listing],
+                self.config,
+                observations=ObservationStore(database),
+                decisions=LogisticsDecisionStore(database),
+            )
+        text = render_text(build_report(list(result.all_candidates), REPORT_ZONE))
+        self.assertNotIn("Likely total", text)
 
 
 class StillOpenTests(unittest.TestCase):

@@ -11,18 +11,21 @@ from datetime import UTC, datetime
 
 from ..config.app import AppConfig
 from ..config.interests import InterestRule
+from ..config.pricing import EconomicsConfig
 from ..history.logistics import LogisticsDecisionStore
 from ..history.observations import ObservationStore
 from ..listings.model import Listing
-from ..pricing.closing_history import observed_ceiling
+from ..pricing.closing_history import likely_close, observed_ceiling
+from ..pricing.model import ValuationSummary
 from ..pricing.value import ValuationEngine
 from ..watchlist.store import FollowedListing, WatchlistStore
-from .evaluate import evaluate
+from .evaluate import evaluate, total_cost_at_bid
 from .judge import LocalModel, VettingOutcome, vet
 from .model import (
     Candidate,
     CandidateCategory,
     InterestHarvest,
+    LikelyTotal,
     best_of_each,
     harvest_of,
     ranked,
@@ -162,7 +165,9 @@ def analyze_listings(
             logistics_decision=decisions.get(listing.source, listing.listing_id),
             now=now,
         )
-        candidates.extend(_with_valuation(matches, listing, valuation_engine))
+        candidates.extend(
+            _with_valuation(matches, listing, valuation_engine, config.economics)
+        )
 
     # Word matching found these; the judge marks which are really the thing.
     # It runs before the caps so a set-aside lot ranks below a matched one.
@@ -252,15 +257,49 @@ def _with_valuation(
     matches: list[Candidate],
     listing: Listing,
     engine: ValuationEngine | None,
+    economics: EconomicsConfig,
 ) -> list[Candidate]:
     """Value a listing once, only when something about it is worth reporting."""
     if engine is None or not matches:
         return matches
     valuation = engine.value(listing)
-    priced = (replace(candidate, valuation=valuation) for candidate in matches)
+    priced = (
+        replace(
+            candidate,
+            valuation=valuation,
+            likely_total=_likely_total(candidate, valuation, economics),
+        )
+        for candidate in matches
+    )
     return [
         candidate for candidate in priced if not _already_costs_more(candidate, listing)
     ]
+
+
+def _likely_total(
+    candidate: Candidate, valuation: ValuationSummary, economics: EconomicsConfig
+) -> LikelyTotal | None:
+    """The all-in cost at the bids this lot is likely to close at, if known.
+
+    A lot received rather than bought has no bid to finish at; its cost is
+    already settled by its declared value, so there is nothing to forecast.
+    """
+    if candidate.listing.value_is_taxable_income:
+        return None
+    band = likely_close(valuation, candidate.listing.current_bid)
+    if band is None:
+        return None
+    low, typical, high = (
+        total_cost_at_bid(candidate, bid, economics)
+        for bid in (band.low, band.typical, band.high)
+    )
+    return LikelyTotal(
+        low=low,
+        typical=typical,
+        high=high,
+        basis=band.basis,
+        sample_size=band.sample_size,
+    )
 
 
 def _already_costs_more(candidate: Candidate, listing: Listing) -> bool:

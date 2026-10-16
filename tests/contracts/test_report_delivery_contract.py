@@ -265,7 +265,12 @@ class DailyReportDeliveryContract(unittest.TestCase):
                     "url": "https://example.invalid/auction/synthetic-001",
                     "color": 12986408,
                     "fields": [
-                        {"name": "Cost", "value": "$20.70", "inline": True},
+                        {"name": "Cost now", "value": "$20.70", "inline": True},
+                        {
+                            "name": "Likely",
+                            "value": "not enough closes recorded yet",
+                            "inline": True,
+                        },
                         {"name": "Retail", "value": "$129.00 (16%)", "inline": True},
                         {
                             "name": "Where",

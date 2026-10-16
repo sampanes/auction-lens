@@ -16,11 +16,19 @@ from auction_lens.config.pricing import ValuationSourceConfig
 from auction_lens.http_safety import PublicHttpsRedirectHandler
 from auction_lens.matching.evaluate import evaluate
 from auction_lens.pricing.closing_history import (
+    BASIS,
+    MINIMUM_STAGE_LOTS,
+    STAGE_BASIS,
     ClosingHistoryAdapter,
     _read_only,
+    likely_close,
 )
 from auction_lens.pricing.http_json import HttpJsonAdapter, read_path
-from auction_lens.pricing.model import ValuationObservation
+from auction_lens.pricing.model import (
+    ValuationBand,
+    ValuationObservation,
+    ValuationSummary,
+)
 from auction_lens.pricing.reference import ReferenceAdapter
 from auction_lens.pricing.sources import fill_template
 from auction_lens.pricing.value import (
@@ -324,7 +332,7 @@ class ClosingHistoryTests(unittest.TestCase):
         connection = sqlite3.connect(location)
         connection.execute(
             "CREATE TABLE listings (source TEXT, listing_id TEXT, title TEXT, "
-            "ends_at TEXT)"
+            "ends_at TEXT, estimated_retail TEXT)"
         )
         connection.execute(
             "CREATE TABLE price_history (source TEXT, listing_id TEXT, "
@@ -332,7 +340,8 @@ class ClosingHistoryTests(unittest.TestCase):
         )
         for listing_id, title, ends_at, observed_at, bid in rows:
             connection.execute(
-                "INSERT INTO listings VALUES ('nellis', ?, ?, ?)",
+                "INSERT INTO listings (source, listing_id, title, ends_at) "
+                "VALUES ('nellis', ?, ?, ?)",
                 (listing_id, title, ends_at),
             )
             connection.execute(
@@ -474,6 +483,121 @@ class ClosingHistoryTests(unittest.TestCase):
                 self._subject("Northvale Heater 48in")
             )
         self.assertEqual(found.observations, ())
+
+    # ---- a product with no closes of its own, priced from lots at its stage --
+
+    def _staged(self, directory, lots, *, closes=()):
+        """A history of whole lots: (title, retail, final bid, early readings).
+
+        Each early reading is (hours before the close, bid). The final bid is
+        read five minutes before the close, so every lot here really closed.
+        `closes` adds single-reading lots in the shape `_closed` makes.
+        """
+        location = self._database(directory, list(closes))
+        connection = sqlite3.connect(location)
+        ends = datetime.fromisoformat(self.NOW)
+        for number, (title, retail, final, early) in enumerate(lots, start=100):
+            listing_id = str(number)
+            connection.execute(
+                "INSERT INTO listings VALUES ('nellis', ?, ?, ?, ?)",
+                (listing_id, title, ends.isoformat(), retail),
+            )
+            readings = [(hours * 60, bid) for hours, bid in early] + [(5, final)]
+            for minutes, bid in readings:
+                connection.execute(
+                    "INSERT INTO price_history VALUES ('nellis', ?, ?, ?)",
+                    (listing_id, (ends - timedelta(minutes=minutes)).isoformat(), bid),
+                )
+        connection.commit()
+        connection.close()
+        return location
+
+    def _forty_lots(self, *, early=((8, "1.00"),), count=40):
+        """Lots of retail $100 that sat at $1 eight hours out and closed at
+        $10, $11, ... so their closes are 10%, 11%, ... of retail."""
+        return [
+            (f"Unrelated Gadget {number}", "100", f"{10 + number}.00", early)
+            for number in range(count)
+        ]
+
+    def _staged_subject(self, *, hours=8, bid="1.00", retail="200"):
+        ends = datetime.fromisoformat(self.NOW) + timedelta(days=1)
+        return replace(
+            self._subject("Northvale Patio Heater 48in"),
+            current_bid=Decimal(bid),
+            estimated_retail=Decimal(retail),
+            ends_at=ends,
+            observed_at=ends - timedelta(hours=hours),
+        )
+
+    def test_a_product_with_no_closes_is_priced_from_lots_at_its_stage(self):
+        """The middle half of what lots like it closed at, scaled to its retail."""
+        with temporary_directory() as directory:
+            location = self._staged(directory, self._forty_lots())
+            found = self._adapter(location).collect(self._staged_subject())
+        priced = found.observations[0]
+        self.assertEqual(priced.basis, STAGE_BASIS)
+        self.assertEqual(priced.sample_size, 40)
+        # Closes of 10%..49%: the median is 29.5%, of a $200 retail.
+        self.assertEqual(priced.typical, Decimal("59.00"))
+        self.assertLess(priced.low, priced.typical)
+        self.assertLess(priced.typical, priced.high)
+
+    def test_the_product_s_own_closes_come_before_lots_at_its_stage(self):
+        with temporary_directory() as directory:
+            location = self._staged(directory, self._forty_lots(), closes=[
+                self._closed("1", "Northvale Patio Heater 48in", "40.00"),
+                self._closed("2", "Northvale Patio Heater 48in", "60.00"),
+            ])
+            found = self._adapter(location).collect(self._staged_subject())
+        self.assertEqual([item.basis for item in found.observations], [BASIS])
+
+    def test_a_lot_read_many_times_at_one_stage_is_counted_once(self):
+        """Closely watched lots must not outvote the rest."""
+        early = ((7, "1.00"), (8, "1.00"), (9, "1.00"))
+        with temporary_directory() as directory:
+            location = self._staged(directory, self._forty_lots(early=early))
+            found = self._adapter(location).collect(self._staged_subject())
+        self.assertEqual(found.observations[0].sample_size, 40)
+
+    def test_too_few_lots_at_a_stage_says_nothing(self):
+        lots = self._forty_lots(count=MINIMUM_STAGE_LOTS - 1)
+        with temporary_directory() as directory:
+            location = self._staged(directory, lots)
+            found = self._adapter(location).collect(self._staged_subject())
+        self.assertEqual(found.observations, ())
+
+    def test_lots_read_at_another_stage_are_not_comparable(self):
+        """A bid a day out says nothing about one eight hours out."""
+        with temporary_directory() as directory:
+            location = self._staged(directory, self._forty_lots())
+            found = self._adapter(location).collect(self._staged_subject(hours=30))
+        self.assertEqual(found.observations, ())
+
+    def test_a_lot_with_no_stated_retail_has_no_stage(self):
+        with temporary_directory() as directory:
+            location = self._staged(directory, self._forty_lots())
+            subject = replace(self._staged_subject(), estimated_retail=None)
+            found = self._adapter(location).collect(subject)
+        self.assertEqual(found.observations, ())
+
+    def test_a_likely_close_is_never_below_the_bid_already_placed(self):
+        summary = ValuationSummary(bands=(
+            ValuationBand(basis=BASIS, low=Decimal("20"), typical=Decimal("30"),
+                          high=Decimal("50"), source_count=1, sample_size=3),
+        ))
+        likely = likely_close(summary, Decimal("35"))
+        self.assertEqual(
+            (likely.low, likely.typical, likely.high),
+            (Decimal("35"), Decimal("35"), Decimal("50")),
+        )
+
+    def test_evidence_of_another_kind_is_not_a_likely_close(self):
+        summary = ValuationSummary(bands=(
+            ValuationBand(basis="used_sold", low=Decimal("20"), typical=Decimal("30"),
+                          high=Decimal("50"), source_count=1, sample_size=3),
+        ))
+        self.assertIsNone(likely_close(summary, Decimal("1")))
 
     def test_the_adapter_is_reachable_by_its_configured_name(self):
         built = create_adapter(

@@ -16,6 +16,13 @@ from ..matching.searches import SearchHint
 # to recognise what is missing, few enough to stay a footnote.
 NAMED_UNCHANGED = 8
 
+# The bid as it stands plus every fee. Named "now" because that is all it is:
+# hours before a close the bid is an opening offer, and calling its total an
+# estimate let it pass for what the lot would cost. That figure is LIKELY_LABEL.
+TOTAL_NOW_LABEL = "Total now"
+LIKELY_LABEL = "Likely total"
+NO_LIKELY_TOTAL = "not enough closes recorded yet"
+
 
 @dataclass(frozen=True)
 class Fact:
@@ -38,8 +45,11 @@ class ListingFacts:
     conditions: str
     condition_severity: Tag
     watch_key: str
+    # Empty when the lot has no bid to finish at; NO_LIKELY_TOTAL when it has
+    # one but the history cannot yet say where it will end.
+    likely_total: str = ""
     bid_label: str = "Bid"
-    total_cost_label: str = "Estimated total"
+    total_cost_label: str = TOTAL_NOW_LABEL
     retail_label: str = "Retail"
 
     @property
@@ -49,6 +59,8 @@ class ListingFacts:
         if self.bid:
             facts.append(Fact(self.bid_label, self.bid))
         facts.append(Fact(self.total_cost_label, self.total_cost))
+        if self.likely_total:
+            facts.append(Fact(LIKELY_LABEL, self.likely_total))
         if self.retail:
             facts.append(Fact(self.retail_label, self.retail))
         if self.closes:

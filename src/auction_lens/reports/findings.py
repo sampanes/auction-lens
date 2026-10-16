@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from collections import defaultdict, deque
 from datetime import datetime
+from decimal import Decimal
 from zoneinfo import ZoneInfo
 
 from ..listings.conditions import Tag
@@ -21,9 +22,11 @@ from ..matching.logistics import LogisticsStatus
 from ..matching.model import Candidate, InterestHarvest, ReadingOrder, ranked
 from ..matching.progress import InterestProgress
 from ..matching.searches import SearchHint
+from ..pricing.closing_history import BASIS as PRODUCT_CLOSES
 from ..pricing.model import ValuationBand, ValuationSummary
 from .records import (
     NO_DELIVERY_FILTER,
+    NO_LIKELY_TOTAL,
     DeliverySummary,
     Finding,
     Group,
@@ -321,6 +324,7 @@ def _listing_facts(candidate: Candidate, zone: ZoneInfo) -> ListingFacts:
     return ListingFacts(
         bid=f"${listing.current_bid}",
         total_cost=f"${candidate.total_cost}",
+        likely_total=_likely_total(candidate),
         retail=f"${listing.estimated_retail}" if listing.estimated_retail else "",
         retail_ratio=(
             f"{candidate.retail_ratio:.0%}" if candidate.retail_ratio is not None else ""
@@ -331,6 +335,35 @@ def _listing_facts(candidate: Candidate, zone: ZoneInfo) -> ListingFacts:
         condition_severity=_condition_severity(listing),
         watch_key=listing.key,
     )
+
+
+def _likely_total(candidate: Candidate) -> str:
+    """The likely all-in cost, its range, and what the range is made of.
+
+    Silent when no price source was asked at all, since "not enough closes"
+    would then be a claim about history nobody consulted. Whole dollars: the
+    range is often wider than the typical figure, so cents would claim a
+    precision the history does not have. The two bases are named differently
+    because their ranges mean different things -- one is every close this
+    product has had, the other the middle half of many lots.
+    """
+    if candidate.valuation is None:
+        return ""
+    likely = candidate.likely_total
+    if likely is None:
+        return NO_LIKELY_TOTAL
+    if likely.basis == PRODUCT_CLOSES:
+        source = f"this product's {likely.sample_size} past closes"
+    else:
+        source = f"middle half of {likely.sample_size:,} lots at this stage"
+    typical = _dollars(likely.typical)
+    if likely.low == likely.high:
+        return f"{typical} ({source})"
+    return f"{typical} ({_dollars(likely.low)}-{_dollars(likely.high)}, {source})"
+
+
+def _dollars(amount: Decimal) -> str:
+    return f"${amount:,.0f}"
 
 
 def _conditions(listing: Listing) -> str:

@@ -22,7 +22,14 @@ from ..config.reports import WebhookConfig
 from ..http_safety import public_https_opener, require_public_https
 from ..listings.conditions import Tag
 from .destinations import destination_fingerprint
-from .records import DeliverySummary, Finding, ListingFacts, OutcomeSummary, Report
+from .records import (
+    TOTAL_NOW_LABEL,
+    DeliverySummary,
+    Finding,
+    ListingFacts,
+    OutcomeSummary,
+    Report,
+)
 
 WEBHOOK_TIMEOUT_SECONDS = 15
 
@@ -181,9 +188,14 @@ def _card(finding: Finding) -> dict[str, Any]:
     """
     facts = finding.facts
     cost_label = (
-        "Cost"
-        if facts.total_cost_label == "Estimated total"
+        "Cost now"
+        if facts.total_cost_label == TOTAL_NOW_LABEL
         else facts.total_cost_label
+    )
+    likely = (
+        [{"name": "Likely", "value": facts.likely_total, "inline": True}]
+        if facts.likely_total
+        else []
     )
     return {
         "title": finding.title[:HIGHEST_TITLE_LENGTH],
@@ -195,6 +207,7 @@ def _card(finding: Finding) -> dict[str, Any]:
                 "value": facts.total_cost,
                 "inline": True,
             },
+            *likely,
             {
                 "name": facts.retail_label,
                 "value": _retail(facts),

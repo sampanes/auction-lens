@@ -6,6 +6,7 @@ gates come before scores so that a rejection is cheap and obvious to explain.
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import UTC, datetime
 from decimal import Decimal
 
@@ -98,6 +99,23 @@ def estimate_total_cost(listing: Listing, economics: EconomicsConfig) -> Decimal
     return (total + _income_tax(listing, economics)).quantize(CENTS)
 
 
+def total_cost_at_bid(
+    candidate: Candidate, bid: Decimal, economics: EconomicsConfig
+) -> Decimal:
+    """The candidate's total if the bid ends at `bid`, every other cost held.
+
+    Moved from the candidate's own total rather than rebuilt, so a handling
+    cost the operator added to this lot is carried along without this
+    function having to know it exists.
+    """
+    moved = replace(candidate.listing, current_bid=bid)
+    return (
+        candidate.total_cost
+        + estimate_total_cost(moved, economics)
+        - estimate_total_cost(candidate.listing, economics)
+    )
+
+
 def _income_tax(listing: Listing, economics: EconomicsConfig) -> Decimal:
     """What a lot received rather than bought still costs, which is the tax on it.
 
@@ -167,7 +185,7 @@ def score_retail_anomaly(
     score = clamp_score(_discount_score(ratio) + context.score_bonus - penalty)
     if score < _report_floor(scoring, retail, ceiling):
         return None
-    reasons = [f"estimated total is {ratio:.1%} of stated retail"]
+    reasons = [f"total now is {ratio:.1%} of stated retail"]
     if context.is_ending_soon:
         reasons.append("ending soon")
     return context.candidate(

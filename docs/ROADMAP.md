@@ -28,8 +28,8 @@ or available friends. Personal answers stay in ignored local configuration.
 
 ## Closing prices
 
-Status: collection and readback implemented; scoring still values lots against
-estimated retail alone.
+Status: collection, readback and a likely total on every report card are
+implemented; scoring still values lots against estimated retail alone.
 
 Every judgement this project makes compares a bid with the provider's estimated
 retail, which is a number nobody paid. The realized price is not published, and
@@ -50,10 +50,13 @@ Two things remain open, and both are deliberately not config:
 1. **Timing.** A reading is only tight if a run happened near the close. Lots
    close in a narrow evening band, so one well-timed run converts a whole
    night's inventory. Whether to schedule that is the operator's call.
-2. **Scoring.** Nothing reads closing prices back into what a lot is worth. It
-   should eventually be possible to rank against what similar lots actually
-   went for, but a floor is not a sale price and a handful of readings is not a
-   market, so the bar for acting on this is evidence, not availability.
+2. **Scoring.** Closing prices now reach the reader as a likely total, and an
+   anomaly bid past every close its product had is dropped, but no score is
+   ranked against them yet. Tested on later closes than it was drawn from, the
+   same-stage range held the final bid half the time and its typical figure was
+   within about 30% when read under twelve hours out, about 50% a day out; a
+   product's own closes did better at every stage past two hours. That is good
+   enough to read and not yet good enough to rank by.
 
 ## Feedback-assisted tuning
 

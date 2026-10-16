@@ -66,7 +66,7 @@ class TextReportTests(unittest.TestCase):
         report = render_text(
             build_report(evaluate(self.listings[LASER_LEVEL], self.config), REPORT_ZONE),
         )
-        self.assertIn("Estimated total: $12.65", report)
+        self.assertIn("Total now: $12.65", report)
         self.assertIn("Example Laser Level Kit", report)
         self.assertIn("Watch key: nellis/synthetic-002", report)
 
@@ -523,7 +523,7 @@ class HtmlReportTests(unittest.TestCase):
         report = render_html(build_report(candidates, REPORT_ZONE))
         self.assertIn("Example 2.1 Channel Sound Bar with ARC", report)
         self.assertIn("https://example.invalid/auction/synthetic-001", report)
-        self.assertIn("Estimated total: $20.70", report)
+        self.assertIn("Total now: $20.70", report)
 
     def test_card_links_product_and_actual_lot_photos_to_the_listing(self):
         candidate = evaluate(self.listings[SOUNDBAR], self.config)[0]

@@ -244,6 +244,13 @@ currency = "USD"
 # Two products are the same when their titles match after case, punctuation and
 # warehouse shouting are removed. Digits are kept, so a 48-inch model is never
 # compared against a 60-inch one.
+#
+# A product with too few closes of its own is priced from lots at the same stage
+# instead: closed lots that some run read about as long before their end, with
+# their bid as far along against stated retail, and the middle half of what they
+# finished at. Either answer becomes the card's "Likely total" -- the same fees
+# charged on the bid the lot is likely to close at -- beside "Total now", which
+# is only today's bid plus fees and, hours out, mostly the opening price.
 [[valuation.sources]]
 id = "closing-history"
 label = "Observed closes here"

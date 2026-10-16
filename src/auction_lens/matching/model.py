@@ -64,6 +64,25 @@ class CandidateCategory(StrEnum):
 
 
 @dataclass(frozen=True)
+class LikelyTotal:
+    """What winning this lot is likely to cost all in, once bidding is done.
+
+    The total a report used to print was the current bid plus fees, which is a
+    price nobody pays: hours before the close the bid is an opening offer. This
+    is the same total at the bids the lot is likely to finish at, so the low
+    and high are real outcomes from the history named by ``basis``, never a
+    margin added to one number.
+    """
+
+    low: Decimal
+    typical: Decimal
+    high: Decimal
+    # The valuation basis it came from, and how many closes stand behind it.
+    basis: str
+    sample_size: int
+
+
+@dataclass(frozen=True)
 class Candidate:
     """One listing that matched one rule, with the evidence for reporting it."""
 
@@ -77,6 +96,7 @@ class Candidate:
     reasons: tuple[str, ...]
     change: ObservationChange
     valuation: ValuationSummary | None = None
+    likely_total: LikelyTotal | None = None
     logistics: LogisticsAssessment | None = None
     weight: Decimal = Decimal("1")
     # Whether the judge decided this lot is not the thing its rule asked for.
