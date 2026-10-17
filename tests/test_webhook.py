@@ -25,7 +25,20 @@ from auction_lens.reports.webhook import (
     webhook_destination,
     webhook_item_limit,
 )
-from support import REPORT_ZONE, SOUNDBAR, example_config, example_listings
+from support import (
+    REPORT_ZONE,
+    SOUNDBAR,
+    example_config,
+    example_listings,
+    shortly_before_close,
+)
+
+# When these tests are reading. Both scoring bars ask -- the bargain path
+# whether a price is evidence yet, the wanted path whether a lot is near
+# enough to be worth the page -- and the shared fixture deliberately ends far
+# in the future, outside both. Half an hour out is inside both and outside the
+# ending-soon bonus, so a report rendered here says what it would on the night.
+READING = shortly_before_close()
 
 ADDRESS = "https://discord.com/api/webhooks/000/secret-token"
 ENVIRONMENT = {"AUCTION_LENS_WEBHOOK_URL": ADDRESS}
@@ -42,7 +55,11 @@ def _progress(name: str, wanted: int | None, fulfilled: int = 0) -> InterestProg
 def _candidates(count: int = 1):
     config = example_config()
     listing = example_listings()[SOUNDBAR]
-    found = [item for item in evaluate(listing, config) if item.category == "wanted"]
+    found = [
+        item
+        for item in evaluate(listing, config, now=READING)
+        if item.category == "wanted"
+    ]
     return found * count
 
 

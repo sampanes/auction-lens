@@ -9,6 +9,7 @@ from __future__ import annotations
 from dataclasses import replace
 from datetime import UTC, datetime
 from decimal import Decimal
+from zoneinfo import ZoneInfo
 
 from ..config.app import AppConfig
 from ..config.interests import ScoringConfig
@@ -59,7 +60,7 @@ def evaluate(
     if context is None:
         return []
 
-    candidates = score_interests(context, config.interests, config.scoring.minimum_report_score)
+    candidates = score_interests(context, config.interests, config.scoring)
     anomaly = score_retail_anomaly(context, config.scoring)
     if anomaly is not None:
         candidates.append(anomaly)
@@ -139,6 +140,20 @@ def minutes_remaining(listing: Listing, now: datetime) -> float | None:
     if listing.ends_at is None:
         return None
     return (listing.ends_at - now).total_seconds() / SECONDS_PER_MINUTE
+
+
+def days_until_close(listing: Listing, now: datetime, zone: ZoneInfo) -> int | None:
+    """How many local days after this reading the lot closes, 0 being today.
+
+    Read in the provider's own zone, because "tomorrow" is a claim about the
+    calendar a reader lives in and not about UTC. Negative for a lot that has
+    already closed, which is a different fact with a different owner.
+    """
+    if listing.ends_at is None:
+        return None
+    closing_day = listing.ends_at.astimezone(zone).date()
+    reading_day = now.astimezone(zone).date()
+    return (closing_day - reading_day).days
 
 
 def ending_soon_bonus(listing: Listing, within_minutes: int, now: datetime) -> int:
@@ -252,6 +267,7 @@ def build_context(
         baseline_penalty=penalty_for(conditions, config.scoring.condition_penalties),
         ending_soon_bonus=ending_soon_bonus(listing, config.scoring.ending_soon_minutes, now),
         minutes_remaining=minutes_remaining(listing, now),
+        days_until_close=days_until_close(listing, now, config.acquisition.zone),
     )
 
 

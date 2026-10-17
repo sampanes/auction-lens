@@ -135,6 +135,11 @@ class ScoringConfig:
     # something already worth reporting; this asks whether there is anything
     # to report at all. See anomaly_price_is_tested for the measurement.
     anomaly_within_minutes: int = 120
+    # How many days before its closing day a requested lot may be reported.
+    # Zero means on its closing day only. Deliberately days and not minutes,
+    # unlike the bar above; wanted_is_timely says why, and why that distinction
+    # is the whole difference between this and a window removed once already.
+    wanted_lead_days: int = 0
     # The most of stated retail worth paying at auction for anything.
     maximum_retail_ratio: Decimal | None = None
     condition_penalties: dict[str, int] = field(default_factory=dict)
@@ -177,6 +182,7 @@ class ScoringConfig:
         require_not_negative(
             self.anomaly_within_minutes, field_name="anomaly_within_minutes"
         )
+        require_not_negative(self.wanted_lead_days, field_name="wanted_lead_days")
 
     def anomaly_price_is_tested(self, minutes_remaining: float | None) -> bool:
         """Whether enough of the clock has run for this price to mean anything.
@@ -197,8 +203,11 @@ class ScoringConfig:
         reading at all. Two hours is the default because it is both the
         sharper number and the point where the claim is still actionable.
 
-        A want is untouched. Evidence may retire a bargain claim, never a
-        request: an unbid lot somebody asked for is still asked for.
+        This bar does not touch a want. Evidence may retire a bargain claim,
+        never a request: an unbid lot somebody asked for is still asked for.
+        Whether a request closes near enough to be worth reading is a separate
+        question with a separate owner in wanted_is_timely, asked in days
+        rather than minutes, and answered by deferring rather than refusing.
 
         A lot that has already closed answers yes, because its price is as
         tested as a price gets. That it should not be in a report at all is a
@@ -213,6 +222,52 @@ class ScoringConfig:
             # will ever be, so the fault this gate exists for cannot apply.
             return True
         return minutes_remaining <= self.anomaly_within_minutes
+
+    def wanted_is_timely(self, days_until_close: int | None) -> bool:
+        """Whether a requested lot closes near enough to be worth the page.
+
+        Not the bargain question asked twice. That bar protects a claim about
+        price; this one protects the reader's attention. A lot nobody has bid
+        on yet says the thing exists and nothing at all about what it costs,
+        and a card whose total reads $0.00 is not information.
+
+        Measured over 104,810 readings that also carry a reading near the
+        close: a bid read 20 to 30 hours out rose 95% of the time by a median
+        30x, and its median share of stated retail went from 0.0% at the
+        reading to 15.5% at the close. That final share is where lots land
+        whenever they are read -- 14.6% to 17.2% in every band from two hours
+        to thirty -- so a share measured a day out reads the clock and not the
+        lot. A page built before the closing day fills with them: on one
+        evening's capture, 21 of 24 cards, and ten of those carried no bid.
+
+        Deliberately a calendar question and not a clock one. A window counted
+        from the moment a run starts was tried and removed, because one number
+        meant something different at every hour of the day: measured then, a
+        14-hour window cut nothing from an evening run and 794 of 1,406 lots
+        from a morning one, and every lot it hid that morning closed that same
+        evening. A closing day cannot do that. The same reasoning already
+        settled the companion's "is a sweep owed", which is a calendar
+        question for the same reason.
+
+        Deferring is not retiring, which is what keeps this consistent with
+        the rule above it and with the ranking the removed window was replaced
+        by. A lot held back tonight is read on its own closing day, by every
+        pass that day, while it is still open: all 95,014 recorded lots
+        carrying an end time close between 18:00 and 21:59 local, and the
+        first pass of the day runs well before that.
+
+        Zero lead days is the default because the record has no lot closing
+        between 22:00 and 18:00, so the midnight boundary falls in an empty
+        stretch rather than through the middle of anything. A site that posted
+        lots around the clock would need this chosen against its own
+        distribution rather than inherited.
+
+        A lot that never stated a closing day answers yes: there is no day to
+        wait for, and silence is not a reason to hide something asked for.
+        """
+        if days_until_close is None:
+            return True
+        return days_until_close <= self.wanted_lead_days
 
     def is_large_lot(self, retail: Decimal) -> bool:
         """Whether this lot is big enough for the second, gentler band."""

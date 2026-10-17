@@ -48,6 +48,7 @@ from support import (
     RecordingOpener,
     example_config,
     example_listings,
+    shortly_before_close,
     temporary_directory,
 )
 
@@ -135,7 +136,7 @@ class EngineTests(unittest.TestCase):
 
     def configured_candidate(self):
         """One ordinary candidate to carry an engine result into both reports."""
-        return evaluate(self.listing, self.config)[0]
+        return evaluate(self.listing, self.config, now=shortly_before_close())[0]
 
 
 class AggregationTests(unittest.TestCase):

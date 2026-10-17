@@ -6,6 +6,7 @@ import json
 import smtplib
 import unittest
 from dataclasses import replace
+from datetime import timedelta
 from decimal import Decimal
 from html import unescape
 from pathlib import Path
@@ -121,9 +122,14 @@ class DailyReportDeliveryContract(unittest.TestCase):
             package_dimensions_in=(Decimal("70"), Decimal("31"), Decimal("45")),
             loading_assistance=("forklift",),
         )
+        # Both scoring paths ask when the reading happened, so this says so.
+        # Half an hour out is inside the wanted and bargain bars alike and
+        # outside the ending-soon bonus, which would otherwise move the score
+        # this contract renders.
+        reading = listing.ends_at - timedelta(minutes=30)
         wanted = next(
             candidate
-            for candidate in evaluate(listing, config)
+            for candidate in evaluate(listing, config, now=reading)
             if candidate.category == "wanted"
         )
         wanted = replace(

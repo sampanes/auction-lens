@@ -20,9 +20,9 @@ from auction_lens.watchlist.report import render_watchlist, render_watchlist_htm
 from auction_lens.watchlist.store import FollowedListing, WatchlistStore
 from support import (
     SOUNDBAR,
-    anomaly_clock,
     example_config,
     example_listings,
+    shortly_before_close,
     temporary_database,
     temporary_directory,
 )
@@ -470,7 +470,7 @@ class RunRecordingTests(unittest.TestCase):
                 observations=ObservationStore(database),
                 decisions=LogisticsDecisionStore(database),
                 watchlist=store,
-                now=anomaly_clock(),
+                now=shortly_before_close(),
             )
 
     def _an_hour_later(self, listings, *, bid: str) -> list:

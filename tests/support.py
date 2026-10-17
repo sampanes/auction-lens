@@ -42,14 +42,22 @@ def example_listings() -> list[Listing]:
     return load_listings(SYNTHETIC_LISTINGS)
 
 
-def anomaly_clock(minutes_before: int = 30) -> datetime:
-    """A moment shortly before the shared anomaly fixture closes.
+def shortly_before_close(minutes_before: int = 30) -> datetime:
+    """A moment shortly before the shared soundbar fixture closes.
 
-    The anomaly path asks whether a lot is near enough its end for its price
-    to be evidence rather than an opening bid, so a test about that path has
-    to say when it is looking. The soundbar fixture ends far in the future on
-    purpose, which is the untested case; this reads its end time rather than
-    restating it, so the fixture stays the one authority for the date.
+    Both scoring paths ask when you are looking. The bargain path asks whether
+    a price is evidence yet rather than an opening bid; the wanted path asks
+    whether a lot is near enough to be worth the page at all. The soundbar
+    fixture ends far in the future on purpose, so by default it is outside
+    both -- which is the case the timing tests are about, and the reason any
+    other test needing a reported lot has to name its clock.
+
+    Thirty minutes is the default because it is inside both bars and outside
+    ending_soon_minutes, so a test borrowing this clock gets a reported lot
+    without silently collecting the ending-soon bonus and shifting its score.
+
+    Reads the fixture's end time rather than restating it, so the fixture
+    stays the one authority for the date.
     """
     ends_at = example_listings()[SOUNDBAR].ends_at
     if ends_at is None:

@@ -35,8 +35,16 @@ from support import (
     SOUNDBAR,
     example_config,
     example_listings,
+    shortly_before_close,
     temporary_directory,
 )
+
+# When these tests are reading. Both scoring bars ask -- the bargain path
+# whether a price is evidence yet, the wanted path whether a lot is near
+# enough to be worth the page -- and the shared fixture deliberately ends far
+# in the future, outside both. Half an hour out is inside both and outside the
+# ending-soon bonus, so a report rendered here says what it would on the night.
+READING = shortly_before_close()
 
 SMTP_ENVIRONMENT = {
     "AUCTION_LENS_SMTP_HOST": "smtp.example.invalid",
@@ -64,14 +72,17 @@ class TextReportTests(unittest.TestCase):
 
     def test_report_states_the_actionable_cost(self):
         report = render_text(
-            build_report(evaluate(self.listings[LASER_LEVEL], self.config), REPORT_ZONE),
+            build_report(
+                evaluate(self.listings[LASER_LEVEL], self.config, now=READING),
+                REPORT_ZONE,
+            ),
         )
         self.assertIn("Total now: $12.65", report)
         self.assertIn("Example Laser Level Kit", report)
         self.assertIn("Watch key: nellis/synthetic-002", report)
 
     def test_an_unvalued_taxable_item_does_not_claim_to_cost_zero(self):
-        candidate = evaluate(self.listings[SOUNDBAR], self.config)[0]
+        candidate = evaluate(self.listings[SOUNDBAR], self.config, now=READING)[0]
         candidate = replace(
             candidate,
             listing=replace(
@@ -93,7 +104,7 @@ class TextReportTests(unittest.TestCase):
             self.assertNotIn("Bid: $0", report)
 
     def test_a_known_taxable_value_names_value_and_estimated_tax(self):
-        candidate = evaluate(self.listings[SOUNDBAR], self.config)[0]
+        candidate = evaluate(self.listings[SOUNDBAR], self.config, now=READING)[0]
         candidate = replace(
             candidate,
             listing=replace(
@@ -116,7 +127,7 @@ class TextReportTests(unittest.TestCase):
         self.assertIn("no listings", render_text(build_report([], REPORT_ZONE)))
 
     def test_feedback_is_one_shared_footer_not_per_listing(self):
-        candidates = evaluate(self.listings[SOUNDBAR], self.config)
+        candidates = evaluate(self.listings[SOUNDBAR], self.config, now=READING)
         report = build_report(candidates, REPORT_ZONE)
         hint = (
             "Optional feedback: copy a Watch key into "
@@ -133,7 +144,7 @@ class TextReportTests(unittest.TestCase):
         self.assertNotIn("Optional feedback:", render_text(build_report([], REPORT_ZONE)))
 
     def test_feedback_footer_is_escaped_as_shared_report_data(self):
-        candidate = evaluate(self.listings[SOUNDBAR], self.config)[0]
+        candidate = evaluate(self.listings[SOUNDBAR], self.config, now=READING)[0]
         report = replace(
             build_report([candidate], REPORT_ZONE),
             feedback_hint="Optional <feedback> & advice",
@@ -145,7 +156,7 @@ class TextReportTests(unittest.TestCase):
         self.assertNotIn("Optional <feedback>", markup)
 
     def test_a_changed_price_names_what_the_destination_last_received(self):
-        candidate = evaluate(self.listings[LASER_LEVEL], self.config)[0]
+        candidate = evaluate(self.listings[LASER_LEVEL], self.config, now=READING)[0]
         candidate = replace(
             candidate,
             change=ObservationChange(
@@ -169,7 +180,9 @@ class TextReportTests(unittest.TestCase):
             loading_assistance=("forklift",),
         )
         candidate = next(
-            item for item in evaluate(listing, self.config) if item.category == "wanted"
+            item
+            for item in evaluate(listing, self.config, now=READING)
+            if item.category == "wanted"
         )
         report = render_text(build_report([candidate], REPORT_ZONE))
         self.assertIn("LOGISTICS CHECK", report)
@@ -191,7 +204,7 @@ class SetAsideVisibilityTests(unittest.TestCase):
         self.listings = example_listings()
 
     def _candidates(self, set_aside):
-        found = evaluate(self.listings[LASER_LEVEL], self.config)
+        found = evaluate(self.listings[LASER_LEVEL], self.config, now=READING)
         self.assertTrue(found, "fixture should produce a candidate")
         return [
             replace(
@@ -426,7 +439,7 @@ class ClosingTimeTests(unittest.TestCase):
     def _wanted(self, index):
         return [
             item
-            for item in evaluate(self.listings[index], self.config)
+            for item in evaluate(self.listings[index], self.config, now=READING)
             if item.category == "wanted"
         ]
 
@@ -448,7 +461,10 @@ class ClosingTimeTests(unittest.TestCase):
         # Rather than inventing a deadline, or printing an empty label that
         # reads like the auction never ends.
         report = render_text(
-            build_report(evaluate(self.listings[LASER_LEVEL], self.config), REPORT_ZONE),
+            build_report(
+                evaluate(self.listings[LASER_LEVEL], self.config, now=READING),
+                REPORT_ZONE,
+            ),
         )
         self.assertIn("Example Laser Level Kit", report)
         self.assertNotIn("Closes", report)
@@ -473,7 +489,7 @@ class ReadingOrderTests(unittest.TestCase):
             )
             found.extend(
                 item
-                for item in evaluate(listing, self.config)
+                for item in evaluate(listing, self.config, now=READING)
                 if item.category == "wanted"
             )
         return found
@@ -519,14 +535,14 @@ class HtmlReportTests(unittest.TestCase):
         self.listings = example_listings()
 
     def test_card_shows_the_listing_and_links_to_it(self):
-        candidates = evaluate(self.listings[SOUNDBAR], self.config)
+        candidates = evaluate(self.listings[SOUNDBAR], self.config, now=READING)
         report = render_html(build_report(candidates, REPORT_ZONE))
         self.assertIn("Example 2.1 Channel Sound Bar with ARC", report)
         self.assertIn("https://example.invalid/auction/synthetic-001", report)
         self.assertIn("Total now: $20.70", report)
 
     def test_card_links_product_and_actual_lot_photos_to_the_listing(self):
-        candidate = evaluate(self.listings[SOUNDBAR], self.config)[0]
+        candidate = evaluate(self.listings[SOUNDBAR], self.config, now=READING)[0]
 
         report = render_html(build_report([candidate], REPORT_ZONE))
 
@@ -538,7 +554,7 @@ class HtmlReportTests(unittest.TestCase):
         self.assertIn("synthetic-001-shelf.jpg", report)
 
     def test_one_gallery_image_is_shown_once_with_an_honest_label(self):
-        candidate = evaluate(self.listings[SOUNDBAR], self.config)[0]
+        candidate = evaluate(self.listings[SOUNDBAR], self.config, now=READING)[0]
         listing = replace(
             candidate.listing,
             photo_urls=("https://example.invalid/photo/only.jpg",),
@@ -554,7 +570,7 @@ class HtmlReportTests(unittest.TestCase):
         self.assertNotIn("<strong>Actual lot</strong>", report)
 
     def test_photo_and_listing_addresses_are_escaped(self):
-        candidate = evaluate(self.listings[SOUNDBAR], self.config)[0]
+        candidate = evaluate(self.listings[SOUNDBAR], self.config, now=READING)[0]
         listing = replace(
             candidate.listing,
             url="https://example.invalid/lot?next='details'&view=full",
@@ -569,7 +585,7 @@ class HtmlReportTests(unittest.TestCase):
         self.assertIn("size=&#x27;full&#x27;&amp;crop=none", report)
 
     def test_non_https_photos_are_not_embedded_in_email(self):
-        candidate = evaluate(self.listings[SOUNDBAR], self.config)[0]
+        candidate = evaluate(self.listings[SOUNDBAR], self.config, now=READING)[0]
         listing = replace(
             candidate.listing,
             photo_urls=("http://example.invalid/photo/lot.jpg",),
@@ -582,7 +598,7 @@ class HtmlReportTests(unittest.TestCase):
         self.assertNotIn("<img", report)
 
     def test_one_secure_end_of_a_gallery_is_still_shown(self):
-        candidate = evaluate(self.listings[SOUNDBAR], self.config)[0]
+        candidate = evaluate(self.listings[SOUNDBAR], self.config, now=READING)[0]
         listing = replace(
             candidate.listing,
             photo_urls=(
@@ -600,7 +616,7 @@ class HtmlReportTests(unittest.TestCase):
         self.assertIn("https://example.invalid/photo/lot.jpg", report)
 
     def test_listing_title_is_escaped(self):
-        candidate = evaluate(self.listings[SOUNDBAR], self.config)[0]
+        candidate = evaluate(self.listings[SOUNDBAR], self.config, now=READING)[0]
         listing = replace(candidate.listing, title="<script>alert(1)</script>")
         report = render_html(
             build_report([replace(candidate, listing=listing)], REPORT_ZONE),
@@ -616,7 +632,7 @@ class EmailDeliveryTests(unittest.TestCase):
     def setUp(self):
         self.config = example_config()
         self.email = replace(self.config.email, enabled=True)
-        self.candidates = evaluate(example_listings()[LASER_LEVEL], self.config)
+        self.candidates = evaluate(example_listings()[LASER_LEVEL], self.config, now=READING)
 
     @patch("auction_lens.reports.email.smtplib.SMTP_SSL")
     def test_implicit_tls_verifies_the_server_certificate(self, smtp_ssl):
@@ -807,7 +823,7 @@ class BothRenderingsSayTheSameThingTests(unittest.TestCase):
             handling_weight_lb=Decimal("148"),
             package_dimensions_in=(Decimal("70"), Decimal("31"), Decimal("45")),
         )
-        self.candidates = evaluate(listing, config)
+        self.candidates = evaluate(listing, config, now=READING)
         self.report = build_report(self.candidates, REPORT_ZONE)
 
     def _findings(self):
@@ -893,7 +909,7 @@ class DeadlineHeadlineTests(unittest.TestCase):
     def _wanted(self, index):
         return [
             item
-            for item in evaluate(self.listings[index], self.config)
+            for item in evaluate(self.listings[index], self.config, now=READING)
             if item.category == "wanted"
         ]
 
@@ -932,7 +948,7 @@ class SubjectPlaceholderTests(unittest.TestCase):
         self.listings = example_listings()
         self.candidates = [
             item
-            for item in evaluate(self.listings[SOUNDBAR], self.config)
+            for item in evaluate(self.listings[SOUNDBAR], self.config, now=READING)
             if item.category == "wanted"
         ]
 

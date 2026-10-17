@@ -109,6 +109,17 @@ minimum_report_score = 70
 ending_soon_minutes = 20
 anomaly_condition_profile = "ready_to_use"
 
+# How many days before its closing day a requested lot may be reported. Zero
+# means on its closing day only, which is the default because a lot nobody has
+# bid on yet has no price for a rule to judge: measured here, a bid read 20 to
+# 30 hours out rose 95% of the time by a median 30x, while lots close at about
+# the same share of stated retail whenever they are read. A held-back lot is
+# not refused -- every pass on its closing day reads it while it is still
+# open -- and the run says how many it held. Raise it if this provider posts
+# lots around the clock rather than in a daily batch, so that waiting for the
+# closing day would mean waiting past the close.
+wanted_lead_days = 0
+
 # A second, gentler band for lots big enough to deserve one. Both keys are
 # optional; leaving large_lot_minimum_retail unset means there is only the one
 # band, which is how scoring behaved before these existed.

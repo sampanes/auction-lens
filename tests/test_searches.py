@@ -13,7 +13,12 @@ from auction_lens.matching.searches import (
     MOST_STRANGERS_PER_LOT,
     search_hints,
 )
-from support import SOUNDBAR, example_config, example_listings
+from support import (
+    SOUNDBAR,
+    example_config,
+    example_listings,
+    shortly_before_close,
+)
 
 
 class SearchHintTests(unittest.TestCase):
@@ -38,7 +43,7 @@ class SearchHintTests(unittest.TestCase):
         candidates = [
             candidate
             for listing in listings
-            for candidate in evaluate(listing, config)
+            for candidate in evaluate(listing, config, now=shortly_before_close())
             if candidate.category == "wanted"
         ]
         everything = listings + [

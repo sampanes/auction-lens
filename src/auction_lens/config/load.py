@@ -149,6 +149,7 @@ def _scoring(section: Section, conditions: Section, profiles: Section) -> Scorin
             minimum_report_score=section.integer("minimum_report_score", 70),
             ending_soon_minutes=section.integer("ending_soon_minutes", 20),
             anomaly_within_minutes=section.integer("anomaly_within_minutes", 120),
+            wanted_lead_days=section.integer("wanted_lead_days", 0),
             maximum_retail_ratio=section.optional_decimal("maximum_retail_ratio"),
             condition_penalties=conditions.non_negative_integer_map("penalties"),
             rejected_conditions=frozenset(conditions.lowercase_texts("reject")),

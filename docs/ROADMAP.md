@@ -49,7 +49,11 @@ Two things remain open, and both are deliberately not config:
 
 1. **Timing.** A reading is only tight if a run happened near the close. Lots
    close in a narrow evening band, so one well-timed run converts a whole
-   night's inventory. Whether to schedule that is the operator's call.
+   night's inventory. Whether to schedule that is the operator's call. What is
+   no longer optional is the other side of it: a request is reported on its
+   closing day, because before that its bid is an opening price and every pass
+   that day still reaches it. `wanted_lead_days` opens that bar for a provider
+   whose lots do not arrive in a daily batch.
 2. **Scoring.** Closing prices now reach the reader as a likely total, and an
    anomaly bid past every close its product had is dropped, but no score is
    ranked against them yet. Tested on later closes than it was drawn from, the

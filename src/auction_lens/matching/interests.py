@@ -10,7 +10,7 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from decimal import Decimal
 
-from ..config.interests import ConditionPolicy, InterestRule
+from ..config.interests import ConditionPolicy, InterestRule, ScoringConfig
 from ..listings.model import Listing, ObservationChange
 from ..matching.text import first_mention, mentions, standalone_mentions
 from .logistics import LogisticsAssessment
@@ -36,6 +36,10 @@ class ScoringContext:
     baseline_penalty: int
     ending_soon_bonus: int
     minutes_remaining: float | None = None
+    # Local days from this reading to the close, 0 being today. The wanted bar
+    # is a calendar question, so it needs a day rather than a duration; None
+    # when the lot stated no closing time.
+    days_until_close: int | None = None
 
     @property
     def is_ending_soon(self) -> bool:
@@ -131,12 +135,21 @@ NEARBY_TEXT = 60
 def score_interests(
     context: ScoringContext,
     rules: tuple[InterestRule, ...],
-    minimum_report_score: int,
+    scoring: ScoringConfig,
 ) -> list[Candidate]:
-    """Return one candidate per interest rule this listing satisfies."""
+    """Return one candidate per interest rule this listing satisfies.
+
+    A lot that closes after today is not scored against any rule, because the
+    price every rule would be judging does not exist yet; it is read on its
+    own closing day instead. The whole scoring config is passed rather than
+    the one score it used to take, so this owns that bar exactly as the
+    bargain path owns its own.
+    """
+    if not scoring.wanted_is_timely(context.days_until_close):
+        return []
     matches = []
     for rule in rules:
-        candidate = _score_rule(context, rule, minimum_report_score)
+        candidate = _score_rule(context, rule, scoring.minimum_report_score)
         if candidate is not None:
             matches.append(candidate)
     return matches

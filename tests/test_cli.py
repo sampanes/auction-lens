@@ -77,9 +77,43 @@ def _enable_webhook(config) -> None:
     )
 
 
+def _closing_today(document):
+    """Move every stated close onto this run's own day, in place.
+
+    The shared fixture states 2030 so that it never expires, which also puts
+    it past the wanted bar, because a request earns its card on its closing
+    day. These tests are about command wiring rather than about that bar, so
+    they move the close instead of reproducing it.
+
+    An hour out, which is far enough that ending_soon_minutes adds no bonus
+    and so the scores these tests read stay fixed. Paired with the one-day
+    lead written by _config_copy, which absorbs an hour that lands after
+    midnight so a test cannot fail merely for running late at night.
+    """
+    closing = (datetime.now(UTC) + timedelta(hours=1)).isoformat()
+    for listing in document["listings"]:
+        if listing.get("ends_at"):
+            listing["ends_at"] = closing.replace("+00:00", "Z")
+    return document
+
+
+def _listings_closing_today(directory):
+    """The shared fixture, closing today, written where a run can read it."""
+    document = _closing_today(
+        json.loads(SYNTHETIC_LISTINGS.read_text(encoding="utf-8"))
+    )
+    path = directory / "closing-today.json"
+    path.write_text(json.dumps(document), encoding="utf-8")
+    return path
+
+
 def _config_copy(directory, *, email_enabled=False, webhook_enabled=False):
     config = directory / "config.toml"
-    config.write_text(EXAMPLE_CONFIG.read_text(encoding="utf-8"), encoding="utf-8")
+    text = EXAMPLE_CONFIG.read_text(encoding="utf-8")
+    # One day of lead, so a lot an hour away is reported whichever side of
+    # midnight it lands on. See _listings_closing_today.
+    text = text.replace("wanted_lead_days = 0", "wanted_lead_days = 1", 1)
+    config.write_text(text, encoding="utf-8")
     if email_enabled:
         _enable_email(config)
     if webhook_enabled:
@@ -177,7 +211,14 @@ class RunCommandTests(unittest.TestCase):
         with temporary_directory() as directory:
             database = directory / "observations.sqlite3"
             watchlist = directory / "watchlist.json"
-            argv = self._run_argv(directory, database)
+            # A want is reported on its closing day, so this one needs a lot
+            # that closes today and a config with the lead to match.
+            argv = self._run_argv(
+                directory,
+                database,
+                input_path=_listings_closing_today(directory),
+                config=_config_copy(directory),
+            )
 
             first = run_cli(argv)
             self.assertIn("matches use interest 'soundbar'", first)
@@ -218,13 +259,15 @@ class RunCommandTests(unittest.TestCase):
         self.assertIn("soundbar: 0/1 fulfilled; 1 remaining", reopened)
         self.assertIn("matches use interest 'soundbar'", reopened)
 
-    def _run_argv(self, directory, database) -> list[str]:
+    def _run_argv(
+        self, directory, database, *, input_path=None, config=EXAMPLE_CONFIG
+    ) -> list[str]:
         return [
             "run",
             "--input",
-            str(SYNTHETIC_LISTINGS),
+            str(input_path or SYNTHETIC_LISTINGS),
             "--config",
-            str(EXAMPLE_CONFIG),
+            str(config),
             "--database",
             str(database),
             "--watchlist",
@@ -467,7 +510,9 @@ class DeliveryLedgerCommandTests(unittest.TestCase):
         with temporary_directory() as directory:
             config = _config_copy(directory, email_enabled=True)
             input_path = directory / "listings.json"
-            payload = json.loads(SYNTHETIC_LISTINGS.read_text(encoding="utf-8"))
+            payload = _closing_today(
+                json.loads(SYNTHETIC_LISTINGS.read_text(encoding="utf-8"))
+            )
             input_path.write_text(json.dumps(payload), encoding="utf-8")
             argv, _ledger = self._run_argv(directory, config, input_path=input_path)
 
@@ -551,8 +596,10 @@ class DeliveryLedgerCommandTests(unittest.TestCase):
             self.assertFalse(ledger.exists())
 
     @staticmethod
-    def _run_argv(directory, config, *, input_path=SYNTHETIC_LISTINGS):
+    def _run_argv(directory, config, *, input_path=None):
         ledger = directory / "deliveries.sqlite3"
+        if input_path is None:
+            input_path = _listings_closing_today(directory)
         return (
             [
                 "run",

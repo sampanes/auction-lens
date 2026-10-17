@@ -28,9 +28,9 @@ from auction_lens.watchlist.store import WatchlistStore
 from support import (
     REPORT_ZONE,
     SOUNDBAR,
-    anomaly_clock,
     example_config,
     example_listings,
+    shortly_before_close,
     temporary_database,
 )
 
@@ -90,13 +90,14 @@ class AnalysisRunTests(unittest.TestCase):
             observations=ObservationStore(database),
             decisions=LogisticsDecisionStore(database),
             valuation_engine=valuation_engine,
+            now=shortly_before_close(),
         )
 
 
 class AutomaticCandidateSelectionTests(unittest.TestCase):
     def setUp(self):
         found = evaluate(
-            example_listings()[SOUNDBAR], example_config(), now=anomaly_clock()
+            example_listings()[SOUNDBAR], example_config(), now=shortly_before_close()
         )
         self.wanted = next(
             item for item in found if item.category is CandidateCategory.WANTED
@@ -170,6 +171,7 @@ class ReportCapTests(unittest.TestCase):
                 observations=ObservationStore(database),
                 decisions=LogisticsDecisionStore(database),
                 watchlist=WatchlistStore(Path(database.path).parent / "watchlist.json"),
+                now=shortly_before_close(),
             )
         self.assertEqual(result.lots_followed, 1)
 
@@ -184,6 +186,7 @@ class ReportCapTests(unittest.TestCase):
                 config,
                 observations=ObservationStore(database),
                 decisions=LogisticsDecisionStore(database),
+                now=shortly_before_close(),
             )
 
 
@@ -232,6 +235,7 @@ class ObservedCloseGateTests(unittest.TestCase):
                 observations=ObservationStore(database),
                 decisions=LogisticsDecisionStore(database),
                 valuation_engine=engine,
+                now=shortly_before_close(),
             )
         return [
             item
@@ -266,6 +270,7 @@ class ObservedCloseGateTests(unittest.TestCase):
                 observations=ObservationStore(database),
                 decisions=LogisticsDecisionStore(database),
                 valuation_engine=self._engine("1", "2"),
+                now=shortly_before_close(),
             )
         wanted = [
             item
@@ -298,6 +303,7 @@ class LikelyTotalTests(unittest.TestCase):
                 observations=ObservationStore(database),
                 decisions=LogisticsDecisionStore(database),
                 valuation_engine=OneBand(),
+                now=shortly_before_close(),
             )
         return result.all_candidates
 
@@ -353,6 +359,7 @@ class LikelyTotalTests(unittest.TestCase):
                 self.config,
                 observations=ObservationStore(database),
                 decisions=LogisticsDecisionStore(database),
+                now=shortly_before_close(),
             )
         text = render_text(build_report(list(result.all_candidates), REPORT_ZONE))
         self.assertNotIn("Likely total", text)
@@ -383,9 +390,11 @@ class StillOpenTests(unittest.TestCase):
         self.assertEqual(result.lots_already_closed, len(closed))
         self.assertFalse(result.candidates)
 
-    def test_a_lot_closing_far_out_is_still_reported(self):
-        # The one behaviour the removed window changed. A lot nobody can act on
-        # tonight is still a lot the operator asked to hear about.
+    def test_a_lot_closing_far_out_is_read_and_counted_not_set_aside(self):
+        # The removed window set these aside before scoring and said nothing.
+        # They are still read, still observed, and still counted; what a later
+        # change narrowed is only when a want earns its card, which is on its
+        # closing day. A month out that is no card yet, and the count says so.
         far = [
             replace(listing, ends_at=self.now + timedelta(days=30))
             for listing in self.listings
@@ -393,7 +402,8 @@ class StillOpenTests(unittest.TestCase):
         result = self._run(far)
         self.assertEqual(result.listings_scored, len(far))
         self.assertEqual(result.lots_already_closed, 0)
-        self.assertTrue(result.candidates)
+        self.assertFalse(result.candidates)
+        self.assertEqual(result.lots_closing_later, result.listings_scored)
 
     def test_a_lot_stating_no_closing_time_is_kept_rather_than_guessed_about(self):
         # Silence is not a reason to hide something the operator asked for.
@@ -419,7 +429,10 @@ class StillOpenTests(unittest.TestCase):
         # Being shown a lot is a historical fact. Whether the lot is worth
         # scoring today must not decide whether that fact was recorded, or a
         # relisting would look new when it is not.
-        open_lot = replace(self.listings[SOUNDBAR], ends_at=self.now + timedelta(hours=4))
+        # Two hours, which stays inside the reading's own day in the example
+        # config's zone. Four crossed midnight there and held the lot back for
+        # closing "tomorrow", which is a fact about this fixture's clock.
+        open_lot = replace(self.listings[SOUNDBAR], ends_at=self.now + timedelta(hours=2))
         closed = replace(open_lot, ends_at=self.now - timedelta(minutes=1))
         with temporary_database() as database:
             first = self._run_with_database(database, [closed])
@@ -570,7 +583,7 @@ class OutcomeAwareInterestTests(unittest.TestCase):
             observations=ObservationStore(database),
             decisions=LogisticsDecisionStore(database),
             watchlist=store,
-            now=anomaly_clock(),
+            now=shortly_before_close(),
         )
 
 

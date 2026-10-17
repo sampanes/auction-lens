@@ -50,7 +50,9 @@ listing is desirable.
 - [`matching/evaluate.py`](../src/auction_lens/matching/evaluate.py) applies
   common gates, total cost, broad bargain discovery, and candidate creation.
 - [`matching/interests.py`](../src/auction_lens/matching/interests.py) answers
-  whether a title satisfies one configured interest and condition policy.
+  whether a title satisfies one configured interest and condition policy, and
+  holds back a request that closes after today, which `daily.py` then counts
+  rather than hiding.
 - [`matching/text.py`](../src/auction_lens/matching/text.py) owns literal phrase
   and accessory-context matching.
 - [`matching/sizes.py`](../src/auction_lens/matching/sizes.py) reads the size and

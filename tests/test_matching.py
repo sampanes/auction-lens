@@ -20,10 +20,17 @@ from auction_lens.matching.logistics import LogisticsDecision
 from support import (
     LASER_LEVEL,
     SOUNDBAR,
-    anomaly_clock,
     example_config,
     example_listings,
+    shortly_before_close,
 )
+
+# When these tests are reading. The shared fixtures end far in the future, so
+# both scoring bars would otherwise hold every lot back: the bargain path
+# because an opening bid is not a discount, the wanted path because a lot a day
+# out has no price to judge. Half an hour before the close is inside both and
+# outside the ending-soon bonus, so scores read as they would on the night.
+READING = shortly_before_close()
 
 
 class TotalCostTests(unittest.TestCase):
@@ -53,7 +60,7 @@ class InterestScoringTests(unittest.TestCase):
 
     def test_one_listing_can_match_an_interest_and_an_anomaly(self):
         candidates = evaluate(
-            self.listings[SOUNDBAR], self.config, now=anomaly_clock()
+            self.listings[SOUNDBAR], self.config, now=READING
         )
         self.assertEqual({item.category for item in candidates}, {"wanted", "anomaly"})
 
@@ -63,11 +70,11 @@ class InterestScoringTests(unittest.TestCase):
             scoring=replace(self.config.scoring, rejected_conditions=frozenset({"scrap"})),
         )
         scrap = replace(self.listings[SOUNDBAR], conditions=("scrap",))
-        self.assertEqual(evaluate(scrap, config), [])
+        self.assertEqual(evaluate(scrap, config, now=READING), [])
 
     def test_condition_rejected_by_a_profile_never_becomes_a_candidate(self):
         broken = replace(self.listings[LASER_LEVEL], conditions=("not functional",))
-        self.assertEqual(evaluate(broken, self.config), [])
+        self.assertEqual(evaluate(broken, self.config, now=READING), [])
 
     def test_condition_policy_is_scoped_to_the_intended_use(self):
         salvage = InterestRule(
@@ -83,7 +90,7 @@ class InterestScoringTests(unittest.TestCase):
             estimated_retail=None,
             conditions=("not functional", "1 of 3 working"),
         )
-        candidates = evaluate(listing, config)
+        candidates = evaluate(listing, config, now=READING)
         self.assertEqual([item.rule_name for item in candidates], ["square tubing stock"])
         self.assertIn("salvage interest", candidates[0].reasons[0])
 
@@ -93,7 +100,7 @@ class InterestScoringTests(unittest.TestCase):
         )
         config = replace(self.config, interests=(rule,))
         listing = replace(self.listings[SOUNDBAR], title="Sound bar wall mount bracket")
-        matches = evaluate(listing, config)
+        matches = evaluate(listing, config, now=READING)
         self.assertEqual([item for item in matches if item.category == "wanted"], [])
 
     def test_a_lot_asking_most_of_retail_is_never_reported(self):
@@ -109,14 +116,14 @@ class InterestScoringTests(unittest.TestCase):
         )
         listing = self.listings[SOUNDBAR]
         near_retail = replace(listing, current_bid=listing.estimated_retail)
-        self.assertEqual(evaluate(near_retail, config), [])
+        self.assertEqual(evaluate(near_retail, config, now=READING), [])
 
     def test_the_ceiling_leaves_a_fairly_priced_lot_alone(self):
         config = replace(
             self.config,
             scoring=replace(self.config.scoring, maximum_retail_ratio=Decimal("0.60")),
         )
-        self.assertNotEqual(evaluate(self.listings[SOUNDBAR], config), [])
+        self.assertNotEqual(evaluate(self.listings[SOUNDBAR], config, now=READING), [])
 
     def test_a_lot_stating_no_retail_is_not_judged_by_the_ceiling(self):
         """No stated retail states no ratio, so there is nothing to exceed."""
@@ -125,33 +132,37 @@ class InterestScoringTests(unittest.TestCase):
             scoring=replace(self.config.scoring, maximum_retail_ratio=Decimal("0.60")),
         )
         unpriced = replace(self.listings[SOUNDBAR], estimated_retail=None)
-        wanted = [item for item in evaluate(unpriced, config) if item.category == "wanted"]
+        wanted = [
+            item
+            for item in evaluate(unpriced, config, now=READING)
+            if item.category == "wanted"
+        ]
         self.assertNotEqual(wanted, [])
 
     def test_listing_outside_an_allowed_location_is_skipped(self):
         config = replace(self.config, locations=LocationPolicy(allowed=("north warehouse",)))
-        self.assertEqual(evaluate(self.listings[SOUNDBAR], config), [])
+        self.assertEqual(evaluate(self.listings[SOUNDBAR], config, now=READING), [])
 
     def test_an_ordinary_lot_at_a_far_branch_is_not_worth_the_drive(self):
         config = replace(
             self.config,
             locations=LocationPolicy(far=("example warehouse",), far_minimum_score=99),
         )
-        self.assertEqual(evaluate(self.listings[SOUNDBAR], config), [])
+        self.assertEqual(evaluate(self.listings[SOUNDBAR], config, now=READING), [])
 
     def test_a_standout_at_a_far_branch_still_gets_through(self):
         config = replace(
             self.config,
             locations=LocationPolicy(far=("example warehouse",), far_minimum_score=1),
         )
-        self.assertTrue(evaluate(self.listings[SOUNDBAR], config))
+        self.assertTrue(evaluate(self.listings[SOUNDBAR], config, now=READING))
 
     def test_a_near_branch_is_never_held_to_the_far_bar(self):
         config = replace(
             self.config,
             locations=LocationPolicy(far=("somewhere else",), far_minimum_score=100),
         )
-        self.assertTrue(evaluate(self.listings[SOUNDBAR], config))
+        self.assertTrue(evaluate(self.listings[SOUNDBAR], config, now=READING))
 
     def test_a_small_lot_at_a_far_branch_is_not_worth_the_drive_however_cheap(self):
         """The score cannot say this on its own.
@@ -169,7 +180,7 @@ class InterestScoringTests(unittest.TestCase):
                 far_minimum_retail=Decimal("500"),
             ),
         )
-        self.assertEqual(evaluate(self.listings[SOUNDBAR], config), [])
+        self.assertEqual(evaluate(self.listings[SOUNDBAR], config, now=READING), [])
 
     def test_a_big_enough_lot_at_a_far_branch_still_comes_through(self):
         config = replace(
@@ -180,7 +191,7 @@ class InterestScoringTests(unittest.TestCase):
                 far_minimum_retail=Decimal("100"),
             ),
         )
-        self.assertTrue(evaluate(self.listings[SOUNDBAR], config))
+        self.assertTrue(evaluate(self.listings[SOUNDBAR], config, now=READING))
 
     def test_a_far_lot_stating_no_retail_cannot_prove_it_is_worth_the_drive(self):
         """Fails closed. An unstated size is not evidence of a large one."""
@@ -193,7 +204,7 @@ class InterestScoringTests(unittest.TestCase):
             ),
         )
         unpriced = replace(self.listings[SOUNDBAR], estimated_retail=None)
-        self.assertEqual(evaluate(unpriced, config), [])
+        self.assertEqual(evaluate(unpriced, config, now=READING), [])
 
     def test_without_a_floor_an_unpriced_far_lot_is_judged_on_score_alone(self):
         """The floor is what closes the door, so no floor leaves it open."""
@@ -202,7 +213,7 @@ class InterestScoringTests(unittest.TestCase):
             locations=LocationPolicy(far=("example warehouse",), far_minimum_score=1),
         )
         unpriced = replace(self.listings[SOUNDBAR], estimated_retail=None)
-        self.assertTrue(evaluate(unpriced, config))
+        self.assertTrue(evaluate(unpriced, config, now=READING))
 
     def test_a_near_branch_is_never_held_to_the_retail_floor(self):
         config = replace(
@@ -211,15 +222,16 @@ class InterestScoringTests(unittest.TestCase):
                 far=("somewhere else",), far_minimum_retail=Decimal("5000")
             ),
         )
-        self.assertTrue(evaluate(self.listings[SOUNDBAR], config))
+        self.assertTrue(evaluate(self.listings[SOUNDBAR], config, now=READING))
 
     def test_a_branch_already_being_visited_stops_costing_a_drive(self):
         # The drive is only a cost when it would not otherwise happen.
         listing = self.listings[SOUNDBAR]
         far = LocationPolicy(far=("example warehouse",), far_minimum_score=100)
         today = far.already_visiting(("example warehouse",))
-        self.assertEqual(evaluate(listing, replace(self.config, locations=far)), [])
-        self.assertTrue(evaluate(listing, replace(self.config, locations=today)))
+        far_config = replace(self.config, locations=far)
+        self.assertEqual(evaluate(listing, far_config, now=READING), [])
+        self.assertTrue(evaluate(listing, replace(self.config, locations=today), now=READING))
 
     def test_visiting_one_branch_says_nothing_about_the_others(self):
         far = LocationPolicy(far=("example warehouse", "far depot"), far_minimum_score=100)
@@ -238,8 +250,13 @@ class InterestScoringTests(unittest.TestCase):
     def test_ending_soon_adds_a_reason_and_raises_the_score(self):
         now = datetime(2026, 9, 5, 12, tzinfo=UTC)
         listing = replace(self.listings[SOUNDBAR], ends_at=now + timedelta(minutes=5))
+        # Three hours out, which is reported but is not ending soon, so the
+        # bonus under test is the only difference between the two readings.
+        # The fixture's own far-future end is past the wanted bar entirely and
+        # would compare a scored lot against no lot at all.
+        unhurried = replace(self.listings[SOUNDBAR], ends_at=now + timedelta(hours=3))
         soon = self._wanted(evaluate(listing, self.config, now=now))
-        later = self._wanted(evaluate(self.listings[SOUNDBAR], self.config, now=now))
+        later = self._wanted(evaluate(unhurried, self.config, now=now))
         self.assertIn("ending soon", soon.reasons)
         self.assertGreater(soon.score, later.score)
 
@@ -252,10 +269,10 @@ class InterestScoringTests(unittest.TestCase):
     def test_fresh_news_reorders_a_match_without_changing_its_quality_score(self):
         listing = self.listings[SOUNDBAR]
         new = self._wanted(
-            evaluate(listing, self.config, ObservationChange(True, False))
+            evaluate(listing, self.config, ObservationChange(True, False), now=READING)
         )
         unchanged = self._wanted(
-            evaluate(listing, self.config, ObservationChange(False, False))
+            evaluate(listing, self.config, ObservationChange(False, False), now=READING)
         )
 
         self.assertEqual(new.score, unchanged.score)
@@ -264,19 +281,19 @@ class InterestScoringTests(unittest.TestCase):
     def test_freshness_alone_cannot_push_a_match_past_its_rule_bar(self):
         listing = self.listings[SOUNDBAR]
         ordinary = self._wanted(
-            evaluate(listing, self.config, ObservationChange(False, False))
+            evaluate(listing, self.config, ObservationChange(False, False), now=READING)
         )
         rule = replace(self.config.interests[0], minimum_score=ordinary.score + 1)
         config = replace(self.config, interests=(rule,))
 
-        matches = evaluate(listing, config, ObservationChange(True, False))
+        matches = evaluate(listing, config, ObservationChange(True, False), now=READING)
 
         self.assertFalse(any(item.category == "wanted" for item in matches))
 
     def test_freshness_alone_cannot_justify_a_far_trip(self):
         listing = self.listings[SOUNDBAR]
         ordinary = self._wanted(
-            evaluate(listing, self.config, ObservationChange(False, False))
+            evaluate(listing, self.config, ObservationChange(False, False), now=READING)
         )
         config = replace(
             self.config,
@@ -286,7 +303,7 @@ class InterestScoringTests(unittest.TestCase):
             ),
         )
 
-        matches = evaluate(listing, config, ObservationChange(True, False))
+        matches = evaluate(listing, config, ObservationChange(True, False), now=READING)
 
         self.assertFalse(any(item.category == "wanted" for item in matches))
 
@@ -313,7 +330,7 @@ class UnknownConditionTests(unittest.TestCase):
         )
         config = replace(self.config, interests=(rule,))
         listing = replace(self.listings[SOUNDBAR], conditions=conditions)
-        scored = evaluate(listing, config, now=anomaly_clock())
+        scored = evaluate(listing, config, now=READING)
         return [item.rule_name for item in scored if item.category == "wanted"]
 
     def test_a_flawless_lot_is_admitted(self):
@@ -343,7 +360,7 @@ class MinimumRetailTests(unittest.TestCase):
 
     def _matches(self, config, **listing_overrides):
         listing = replace(self.listings[SOUNDBAR], **listing_overrides)
-        scored = evaluate(listing, config)
+        scored = evaluate(listing, config, now=READING)
         return [item.rule_name for item in scored if item.category == "wanted"]
 
     def test_an_accessory_worth_less_than_the_floor_is_not_the_thing(self):
@@ -406,7 +423,7 @@ class MaximumRetailShareTests(unittest.TestCase):
 
     def _matches(self, config, **listing_overrides):
         listing = replace(self.listings[SOUNDBAR], **listing_overrides)
-        scored = evaluate(listing, config)
+        scored = evaluate(listing, config, now=READING)
         return [item.rule_name for item in scored if item.category == "wanted"]
 
     def test_a_lot_inside_the_share_is_still_wanted(self):
@@ -491,7 +508,7 @@ class WarehouseNoteTests(unittest.TestCase):
             estimated_retail=Decimal("300"),
         )
         config = replace(self.config, interests=(rule,))
-        scored = evaluate(listing, config)
+        scored = evaluate(listing, config, now=READING)
         return [item.rule_name for item in scored if item.category == "wanted"]
 
     def test_a_note_leaves_a_lot_its_title_already_matched_alone(self):
@@ -535,7 +552,7 @@ class AccessoryTests(unittest.TestCase):
         listing = replace(
             self.listings[SOUNDBAR], title=title, estimated_retail=Decimal("300")
         )
-        scored = evaluate(listing, config)
+        scored = evaluate(listing, config, now=READING)
         return [item.rule_name for item in scored if item.category == "wanted"]
 
     def test_a_fitting_named_beside_the_thing_is_not_the_thing(self):
@@ -665,7 +682,7 @@ class DeclinedTermTests(unittest.TestCase):
         listing = replace(
             self.listings[SOUNDBAR], title=title, estimated_retail=Decimal("300")
         )
-        scored = evaluate(listing, config)
+        scored = evaluate(listing, config, now=READING)
         return [item.rule_name for item in scored if item.category == "wanted"]
 
     def _monitor_rule(self):
@@ -731,7 +748,7 @@ class InterestWeightTests(unittest.TestCase):
         self.listings = example_listings()
 
     def test_a_wanted_lot_outranks_a_bargain_nobody_asked_for(self):
-        scored = evaluate(self.listings[SOUNDBAR], self.config, now=anomaly_clock())
+        scored = evaluate(self.listings[SOUNDBAR], self.config, now=READING)
         candidates = {item.category: item for item in scored}
         wanted, anomaly = candidates["wanted"], candidates["anomaly"]
         # The anomaly scores higher on raw discount; wanting the thing decides.
@@ -744,7 +761,7 @@ class InterestWeightTests(unittest.TestCase):
         config = replace(
             self.config, scoring=replace(self.config.scoring, anomaly_weight=Decimal("0"))
         )
-        candidates = evaluate(self.listings[LASER_LEVEL], config)
+        candidates = evaluate(self.listings[LASER_LEVEL], config, now=READING)
         anomaly = next(item for item in candidates if item.category == "anomaly")
         self.assertEqual(anomaly.priority, 0)
         self.assertGreaterEqual(anomaly.score, config.scoring.minimum_report_score)
@@ -753,7 +770,7 @@ class InterestWeightTests(unittest.TestCase):
         eager = InterestRule(name="soundbar", any_terms=("sound bar",), minimum_score=99,
                              weight=Decimal("10"))
         config = replace(self.config, interests=(eager,))
-        scored = evaluate(self.listings[SOUNDBAR], config)
+        scored = evaluate(self.listings[SOUNDBAR], config, now=READING)
         self.assertEqual([item for item in scored if item.category == "wanted"], [])
 
     def test_a_negative_weight_is_refused(self):
@@ -767,22 +784,24 @@ class AnomalyScoringTests(unittest.TestCase):
         self.listings = example_listings()
 
     def test_deep_discount_on_a_valuable_item_is_reported(self):
-        candidate = self._anomaly(evaluate(self.listings[LASER_LEVEL], self.config))
+        candidate = self._anomaly(
+            evaluate(self.listings[LASER_LEVEL], self.config, now=READING)
+        )
         self.assertEqual(candidate.rule_name, "retail-ratio")
         self.assertIn("of stated retail", candidate.reasons[0])
 
     def test_retail_below_the_floor_is_not_an_anomaly(self):
         listing = replace(self.listings[LASER_LEVEL], estimated_retail=Decimal("60.00"))
-        self.assertEqual(evaluate(listing, self.config), [])
+        self.assertEqual(evaluate(listing, self.config, now=READING), [])
 
     def test_listing_without_retail_is_not_an_anomaly(self):
         listing = replace(self.listings[LASER_LEVEL], estimated_retail=None)
-        self.assertEqual(evaluate(listing, self.config), [])
+        self.assertEqual(evaluate(listing, self.config, now=READING), [])
 
     def test_freshness_alone_cannot_push_an_anomaly_past_the_global_bar(self):
         listing = self.listings[LASER_LEVEL]
         ordinary = self._anomaly(
-            evaluate(listing, self.config, ObservationChange(False, False))
+            evaluate(listing, self.config, ObservationChange(False, False), now=READING)
         )
         config = replace(
             self.config,
@@ -793,7 +812,7 @@ class AnomalyScoringTests(unittest.TestCase):
         )
 
         self.assertEqual(
-            evaluate(listing, config, ObservationChange(True, False)), []
+            evaluate(listing, config, ObservationChange(True, False), now=READING), []
         )
 
     def _anomaly(self, candidates):
@@ -847,9 +866,14 @@ class UntestedPriceTests(unittest.TestCase):
         )
 
     def test_a_want_survives_the_gate_that_retires_the_bargain_claim(self):
-        """Evidence may retire a bargain claim, never a request."""
-        wanted_but_distant = self._ending_in(60 * 23, self.listings[SOUNDBAR])
-        categories = self._categories(wanted_but_distant)
+        """Evidence may retire a bargain claim, never a request.
+
+        Three hours out is deliberately between the two bars: past the point
+        where a discount means anything, well inside the hours a request is
+        still worth reading. That gap is the whole point of their being two.
+        """
+        wanted_but_untested = self._ending_in(60 * 3, self.listings[SOUNDBAR])
+        categories = self._categories(wanted_but_untested)
 
         self.assertIn("wanted", categories)
         self.assertNotIn("anomaly", categories)
@@ -888,6 +912,84 @@ class UntestedPriceTests(unittest.TestCase):
             self._anomaly_in(listing, ungated_config).score,
         )
 
+    def test_a_want_a_day_out_is_held_until_its_closing_day(self):
+        """The second complaint: a want mailed the night before it closes.
+
+        Its bid is zero, so the card's total reads zero, which tells a reader
+        the thing exists and nothing about what it will cost. The lot is not
+        refused -- the passes on its own closing day reach it with hours left.
+        """
+        self.assertEqual(
+            evaluate(
+                self._ending_in(60 * 23, self.listings[SOUNDBAR]),
+                self.config,
+                now=self.NOW,
+            ),
+            [],
+        )
+
+    def test_a_want_closing_later_the_same_day_is_read_today(self):
+        """Ten hours out and still today, so there is nothing to wait for."""
+        tonight = datetime(2026, 10, 13, 21, 0, tzinfo=self._local())
+        soundbar = replace(self.listings[SOUNDBAR], ends_at=tonight)
+
+        self.assertIn("wanted", self._categories(soundbar))
+
+    def test_the_boundary_is_the_local_day_and_not_a_count_of_hours(self):
+        """Thirteen hours away, but on the next local day, so it waits.
+
+        This is the edge the default accepts, and the record is what makes it
+        safe: no lot has ever closed between 22:00 and 18:00, so the midnight
+        line falls in an empty stretch instead of through an evening's lots.
+        Reading it in the provider's zone rather than UTC is the whole point --
+        in UTC this close and this reading are the same day.
+        """
+        just_after_midnight = datetime(2026, 10, 14, 0, 30, tzinfo=self._local())
+        soundbar = replace(self.listings[SOUNDBAR], ends_at=just_after_midnight)
+
+        self.assertEqual(evaluate(soundbar, self.config, now=self.NOW), [])
+
+    def test_lead_days_open_the_wanted_bar_without_touching_the_bargain_one(self):
+        """Loosening one must not loosen the other."""
+        reads_ahead = replace(
+            self.config,
+            scoring=replace(self.config.scoring, wanted_lead_days=1),
+        )
+        distant = self._ending_in(60 * 23, self.listings[SOUNDBAR])
+
+        categories = self._categories(distant, reads_ahead)
+        self.assertIn("wanted", categories)
+        self.assertNotIn("anomaly", categories)
+
+    def _local(self):
+        return self.config.acquisition.zone
+
+    def test_a_wanted_lot_with_no_stated_end_is_still_reported(self):
+        """No clock to wait for, so there is nothing to defer it until."""
+        endless = replace(self.listings[SOUNDBAR], ends_at=None)
+
+        self.assertIn("wanted", self._categories(endless))
+
+    def test_the_wanted_bar_does_not_change_what_a_want_scores(self):
+        """It decides whether to speak, not how loudly."""
+        soundbar = self._ending_in(60, self.listings[SOUNDBAR])
+        ungated = replace(
+            self.config,
+            scoring=replace(self.config.scoring, wanted_lead_days=30),
+        )
+
+        self.assertEqual(
+            self._wanted_in(soundbar, self.config).score,
+            self._wanted_in(soundbar, ungated).score,
+        )
+
+    def _wanted_in(self, listing, config):
+        return next(
+            item
+            for item in evaluate(listing, config, now=self.NOW)
+            if item.category == "wanted"
+        )
+
     def _anomaly_in(self, listing, config):
         return next(
             item
@@ -922,11 +1024,11 @@ class LargeLotBandTests(unittest.TestCase):
         )
 
     def test_a_fair_price_on_a_big_lot_is_refused_without_the_band(self):
-        self.assertEqual(evaluate(self._fair_priced_big_lot(), self.config), [])
+        self.assertEqual(evaluate(self._fair_priced_big_lot(), self.config, now=READING), [])
 
     def test_the_band_lets_a_fair_price_on_a_big_lot_through(self):
         config = self._with_band("800", "0.40")
-        candidate = self._anomaly(evaluate(self._fair_priced_big_lot(), config))
+        candidate = self._anomaly(evaluate(self._fair_priced_big_lot(), config, now=READING))
         self.assertEqual(candidate.rule_name, "retail-ratio")
 
     def test_a_lot_under_the_band_still_answers_to_the_ordinary_ratio(self):
@@ -937,7 +1039,7 @@ class LargeLotBandTests(unittest.TestCase):
             estimated_retail=Decimal("400.00"),
             current_bid=Decimal("120.00"),
         )
-        self.assertEqual(evaluate(smaller, config), [])
+        self.assertEqual(evaluate(smaller, config, now=READING), [])
 
     def test_the_band_does_not_admit_a_big_lot_at_any_price(self):
         config = self._with_band("800", "0.40")
@@ -946,7 +1048,7 @@ class LargeLotBandTests(unittest.TestCase):
             estimated_retail=Decimal("1000.00"),
             current_bid=Decimal("600.00"),
         )
-        self.assertEqual(evaluate(expensive, config), [])
+        self.assertEqual(evaluate(expensive, config, now=READING), [])
 
     def test_a_generous_band_is_not_vetoed_by_the_report_floor(self):
         """The trap this band had to be designed around.
@@ -960,7 +1062,7 @@ class LargeLotBandTests(unittest.TestCase):
         config = replace(
             config, scoring=replace(config.scoring, minimum_report_score=70)
         )
-        candidate = self._anomaly(evaluate(self._fair_priced_big_lot(), config))
+        candidate = self._anomaly(evaluate(self._fair_priced_big_lot(), config, now=READING))
         self.assertLess(candidate.score, 70)
 
     def test_the_ordinary_band_keeps_a_floor_set_above_its_own_ceiling(self):
@@ -970,14 +1072,14 @@ class LargeLotBandTests(unittest.TestCase):
         statement that a discount alone is not enough.
         """
         config = self._with_band("800", "0.40")
-        ordinary = self._anomaly(evaluate(self.listings[LASER_LEVEL], config))
+        ordinary = self._anomaly(evaluate(self.listings[LASER_LEVEL], config, now=READING))
         strict = replace(
             config,
             scoring=replace(
                 config.scoring, minimum_report_score=ordinary.score + 1
             ),
         )
-        self.assertEqual(evaluate(self.listings[LASER_LEVEL], strict), [])
+        self.assertEqual(evaluate(self.listings[LASER_LEVEL], strict, now=READING), [])
 
     def test_a_band_cheaper_than_the_ordinary_one_is_refused(self):
         with self.assertRaisesRegex(ValueError, "large_lot_minimum_retail"):
@@ -1020,19 +1122,29 @@ class LogisticsScoringTests(unittest.TestCase):
         feasible = LogisticsDecision(status="feasible", added_cost=Decimal("10"))
         candidate = next(
             item
-            for item in evaluate(listing, self.config, logistics_decision=feasible)
+            for item in evaluate(listing, self.config, logistics_decision=feasible, now=READING)
             if item.category == "wanted"
         )
         self.assertEqual(candidate.total_cost, Decimal("30.70"))
         self.assertEqual(candidate.logistics.status, "feasible")
 
         too_expensive = replace(feasible, added_cost=Decimal("40"))
-        self.assertEqual(evaluate(listing, self.config, logistics_decision=too_expensive), [])
+        self.assertEqual(
+            evaluate(
+                listing, self.config, logistics_decision=too_expensive, now=READING
+            ),
+            [],
+        )
 
     def test_infeasible_decision_suppresses_the_listing_entirely(self):
         listing = replace(self.listings[SOUNDBAR], handling_weight_lb=Decimal("148"))
         decision = LogisticsDecision(status="infeasible")
-        self.assertEqual(evaluate(listing, self.config, logistics_decision=decision), [])
+        self.assertEqual(
+            evaluate(
+                listing, self.config, logistics_decision=decision, now=READING
+            ),
+            [],
+        )
 
 
 if __name__ == "__main__":

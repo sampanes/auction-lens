@@ -19,7 +19,7 @@ from ..pricing.closing_history import likely_close, observed_ceiling
 from ..pricing.model import ValuationSummary
 from ..pricing.value import ValuationEngine
 from ..watchlist.store import FollowedListing, WatchlistStore
-from .evaluate import evaluate, total_cost_at_bid
+from .evaluate import days_until_close, evaluate, total_cost_at_bid
 from .judge import LocalModel, VettingOutcome, vet
 from .model import (
     Candidate,
@@ -50,6 +50,10 @@ class AnalysisResult:
     # Lots left unscored because they cannot be acted on at all: the auction
     # is over. Counted so a short report is never mistaken for a quiet day.
     lots_already_closed: int = 0
+    # Lots that matched nothing only because they close after today. Not
+    # refused: the passes on their closing day read them while they are still
+    # open. Counted for the same reason as the line above.
+    lots_closing_later: int = 0
     # Ways to reach these lots at the provider's end. Built from everything
     # that matched rather than from the part that fitted, because reaching
     # what the cap held back is the whole reason to offer a phrase.
@@ -147,6 +151,7 @@ def analyze_listings(
     candidates: list[Candidate] = []
     scored = 0
     skipped = 0
+    held_back = 0
     for listing in listings:
         if listing.source != config.provider.provider_id:
             continue
@@ -165,6 +170,15 @@ def analyze_listings(
             logistics_decision=decisions.get(listing.source, listing.listing_id),
             now=now,
         )
+        if not matches and not config.scoring.wanted_is_timely(
+            days_until_close(listing, now, config.acquisition.zone)
+        ):
+            # Held back rather than refused: this lot is read on its closing
+            # day, by every pass that day. Counted for the same reason an
+            # already-closed lot is, so a short report is never mistaken for
+            # a quiet one. Only when nothing matched at all, so a lot that
+            # still earned a card on price alone is not reported as hidden.
+            held_back += 1
         candidates.extend(
             _with_valuation(matches, listing, valuation_engine, config.economics)
         )
@@ -202,6 +216,7 @@ def analyze_listings(
             watchlist,
         ),
         lots_already_closed=skipped,
+        lots_closing_later=held_back,
         interest_progress=plan.progress,
         unreviewed_wins=plan.unreviewed_wins,
         vetting=vetting,
