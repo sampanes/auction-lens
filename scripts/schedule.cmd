@@ -26,6 +26,7 @@ setlocal
 
 set "ROOT=%~dp0.."
 set "NELLIS=%ROOT%\scripts\run-daily.cmd"
+set "PRICES=%ROOT%\scripts\run-prices.cmd"
 set "VINE=%ROOT%\scripts\vine\run-vine.cmd"
 set "PREFIX=AuctionLens"
 
@@ -49,7 +50,13 @@ REM 18:59. Tasks fire one to three seconds past the minute, so 19:00 exactly
 REM would have been a coin flip that silently cost the 20:00 pass instead.
 set "RUN_3=Evening-2|18:58|%NELLIS%|mid-close: the 19:00 hour, which 17:55 reads too early"
 set "RUN_4=Evening-3|20:00|%NELLIS%|second pass: prices that have had time to mean something"
-set "RUN_5=Evening-4|21:35|%NELLIS%|last look: the only pass that sees lots actually close"
+REM This one reads prices and does not mail, so it has its own runner.
+REM On 2026-10-14 it went out as ordinary mail carrying 37 lots, of which
+REM 30 closed the next day and the other 7 had under twelve minutes left:
+REM nothing a reader could act on in either direction. The pass is still
+REM wanted, for the reason above; the email never was. run-prices.cmd
+REM carries the rest of the measurement.
+set "RUN_5=Evening-4|21:35|%PRICES%|last look: records the prices no other pass is awake for"
 REM The Vine run mails only if the companion swept today, which it does the
 REM first time Chrome is open after local midnight. Seven leaves the night for
 REM that to have happened, and it sends nothing rather than repeat yesterday.
@@ -73,6 +80,10 @@ goto :done
 :install
 if not exist "%NELLIS%" (
     echo [X] no runner at %NELLIS%
+    exit /b 1
+)
+if not exist "%PRICES%" (
+    echo [X] no runner at %PRICES%
     exit /b 1
 )
 if not exist "%VINE%" (
