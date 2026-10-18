@@ -17,8 +17,7 @@ from auction_lens.http_safety import PublicHttpsRedirectHandler
 from auction_lens.matching.evaluate import evaluate
 from auction_lens.pricing.closing_history import (
     BASIS,
-    MINIMUM_STAGE_LOTS,
-    STAGE_BASIS,
+    SETTLED_BASIS,
     ClosingHistoryAdapter,
     _read_only,
     likely_close,
@@ -485,7 +484,7 @@ class ClosingHistoryTests(unittest.TestCase):
             )
         self.assertEqual(found.observations, ())
 
-    # ---- a product with no closes of its own, priced from lots at its stage --
+    # ---- a product with no closes of its own gets no answer -----------------
 
     def _staged(self, directory, lots, *, closes=()):
         """A history of whole lots: (title, retail, final bid, early readings).
@@ -513,38 +512,43 @@ class ClosingHistoryTests(unittest.TestCase):
         connection.close()
         return location
 
-    def _forty_lots(self, *, early=((8, "1.00"),), count=40):
+    def _forty_lots(self):
         """Lots of retail $100 that sat at $1 eight hours out and closed at
         $10, $11, ... so their closes are 10%, 11%, ... of retail."""
         return [
-            (f"Unrelated Gadget {number}", "100", f"{10 + number}.00", early)
-            for number in range(count)
+            (f"Unrelated Gadget {number}", "100", f"{10 + number}.00", ((8, "1.00"),))
+            for number in range(40)
         ]
 
-    def _staged_subject(self, *, hours=8, bid="1.00", retail="200"):
+    def _staged_subject(self):
         ends = datetime.fromisoformat(self.NOW) + timedelta(days=1)
         return replace(
             self._subject("Northvale Patio Heater 48in"),
-            current_bid=Decimal(bid),
-            estimated_retail=Decimal(retail),
+            current_bid=Decimal("1.00"),
+            estimated_retail=Decimal("200"),
             ends_at=ends,
-            observed_at=ends - timedelta(hours=hours),
+            observed_at=ends - timedelta(hours=8),
         )
 
-    def test_a_product_with_no_closes_is_priced_from_lots_at_its_stage(self):
-        """The middle half of what lots like it closed at, scaled to its retail."""
+    def test_a_product_with_no_closes_of_its_own_is_not_priced(self):
+        """Forty lots that closed at a known share of retail still say nothing.
+
+        Their closes were once scaled to this lot's stated retail and reported
+        as the middle half of lots at the same stage. What that produced was
+        the retail figure times one constant per stage, so it read as evidence
+        while carrying none -- and stated retail is the seller's own number.
+        Measured over 16,965 closes, the share of retail a lot ends at is a
+        curve decaying from zero, median 16.5% and mean 19.7%, with only 2.1%
+        of lots landing within a point of that mean. No multiple of retail
+        describes a lot, so the honest answer is none, and the card says so.
+        """
         with temporary_directory() as directory:
             location = self._staged(directory, self._forty_lots())
             found = self._adapter(location).collect(self._staged_subject())
-        priced = found.observations[0]
-        self.assertEqual(priced.basis, STAGE_BASIS)
-        self.assertEqual(priced.sample_size, 40)
-        # Closes of 10%..49%: the median is 29.5%, of a $200 retail.
-        self.assertEqual(priced.typical, Decimal("59.00"))
-        self.assertLess(priced.low, priced.typical)
-        self.assertLess(priced.typical, priced.high)
+        self.assertEqual(found.observations, ())
 
-    def test_the_product_s_own_closes_come_before_lots_at_its_stage(self):
+    def test_the_product_s_own_closes_are_still_read_past_those_lots(self):
+        """Removing the fallback must not have cost the evidence it stood in for."""
         with temporary_directory() as directory:
             location = self._staged(directory, self._forty_lots(), closes=[
                 self._closed("1", "Northvale Patio Heater 48in", "40.00"),
@@ -553,34 +557,91 @@ class ClosingHistoryTests(unittest.TestCase):
             found = self._adapter(location).collect(self._staged_subject())
         self.assertEqual([item.basis for item in found.observations], [BASIS])
 
-    def test_a_lot_read_many_times_at_one_stage_is_counted_once(self):
-        """Closely watched lots must not outvote the rest."""
-        early = ((7, "1.00"), (8, "1.00"), (9, "1.00"))
-        with temporary_directory() as directory:
-            location = self._staged(directory, self._forty_lots(early=early))
-            found = self._adapter(location).collect(self._staged_subject())
-        self.assertEqual(found.observations[0].sample_size, 40)
+    # ---- a recorded sale outranks a reading taken before the close ----------
 
-    def test_too_few_lots_at_a_stage_says_nothing(self):
-        lots = self._forty_lots(count=MINIMUM_STAGE_LOTS - 1)
-        with temporary_directory() as directory:
-            location = self._staged(directory, lots)
-            found = self._adapter(location).collect(self._staged_subject())
-        self.assertEqual(found.observations, ())
+    def _with_sales(self, location, sales):
+        """Add settled closes to a history. Each sale is (listing_id, final bid)."""
+        connection = sqlite3.connect(location)
+        connection.execute(
+            "CREATE TABLE IF NOT EXISTS settled_closes (source TEXT, "
+            "listing_id TEXT, final_bid TEXT, bid_count INTEGER, closed_at TEXT, "
+            "scheduled_close TEXT, extended INTEGER, settled_at TEXT)"
+        )
+        for listing_id, final_bid in sales:
+            connection.execute(
+                "INSERT INTO settled_closes VALUES ('nellis', ?, ?, 4, NULL, NULL, 0, "
+                "'2026-10-17T23:45:00+00:00')",
+                (listing_id, final_bid),
+            )
+        connection.commit()
+        connection.close()
+        return location
 
-    def test_lots_read_at_another_stage_are_not_comparable(self):
-        """A bid a day out says nothing about one eight hours out."""
-        with temporary_directory() as directory:
-            location = self._staged(directory, self._forty_lots())
-            found = self._adapter(location).collect(self._staged_subject(hours=30))
-        self.assertEqual(found.observations, ())
+    def test_a_recorded_sale_is_preferred_to_a_reading_before_the_close(self):
+        """Not pooled with it: only one of the two is a price somebody paid.
 
-    def test_a_lot_with_no_stated_retail_has_no_stage(self):
+        A reading taken before the end is a floor, so averaging it with a sale
+        would pull the better answer down by exactly the error that made
+        reading-based prices worth replacing in the first place.
+        """
         with temporary_directory() as directory:
-            location = self._staged(directory, self._forty_lots())
-            subject = replace(self._staged_subject(), estimated_retail=None)
+            location = self._database(directory, [
+                self._closed("1", "Northvale Patio Heater 48in", "40.00"),
+                self._closed("2", "Northvale Patio Heater 48in", "60.00"),
+            ])
+            self._with_sales(location, [("1", "90.00"), ("2", "110.00")])
+            found = self._adapter(location).collect(
+                self._subject("Northvale Patio Heater 48in")
+            )
+        priced = found.observations[0]
+        self.assertEqual(priced.basis, SETTLED_BASIS)
+        self.assertEqual(priced.typical, Decimal("100.00"))
+        self.assertIn("recorded sales", priced.notes)
+
+    def test_too_few_sales_falls_back_to_the_readings_rather_than_mixing_them(self):
+        with temporary_directory() as directory:
+            location = self._database(directory, [
+                self._closed("1", "Northvale Patio Heater 48in", "40.00"),
+                self._closed("2", "Northvale Patio Heater 48in", "60.00"),
+            ])
+            self._with_sales(location, [("1", "90.00")])
+            found = self._adapter(location).collect(
+                self._subject("Northvale Patio Heater 48in")
+            )
+        priced = found.observations[0]
+        self.assertEqual(priced.basis, BASIS)
+        self.assertEqual(priced.typical, Decimal("50.00"))
+
+    def test_a_history_written_before_settling_existed_is_not_a_failure(self):
+        """The table is absent on every database until a settling pass runs."""
+        with temporary_directory() as directory:
+            location = self._database(directory, [
+                self._closed("1", "Northvale Patio Heater 48in", "40.00"),
+                self._closed("2", "Northvale Patio Heater 48in", "60.00"),
+            ])
+            found = self._adapter(location).collect(
+                self._subject("Northvale Patio Heater 48in")
+            )
+        self.assertEqual(found.observations[0].basis, BASIS)
+
+    def test_a_lot_is_never_its_own_comparable_sale(self):
+        """Its own result must not price it, however many times it is read."""
+        with temporary_directory() as directory:
+            location = self._database(directory, [
+                self._closed("1", "Northvale Patio Heater 48in", "40.00"),
+                self._closed("3", "Northvale Patio Heater 48in", "60.00"),
+            ])
+            self._with_sales(
+                location,
+                [("1", "90.00"), ("3", "150.00"), ("2", "999.00")],
+            )
+            subject = replace(self._subject("Northvale Patio Heater 48in"), listing_id="2")
             found = self._adapter(location).collect(subject)
-        self.assertEqual(found.observations, ())
+        priced = found.observations[0]
+        self.assertEqual(priced.basis, SETTLED_BASIS)
+        self.assertEqual(priced.sample_size, 2)
+        self.assertEqual(priced.typical, Decimal("120.00"))
+        self.assertEqual(priced.high, Decimal("150.00"))
 
     def test_a_likely_close_is_never_below_the_bid_already_placed(self):
         summary = ValuationSummary(bands=(

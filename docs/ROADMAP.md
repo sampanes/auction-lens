@@ -56,11 +56,13 @@ Two things remain open, and both are deliberately not config:
    whose lots do not arrive in a daily batch.
 2. **Scoring.** Closing prices now reach the reader as a likely total, and an
    anomaly bid past every close its product had is dropped, but no score is
-   ranked against them yet. Tested on later closes than it was drawn from, the
-   same-stage range held the final bid half the time and its typical figure was
-   within about 30% when read under twelve hours out, about 50% a day out; a
-   product's own closes did better at every stage past two hours. That is good
-   enough to read and not yet good enough to rank by.
+   ranked against them yet. Only a product's own closes are ever stated. The
+   same-stage range that used to stand in for them was removed: it was stated
+   retail times one constant per stage, and the closing share of retail is a
+   curve decaying from zero -- median 16.5%, mean 19.7% over 16,965 closes,
+   with 2.1% of lots inside a point of that mean -- so it read as evidence and
+   carried none. What would widen real coverage is reading nearer the close,
+   which is what `endpoint_minutes` buys and what another evening pass would.
 
 ## Feedback-assisted tuning
 

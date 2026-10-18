@@ -27,6 +27,7 @@ COMMANDS = (
     "watchlist",
     "feedback",
     "sold",
+    "settle",
 )
 
 # Exact public option names. Their implementation and source files are deliberately
@@ -119,6 +120,14 @@ OPTIONS = {
         "--proposal-dir",
     },
     "sold": {"--help", "--database", "--within-minutes", "--match", "--limit", "--config"},
+    "settle": {
+        "--help",
+        "--database",
+        "--since-hours",
+        "--limit",
+        "--config",
+        "--env-file",
+    },
 }
 
 # Enough input to parse each command without running it. Values are intentionally
@@ -137,6 +146,7 @@ MINIMUM_ARGUMENTS = {
     "watchlist": [],
     "feedback": ["review"],
     "sold": [],
+    "settle": [],
 }
 
 PATH_DEFAULTS = {
@@ -180,6 +190,11 @@ PATH_DEFAULTS = {
         "proposal_dir": "private/proposals",
     },
     "sold": {"database": "data/auction-lens.sqlite3", "config": "config/local.toml"},
+    "settle": {
+        "database": "data/auction-lens.sqlite3",
+        "config": "config/local.toml",
+        "env_file": ".env",
+    },
 }
 
 

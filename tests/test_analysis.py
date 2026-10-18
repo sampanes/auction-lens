@@ -18,7 +18,7 @@ from auction_lens.matching.evaluate import estimate_total_cost, evaluate
 from auction_lens.matching.judge import VettingOutcome
 from auction_lens.matching.model import CandidateCategory
 from auction_lens.matching.progress import InterestRef
-from auction_lens.pricing.closing_history import BASIS, STAGE_BASIS
+from auction_lens.pricing.closing_history import BASIS
 from auction_lens.pricing.model import ValuationBand, ValuationSummary
 from auction_lens.pricing.value import ValuationEngine
 from auction_lens.reports.findings import build_report
@@ -323,7 +323,7 @@ class LikelyTotalTests(unittest.TestCase):
 
     def test_the_likely_total_is_the_total_at_the_likely_bids(self):
         """Premium, tax and fee are charged on the bid it closes at, not today's."""
-        candidate = self._candidates(self._band(STAGE_BASIS, "40", "55", "80"))[0]
+        candidate = self._candidates(self._band(BASIS, "40", "55", "80"))[0]
         likely = candidate.likely_total
         self.assertEqual(
             (likely.low, likely.typical, likely.high),
@@ -332,15 +332,28 @@ class LikelyTotalTests(unittest.TestCase):
         self.assertGreater(likely.typical, candidate.total_cost)
 
     def test_the_report_names_what_the_range_is_made_of(self):
-        candidates = self._candidates(self._band(STAGE_BASIS, "40", "55", "80"))
+        candidates = self._candidates(self._band(BASIS, "40", "55", "80", 3))
         text = render_text(build_report(list(candidates), REPORT_ZONE))
         self.assertIn(
             f"Likely total: ${self._total_at('55'):,.0f} "
             f"(${self._total_at('40'):,.0f}-${self._total_at('80'):,.0f}, "
-            "middle half of 40 lots at this stage)",
+            "this product's 3 past closes)",
             text,
         )
         self.assertIn(f"Total now: ${candidates[0].total_cost}", text)
+
+    def test_a_band_on_another_basis_is_declined_rather_than_relabelled(self):
+        """A card states observed closes or admits it has none.
+
+        A band scaled from stated retail was once reported here as the middle
+        half of lots at the same stage, which read as evidence and was not.
+        Declining by basis rather than renaming the sentence is what stops a
+        later source inheriting it by accident.
+        """
+        band = self._band("similar_lots_close", "40", "55", "80")
+        text = render_text(build_report(list(self._candidates(band)), REPORT_ZONE))
+        self.assertIn("Likely total: not enough closes recorded yet", text)
+        self.assertNotIn("at this stage", text)
 
     def test_the_product_s_own_closes_are_named_as_such(self):
         candidates = self._candidates(self._band(BASIS, "40", "55", "80", 3))

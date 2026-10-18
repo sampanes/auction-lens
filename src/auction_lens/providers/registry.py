@@ -14,10 +14,12 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from ..config.provider import AcquisitionConfig, ProviderConfig
+from ..listings.model import PendingLot, SettleOutcome
 from .nellis.discover import check_discovery_ready as check_nellis_discovery_ready
 from .nellis.discover import discover_searches as discover_nellis_searches
 from .nellis.parse import read_saved_page as read_nellis_saved_page
 from .nellis.parse import read_search_page as read_nellis_search_page
+from .nellis.settle import settle_lots as settle_nellis_lots
 from .vine.read import check_discovery_ready as check_vine_discovery_ready
 from .vine.read import discover_searches as discover_vine_searches
 from .vine.read import read_records as read_vine_records
@@ -70,6 +72,15 @@ class SavedPageReader(Protocol):
     ) -> list[dict[str, Any]]: ...
 
 
+class Settler(Protocol):
+    def __call__(
+        self,
+        provider: ProviderConfig,
+        config: AcquisitionConfig,
+        lots: Iterable[PendingLot],
+    ) -> SettleOutcome: ...
+
+
 @dataclass(frozen=True)
 class ProviderAdapter:
     """Everything collection needs to understand one provider's pages."""
@@ -79,12 +90,26 @@ class ProviderAdapter:
     read_search_page: SearchPageReader
     read_saved_page: SavedPageReader
     saved_page_suffix: str = HTML_PAGES
+    # How to learn what a closed lot actually sold for, when this provider
+    # publishes that at all. None means it does not, and a settling run then
+    # refuses by name instead of reading zero lots and reporting success.
+    settle_lots: Settler | None = None
     # Whether asking this provider for lots is something the program does at
     # all. Stated here rather than discovered by calling the refusal and
     # catching it, because a preflight needs the answer before it decides which
     # checks even apply: the request pacing and the production run mode guard
     # requests, and a provider that makes none has nothing for them to guard.
     discovers: bool = True
+
+    @property
+    def settles(self) -> bool:
+        """Whether a closed lot's result can be read from this provider.
+
+        Derived rather than declared, because the one fact that decides it is
+        whether an adapter was given a way to do it, and two places saying so
+        is one place to forget.
+        """
+        return self.settle_lots is not None
 
 
 # Registration is deliberately written out. Adding a provider should be an
@@ -95,6 +120,7 @@ _PROVIDER_ADAPTERS: dict[str, ProviderAdapter] = {
         check_discovery_ready=check_nellis_discovery_ready,
         read_search_page=read_nellis_search_page,
         read_saved_page=read_nellis_saved_page,
+        settle_lots=settle_nellis_lots,
     ),
     # Read-only by construction. Both discovery callables refuse, so no
     # configuration and no flag can make this program request a Vine page.

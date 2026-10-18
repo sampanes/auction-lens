@@ -23,6 +23,7 @@ from ..matching.model import Candidate, InterestHarvest, ReadingOrder, ranked
 from ..matching.progress import InterestProgress
 from ..matching.searches import SearchHint
 from ..pricing.closing_history import BASIS as PRODUCT_CLOSES
+from ..pricing.closing_history import SETTLED_BASIS as PRODUCT_SALES
 from ..pricing.model import ValuationBand, ValuationSummary
 from .records import (
     NO_DELIVERY_FILTER,
@@ -337,25 +338,37 @@ def _listing_facts(candidate: Candidate, zone: ZoneInfo) -> ListingFacts:
     )
 
 
+# What a card may say a range is made of, and nothing else. Keyed by basis so
+# that a price source added later cannot inherit one of these sentences without
+# someone choosing its words.
+LIKELY_WORDING = {
+    PRODUCT_SALES: "this product's {count} recorded sales",
+    PRODUCT_CLOSES: "this product's {count} past closes",
+}
+
+
 def _likely_total(candidate: Candidate) -> str:
     """The likely all-in cost, its range, and what the range is made of.
 
     Silent when no price source was asked at all, since "not enough closes"
     would then be a claim about history nobody consulted. Whole dollars: the
     range is often wider than the typical figure, so cents would claim a
-    precision the history does not have. The two bases are named differently
-    because their ranges mean different things -- one is every close this
-    product has had, the other the middle half of many lots.
+    precision the history does not have.
+
+    Only this product's own record is ever stated here, and the sentence says
+    which kind it is: a recorded sale is what somebody paid, while a past close
+    is the last reading before the hammer and so a floor. A band arriving on
+    any other basis is declined rather than relabelled, because the one thing
+    this line must not do is read as evidence while carrying a figure derived
+    from stated retail -- which is the trade a removed fallback made, and the
+    reason a reader now gets the plain admission instead.
     """
     if candidate.valuation is None:
         return ""
     likely = candidate.likely_total
-    if likely is None:
+    if likely is None or likely.basis not in LIKELY_WORDING:
         return NO_LIKELY_TOTAL
-    if likely.basis == PRODUCT_CLOSES:
-        source = f"this product's {likely.sample_size} past closes"
-    else:
-        source = f"middle half of {likely.sample_size:,} lots at this stage"
+    source = LIKELY_WORDING[likely.basis].format(count=likely.sample_size)
     typical = _dollars(likely.typical)
     if likely.low == likely.high:
         return f"{typical} ({source})"

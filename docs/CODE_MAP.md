@@ -82,11 +82,18 @@ those decisions.
   sources and combines comparable observations.
 - [`pricing/sources.py`](../src/auction_lens/pricing/sources.py) defines the small
   adapter contract and shared source settings.
+- [`history/settlements.py`](../src/auction_lens/history/settlements.py) owns
+  what a closed lot really sold for, and which closed lots are still owed a
+  reading. `cli/settle.py` is the command, `providers/nellis/settle.py` the one
+  request path that asks for a page per lot, and `settle_authorized` the flag
+  that has to agree before any of it connects.
 - [`pricing/closing_history.py`](../src/auction_lens/pricing/closing_history.py)
-  prices a lot from the observation history: its product's past closes, or lots
-  read at the same stage. `likely_close` turns either into the bids a lot is
-  likely to finish at, which `matching/analyze.py` costs as the card's likely
-  total.
+  prices a lot from the observation history, and only from its product's own
+  record: a recorded sale where settling has reached it, else the last reading
+  before the close, never the two pooled. `likely_close` turns those into the
+  bids the lot is likely to finish at, which `matching/analyze.py` costs as the
+  card's likely total; a product with too little record gets no figure, which
+  the card states plainly.
 - [`pricing/reference.py`](../src/auction_lens/pricing/reference.py),
   [`pricing/xml_catalog.py`](../src/auction_lens/pricing/xml_catalog.py), and
   [`pricing/http_json.py`](../src/auction_lens/pricing/http_json.py) are the

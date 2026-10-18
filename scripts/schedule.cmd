@@ -27,6 +27,7 @@ setlocal
 set "ROOT=%~dp0.."
 set "NELLIS=%ROOT%\scripts\run-daily.cmd"
 set "PRICES=%ROOT%\scripts\run-prices.cmd"
+set "SETTLE=%ROOT%\scripts\run-settle.cmd"
 set "VINE=%ROOT%\scripts\vine\run-vine.cmd"
 set "PREFIX=AuctionLens"
 
@@ -57,10 +58,20 @@ REM nothing a reader could act on in either direction. The pass is still
 REM wanted, for the reason above; the email never was. run-prices.cmd
 REM carries the rest of the measurement.
 set "RUN_5=Evening-4|21:35|%PRICES%|last look: records the prices no other pass is awake for"
+REM Reads what last night's lots actually sold for, from each lot's own page.
+REM It cannot run earlier: a lot extends in thirty-second steps while bids keep
+REM arriving, so a lot asked at 21:35 may still be running, and nothing closes
+REM after 22:00. Midnight leaves that settled and is still an hour clear of the
+REM 21:35 pass, which the poll ledger requires.
+REM
+REM This is the one run that asks for a page per lot rather than forty lots per
+REM page, so it refuses unless settle_authorized says the provider agreed to
+REM that load. run-settle.cmd carries the measurement that motivated it.
+set "RUN_6=Settle|00:05|%SETTLE%|reads what last night's lots really sold for"
 REM The Vine run mails only if the companion swept today, which it does the
 REM first time Chrome is open after local midnight. Seven leaves the night for
 REM that to have happened, and it sends nothing rather than repeat yesterday.
-set "RUN_6=Vine|07:00|%VINE%|morning Vine digest: what the companion found overnight"
+set "RUN_7=Vine|07:00|%VINE%|morning Vine digest: what the companion found overnight"
 
 if /i "%~1"=="status"  goto :status
 if /i "%~1"=="install" goto :install
@@ -71,7 +82,7 @@ goto :usage
 :status
 echo Scheduled runs for %PREFIX%:
 echo.
-for %%R in ("%RUN_1%" "%RUN_2%" "%RUN_3%" "%RUN_4%" "%RUN_5%" "%RUN_6%") do call :report %%R
+for %%R in ("%RUN_1%" "%RUN_2%" "%RUN_3%" "%RUN_4%" "%RUN_5%" "%RUN_6%" "%RUN_7%") do call :report %%R
 echo.
 echo Provider budget is in config/local.toml as max_requests_per_day.
 goto :done
@@ -86,11 +97,15 @@ if not exist "%PRICES%" (
     echo [X] no runner at %PRICES%
     exit /b 1
 )
+if not exist "%SETTLE%" (
+    echo [X] no runner at %SETTLE%
+    exit /b 1
+)
 if not exist "%VINE%" (
     echo [X] no runner at %VINE%
     exit /b 1
 )
-for %%R in ("%RUN_1%" "%RUN_2%" "%RUN_3%" "%RUN_4%" "%RUN_5%" "%RUN_6%") do call :create %%R
+for %%R in ("%RUN_1%" "%RUN_2%" "%RUN_3%" "%RUN_4%" "%RUN_5%" "%RUN_6%" "%RUN_7%") do call :create %%R
 if errorlevel 1 exit /b 1
 echo.
 echo [OK] installed. Run "schedule.cmd status" to see the next fire times.
@@ -98,7 +113,7 @@ goto :done
 
 
 :remove
-for %%R in ("%RUN_1%" "%RUN_2%" "%RUN_3%" "%RUN_4%" "%RUN_5%" "%RUN_6%") do call :destroy %%R
+for %%R in ("%RUN_1%" "%RUN_2%" "%RUN_3%" "%RUN_4%" "%RUN_5%" "%RUN_6%" "%RUN_7%") do call :destroy %%R
 echo.
 echo [OK] removed. Nothing will fetch on a schedule until you install again.
 goto :done

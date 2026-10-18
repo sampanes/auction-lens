@@ -8,6 +8,7 @@ from .. import __version__
 from ..feedback.model import FeedbackLabel
 from ..feedback.review import DEFAULT_MINIMUM_DISTINCT_ITEMS
 from ..history.closing_prices import DEFAULT_WITHIN_MINUTES
+from ..history.settlements import DEFAULT_SETTLE_SINCE_HOURS
 from ..local_files import (
     DEFAULT_CONFIG,
     DEFAULT_DATABASE,
@@ -35,6 +36,7 @@ WATCH = "watch"
 WATCHLIST = "watchlist"
 FEEDBACK = "feedback"
 SOLD = "sold"
+SETTLE = "settle"
 REVIEW = "review"
 
 # Everything an operator may record, plus the word that removes a past answer.
@@ -93,6 +95,7 @@ def build_parser() -> argparse.ArgumentParser:
     _add_watchlist(subparsers)
     _add_feedback(subparsers)
     _add_sold(subparsers)
+    _add_settle(subparsers)
     return parser
 
 
@@ -360,6 +363,31 @@ def _add_sold(subparsers) -> None:
         "--limit", type=int, help="show only the tightest readings, not every one"
     )
     _add_config(sold)
+
+
+def _add_settle(subparsers) -> None:
+    """The only command that asks for a page per lot, and says so in its help."""
+    settle = subparsers.add_parser(
+        SETTLE,
+        help=(
+            "read what last night's closed lots actually sold for, one page per "
+            "lot (needs settle_authorized)"
+        ),
+    )
+    _add_database(settle)
+    settle.add_argument(
+        "--since-hours",
+        type=int,
+        default=DEFAULT_SETTLE_SINCE_HOURS,
+        help="how far back to look for closes still owed a reading",
+    )
+    settle.add_argument(
+        "--limit",
+        type=int,
+        help="read at most this many lots, so a first run can be tried small",
+    )
+    _add_config(settle)
+    _add_env_file(settle)
 
 
 def _add_delivery_ledger(command, *, allow_repeat: bool = True) -> None:

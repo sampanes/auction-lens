@@ -77,6 +77,16 @@ class AcquisitionConfig:
     # A POST that establishes branch-scoping session state can fall outside
     # permission to poll public pages, so it needs its own confirmation.
     session_change_authorized: bool = False
+    # Reading a page per closed lot, to learn what it actually sold for, is the
+    # heaviest thing this program can ask for: a search sweep describes forty
+    # lots per request and this describes one. Permission to poll is therefore
+    # not permission to do it, and it has its own flag defaulting to no.
+    settle_authorized: bool = False
+    # Paced separately from searches for the same reason. A night of closes is
+    # on the order of two thousand lots, which at the ten seconds that space
+    # searches would run for over five hours; the gap between settling requests
+    # is a different trade and belongs to whoever agreed to the load.
+    seconds_between_settles: Decimal = Decimal("2")
 
     @property
     def zone(self) -> ZoneInfo:
@@ -101,6 +111,9 @@ class AcquisitionConfig:
         )
         require_not_negative(
             self.seconds_between_searches, field_name="seconds_between_searches"
+        )
+        require_not_negative(
+            self.seconds_between_settles, field_name="seconds_between_settles"
         )
         if self.search_url_template and QUERY_PLACEHOLDER not in self.search_url_template:
             raise ValueError(

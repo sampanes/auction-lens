@@ -42,6 +42,21 @@ CREATE TABLE IF NOT EXISTS price_history (
     UNIQUE (source, listing_id, observed_at)
 );
 
+CREATE TABLE IF NOT EXISTS settled_closes (
+    source TEXT NOT NULL,
+    listing_id TEXT NOT NULL,
+    final_bid TEXT NOT NULL,
+    bid_count INTEGER NOT NULL,
+    -- When the provider says the lot actually ended, which is not the time it
+    -- was scheduled to: a late bid extends the close, so both are kept and
+    -- neither is derived from the other.
+    closed_at TEXT,
+    scheduled_close TEXT,
+    extended INTEGER NOT NULL,
+    settled_at TEXT NOT NULL,
+    PRIMARY KEY (source, listing_id)
+);
+
 CREATE TABLE IF NOT EXISTS logistics_decisions (
     source TEXT NOT NULL,
     listing_id TEXT NOT NULL,

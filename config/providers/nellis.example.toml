@@ -15,6 +15,21 @@ authorization_confirmed = false
 # permission to read public pages. Leave this false unless the provider has
 # specifically authorized that branch-scoping request.
 session_change_authorized = false
+# Reading what a closed lot actually sold for means asking for its own page,
+# one request per lot, where a search page describes forty. That is the heaviest
+# thing this program can do and it is not covered by permission to poll, so it
+# has its own flag and refuses by default. The `settle` command and
+# scripts/run-settle.cmd carry the reasoning; the short version is that a closed
+# lot leaves the search pages entirely, so a sweep can never see a result, and
+# on a measured night 70% of closing lots were last read more than half an hour
+# before even their scheduled close. Set this true only once the provider has
+# agreed to that volume, which is a different conversation from polling.
+settle_authorized = false
+# Paced separately from searches, because the volume is different. A night of
+# closes is on the order of two thousand lots: at the ten seconds that space
+# searches that is over five hours, at two seconds about an hour. Choose it
+# against what was agreed, not against what finishes soonest.
+seconds_between_settles = 2
 #
 # Discovery asks the provider's own search once per term, and one search
 # page carries every lot it lists. A live deployment sets:
@@ -256,12 +271,14 @@ currency = "USD"
 # warehouse shouting are removed. Digits are kept, so a 48-inch model is never
 # compared against a 60-inch one.
 #
-# A product with too few closes of its own is priced from lots at the same stage
-# instead: closed lots that some run read about as long before their end, with
-# their bid as far along against stated retail, and the middle half of what they
-# finished at. Either answer becomes the card's "Likely total" -- the same fees
-# charged on the bid the lot is likely to close at -- beside "Total now", which
-# is only today's bid plus fees and, hours out, mostly the opening price.
+# A product with too few closes of its own gets no figure at all, and the card
+# says so. Scaling stated retail by what lots at the same stage fetched was
+# tried here and removed: it produced the retail figure times one constant per
+# stage, so it read as evidence while carrying none, and stated retail is the
+# seller's own number. This answer becomes the card's "Likely total" -- the
+# same fees charged on the bid the lot is likely to close at -- beside "Total
+# now", which is only today's bid plus fees and, hours out, mostly the opening
+# price.
 [[valuation.sources]]
 id = "closing-history"
 label = "Observed closes here"
@@ -274,7 +291,15 @@ path = "data/auction-lens.sqlite3"
 # A stored bid is the last reading before the hammer, not the hammer. Only a
 # reading taken this close to the end is treated as a closing price; earlier
 # than that it is a lower bound that happens to be last.
-endpoint_minutes = 30
+#
+# This is the only bar deciding whether a lot has a likely total at all, so set
+# it against how often your runs actually read a lot. Measured here, passes an
+# hour or more apart left just 14% of lots read inside thirty minutes of
+# closing and only 2,059 products with the two closes a range needs; ninety
+# minutes reaches 9,366 products, and across 562 lots read in both windows the
+# bid gained a median $0.00 with $15 at the ninetieth percentile. Lower it if
+# you poll every few minutes, and add an evening pass before raising it far.
+endpoint_minutes = 90
 # One prior close is an anecdote. Two is the fewest that can disagree, which is
 # the whole point of reporting a range. Raise it for fewer, firmer answers.
 minimum_closes = 2

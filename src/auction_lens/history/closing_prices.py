@@ -14,6 +14,11 @@ last look while the lot was still open, and reports how late that look was.
 Every quoted price is therefore a floor rather than a final sale price. The
 report keeps that limitation visible and counts readings that were taken too
 early to be useful instead of silently dropping them.
+
+A real sale price is available by a different route, which costs a request per
+closed lot: see `settle` and `history/settlements.py`. This module is what the
+observation record alone can say, and stays the answer for any lot that route
+has not reached.
 """
 
 from __future__ import annotations
@@ -37,10 +42,16 @@ FLOOR_NOTE = "Each price is a floor: the lot sold for at least this much."
 class ClosingPrice:
     """The last bid seen on a lot while it was still open.
 
-    What a lot actually sold for is not knowable here. The provider never
-    publishes a hammer price, and a closed lot drops off the pages this reads,
-    so the final bid is always one look too late. What is knowable is a floor:
-    the lot sold for *at least* this much.
+    What a lot actually sold for is not knowable *here*. A closed lot drops off
+    the search pages this reads, so the last look is always one too early and
+    what is knowable is a floor: the lot sold for *at least* this much.
+
+    It is knowable elsewhere. A lot's own page stays up after the close and
+    states the result, which `settle` reads and `history/settlements.py` stores
+    -- at the cost of a request per lot, so it is separately authorized and may
+    not be running. Where a settled price exists it is the better answer and
+    the valuation source prefers it; this remains what the record can say about
+    a lot nothing has settled.
 
     ``seen_minutes_before_close`` says how tight that floor is, and is the
     whole value of the record. A bid read three minutes before the close is

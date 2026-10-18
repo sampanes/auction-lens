@@ -204,6 +204,68 @@ class ObservationChange:
         return 0
 
 
+@dataclass(frozen=True)
+class PendingLot:
+    """One closed lot still owed a reading of its own page.
+
+    Carries the address because that is what a settling pass needs and the
+    lot's stored row is the only place it exists, and the scheduled close
+    because a result page that no longer states one still has to be compared
+    against something.
+    """
+
+    source: str
+    listing_id: str
+    url: str
+    scheduled_close: str
+
+
+@dataclass(frozen=True)
+class Settlement:
+    """What a lot actually sold for, as its own page stated after the close.
+
+    Distinct from every other price in this program, which is a reading taken
+    while bidding was still running and is therefore a floor. This is the sale.
+
+    Both close times are kept because they are different facts. A bid placed
+    near the end pushes the close out in fixed steps, so the moment a lot was
+    scheduled to end and the moment it ended can differ, and ``extended`` says
+    whether they did without a reader having to subtract them.
+    """
+
+    source: str
+    listing_id: str
+    final_bid: Decimal
+    bid_count: int
+    closed_at: datetime | None
+    scheduled_close: datetime | None
+    extended: bool
+
+    @property
+    def key(self) -> str:
+        return key_of(self.source, self.listing_id)
+
+
+@dataclass(frozen=True)
+class SettleOutcome:
+    """What one settling pass read, and what it could not.
+
+    The failures are counted separately because they mean different things to
+    whoever reads the run. A lot still open was asked too early and will answer
+    next time; a missing one was withdrawn and never will; an unreadable one is
+    a parsing problem worth knowing about rather than a fact about the lot.
+    """
+
+    settlements: tuple[Settlement, ...] = ()
+    still_open: int = 0
+    missing: int = 0
+    unreadable: int = 0
+
+    @property
+    def requested(self) -> int:
+        return len(self.settlements) + self.still_open + self.missing + self.unreadable
+
+
 def _photos(data: dict[str, Any]) -> tuple[str, ...]:
     """Read a gallery, accepting the single image older files carry."""
     return parse_urls(data.get("photo_urls")) or parse_urls(data.get("image_url"))

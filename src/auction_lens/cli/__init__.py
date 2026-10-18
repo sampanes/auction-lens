@@ -8,6 +8,7 @@ from .. import collect, daily, doctor, setup
 from ..config.environment import load_env_file
 from ..config.profile_wizard import profile
 from . import feedback, logistics, sold, watchlist
+from . import settle as settle_command
 from .exit_codes import OPERATOR_ERROR
 from .parser import (
     DAILY,
@@ -20,6 +21,7 @@ from .parser import (
     PROGRAM,
     PULL,
     RUN,
+    SETTLE,
     SETUP,
     SOLD,
     WATCH,
@@ -42,12 +44,13 @@ COMMANDS = {
     WATCH: watchlist.watch,
     WATCHLIST: watchlist.watchlist,
     FEEDBACK: feedback.feedback,
+    SETTLE: settle_command.settle,
     SOLD: sold.sold,
 }
 
 # Commands that validate or use provider and delivery settings load the ignored
 # environment file first; the rest record or read local files.
-COMMANDS_NEEDING_ENVIRONMENT = frozenset({DOCTOR, RUN, FETCH, DISCOVER, DAILY})
+COMMANDS_NEEDING_ENVIRONMENT = frozenset({DOCTOR, RUN, FETCH, DISCOVER, DAILY, SETTLE})
 
 
 def main(argv: list[str] | None = None) -> int:

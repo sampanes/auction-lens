@@ -4,12 +4,15 @@ Every other source in this directory asks somebody else what a thing is worth.
 This one asks the only witness with no reason to flatter: the provider's own
 past auctions, as this tool recorded them while they ran.
 
-It answers two questions. What has this exact product fetched here before,
-and, for a lot whose product has no such record, what did lots at the same
-stage of their auction go on to fetch? The second exists because a bid read
-hours before the close is an opening price, not a cost: measured on recorded
-closes, a lot six to twelve hours out typically finished at 1.8 times the bid
-it showed then, and a day out the bid is nearly always the one-dollar opener.
+It answers one question: what has this exact product fetched here before. A
+lot whose product has no such record gets no answer, and the report says so.
+
+Scaling stated retail by what lots at the same stage fetched was tried here and
+removed. The figure it produced was the stated retail rescaled by one constant
+per stage, so it read as evidence while carrying none: measured over 16,965
+closes, the share of retail a lot ends at is a curve decaying from zero, with a
+16.5% median, a 19.7% mean, and only 2.1% of lots inside a point of that mean.
+No single multiple of retail describes a lot, and a card is better off silent.
 
 The first exists because stated retail is the seller's own number and cannot be
 trusted to rank anything. Measured across 8,491 observed closes, lots led by a
@@ -27,15 +30,13 @@ from __future__ import annotations
 
 import re
 import sqlite3
-from bisect import bisect_right
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from datetime import datetime
 from decimal import Decimal
-from itertools import groupby
 from pathlib import Path
-from statistics import median, quantiles
+from statistics import median
 
 from ..config.pricing import ValuationSourceConfig
 from ..listings.model import Listing
@@ -47,25 +48,29 @@ from .sources import SourceResult, settings_of
 # the last reading before the hammer and not the hammer itself.
 BASIS = "observed_close"
 
-# What lots at the same stage went on to close at. Named for where it comes
-# from, because a reader comparing it with BASIS has to know it is not this
-# product's own record.
-STAGE_BASIS = "similar_lots_close"
+# What the same product really sold for, read from each lot's own page once it
+# had shut. This is the hammer, so it is named for that and kept apart from the
+# reading above: the two are both observations and only one of them is a sale.
+# A product with enough of these is priced from them alone, because mixing a
+# sale with a bid recorded an hour early would average away the better answer.
+SETTLED_BASIS = "settled_close"
 
-# A lot's stage is how long it had left and how far its bid had already gone,
-# as a share of stated retail. Both sets of edges were tried against recorded
-# closes: finer hour bands held too few closes a day out, and the share bands
-# separate the one-dollar openers from bids that have started to move.
-STAGE_HOURS = (2, 6, 12, 24)
-STAGE_SHARES = (
-    Decimal("0.02"), Decimal("0.05"), Decimal("0.10"), Decimal("0.20"), Decimal("0.35"),
-)
-# Fewer lots than this at one stage and its quartiles are mostly noise.
-MINIMUM_STAGE_LOTS = 30
+# Which answer wins where a product has both, best first.
+BASIS_PREFERENCE = (SETTLED_BASIS, BASIS)
 
 # Only a reading taken close to the end describes a closing price. Earlier than
 # this, a bid is a lower bound that happens to be the last one recorded.
-DEFAULT_ENDPOINT_MINUTES = 30
+#
+# Ninety minutes, because this is now the only bar deciding whether a lot has an
+# answer at all, and thirty left almost every card without one. The passes are
+# an hour or more apart, so just 14% of recorded lots were read inside thirty
+# minutes of closing, and only 2,059 products reached the two closes a range
+# needs; at ninety, 9,366 do. What that costs is small and measured: across 562
+# lots read both in the 31-to-90-minute band and again in the final half hour,
+# the bid gained a median $0.00, 55% of them did not move at all, and the
+# ninetieth percentile gained $15. A provider read less often than this should
+# raise it, and one polled every few minutes should lower it.
+DEFAULT_ENDPOINT_MINUTES = 90
 # One prior close is an anecdote. Two is the fewest that can disagree, which is
 # the point of showing a range at all.
 DEFAULT_MINIMUM_CLOSES = 2
@@ -116,22 +121,24 @@ def observed_ceiling(summary: ValuationSummary) -> Decimal | None:
     against a bid needs no conversion, and premium, tax and fee scale both
     sides identically, so the comparison is the same one either way.
     """
-    for band in summary.bands:
-        if band.basis == BASIS:
-            return band.high
+    for basis in BASIS_PREFERENCE:
+        for band in summary.bands:
+            if band.basis == basis:
+                return band.high
     return None
 
 
 def likely_close(summary: ValuationSummary, current_bid: Decimal) -> ValuationBand | None:
     """Where this lot's bid is likely to finish, in bid units, if anything says.
 
-    The product's own closes come first: tested against recorded closes, they
-    landed nearer the final bid than lots at the same stage did at every stage
-    more than two hours out. No lot can finish below the bid already placed, so
-    every edge is raised to it, and a lot already past its product's whole
-    record is expected to close about where it is.
+    Only this product's own record answers, a real sale ahead of a reading
+    taken before the close. Nothing derived from stated retail answers at all,
+    because that number is the seller's and a constant multiple of it forecasts
+    nothing, so a lot with no record gets no band. No lot can finish below the
+    bid already placed, so every edge is raised to it, and a lot already past
+    its product's whole record is expected to close about where it is.
     """
-    for basis in (BASIS, STAGE_BASIS):
+    for basis in BASIS_PREFERENCE:
         for band in summary.bands:
             if band.basis == basis:
                 return replace(
@@ -150,22 +157,37 @@ class ClosingHistoryAdapter:
         self.config = config
         self.settings = settings_of(config)
         self._closes: dict[str, list[Close]] | None = None
-        self._stages: dict[tuple[int, int], tuple[Decimal, ...]] | None = None
+        self._sales: dict[str, list[Close]] | None = None
 
     def collect(self, listing: Listing) -> SourceResult:
-        """The product's own closes, or failing those, lots at the same stage."""
-        prior = [
-            close
-            for close in self._history().get(product_key(listing.title), ())
-            # A lot is never its own comparable, however many times it is seen.
-            if close.listing_id != listing.listing_id
-        ]
-        if len(prior) >= self._minimum_closes():
-            return SourceResult(observations=(self._observation(prior),))
-        stage = self._stage_observation(listing)
-        return SourceResult(observations=(stage,) if stage else ())
+        """What this product really sold for, else what it was last read at.
 
-    def _observation(self, prior: list[Close]) -> ValuationObservation:
+        A sale is preferred outright rather than pooled with readings. Both are
+        observations, but only the sale is the price somebody actually paid,
+        and a reading recorded an hour before the end is a floor: averaging the
+        two would pull the better answer down by exactly the error that made
+        reading-based prices worth replacing.
+        """
+        key = product_key(listing.title)
+        wanted = self._minimum_closes()
+        sales = self._own(self._sold().get(key, ()), listing)
+        if len(sales) >= wanted:
+            return SourceResult(
+                observations=(self._observation(sales, basis=SETTLED_BASIS),)
+            )
+        prior = self._own(self._history().get(key, ()), listing)
+        if len(prior) < wanted:
+            return SourceResult(observations=())
+        return SourceResult(observations=(self._observation(prior, basis=BASIS),))
+
+    @staticmethod
+    def _own(closes, listing: Listing) -> list[Close]:
+        """Every close but this lot's: it is never its own comparable."""
+        return [close for close in closes if close.listing_id != listing.listing_id]
+
+    def _observation(
+        self, prior: list[Close], *, basis: str = BASIS
+    ) -> ValuationObservation:
         """State the observed spread, which is reported rather than estimated.
 
         The low and high are real closes, not a confidence interval. Auction
@@ -181,50 +203,19 @@ class ClosingHistoryAdapter:
         # its own floor as the typical price -- a $82 and a $301 close came out
         # as "typical $82". Decimal averages exactly, so the true midpoint is
         # free and the only cost of the wrong one was credibility.
+        settled = basis == SETTLED_BASIS
         return ValuationObservation(
             source_id=self.config.source_id,
-            basis=BASIS,
+            basis=basis,
             low=prices[0].quantize(CENTS),
             typical=median(prices).quantize(CENTS),
             high=prices[-1].quantize(CENTS),
             sample_size=len(prices),
             notes=(
-                f"{len(prices)} previous closes of the same product, "
+                f"{len(prices)} recorded sales of the same product"
+                if settled
+                else f"{len(prices)} previous closes of the same product, "
                 f"read within {self._endpoint_minutes()} minutes of ending"
-            ),
-        )
-
-    def _stage_observation(self, listing: Listing) -> ValuationObservation | None:
-        """What lots read at this stage of their auction went on to close at.
-
-        The middle half of those closes, scaled to this lot's stated retail, so
-        the range means what it says: tested on closes later than the ones it
-        was drawn from, half of all finals landed inside it. A lot with no
-        stated retail or no closing time has no stage to compare.
-        """
-        retail = listing.estimated_retail
-        if not retail or listing.ends_at is None:
-            return None
-        hours = (listing.ends_at - listing.observed_at).total_seconds() / 3600
-        if hours < 0:
-            return None
-        shares = self._stage_closes().get(_stage(hours, listing.current_bid / retail))
-        if shares is None:
-            return None
-        low, typical, high = (
-            max(listing.current_bid, retail * share).quantize(CENTS)
-            for share in quantiles(shares, n=4)
-        )
-        return ValuationObservation(
-            source_id=self.config.source_id,
-            basis=STAGE_BASIS,
-            low=low,
-            typical=typical,
-            high=high,
-            sample_size=len(shares),
-            notes=(
-                f"middle half of {len(shares)} lots read about as long before "
-                "closing, with their bid as far along"
             ),
         )
 
@@ -244,6 +235,39 @@ class ClosingHistoryAdapter:
             self._closes = self._read_history()
         return self._closes
 
+    def _sold(self) -> dict[str, list[Close]]:
+        """Load every recorded sale once, for the same reason as the above."""
+        if self._sales is None:
+            self._sales = self._read_sales()
+        return self._sales
+
+    def _read_sales(self) -> dict[str, list[Close]]:
+        """Group recorded sales by product.
+
+        No endpoint window applies. A settling pass reads a lot after it has
+        shut, so the price it stores is the result and not a reading that has
+        to be argued about -- which is the whole reason the table exists.
+        """
+        path = Path(self.settings.required_text("path"))
+        if not path.is_file():
+            return {}
+        grouped: dict[str, list[Close]] = {}
+        with _read_only(path) as connection:
+            try:
+                rows = connection.execute(_SETTLED_SALES).fetchall()
+            except sqlite3.DatabaseError:
+                # A database written before settling existed has no such table.
+                # Missing history is a normal state here, not a failure.
+                return {}
+            for row in rows:
+                price = _positive_price(row["final_bid"])
+                if price is None:
+                    continue
+                grouped.setdefault(product_key(row["title"]), []).append(
+                    Close(listing_id=str(row["listing_id"]), price=price)
+                )
+        return grouped
+
     def _read_history(self) -> dict[str, list[Close]]:
         path = Path(self.settings.required_text("path"))
         if not path.is_file():
@@ -261,87 +285,15 @@ class ClosingHistoryAdapter:
                 )
         return grouped
 
-    def _stage_closes(self) -> dict[tuple[int, int], tuple[Decimal, ...]]:
-        """Each stage's closes as shares of retail, sorted, read once per run."""
-        if self._stages is None:
-            self._stages = self._read_stages()
-        return self._stages
-
-    def _read_stages(self) -> dict[tuple[int, int], tuple[Decimal, ...]]:
-        """Every closed lot, counted once at each stage some pass read it at.
-
-        Once per lot and not once per reading: a lot read five times in one
-        afternoon is one auction, and counting it five times would let the lots
-        that happened to be watched most closely decide the answer.
-        """
-        path = Path(self.settings.required_text("path"))
-        if not path.is_file():
-            return {}
-        cutoff = self._endpoint_minutes()
-        stages: dict[tuple[int, int], list[Decimal]] = {}
-        with _read_only(path) as connection:
-            rows = connection.execute(_READINGS_WITH_RETAIL)
-            for _, group in groupby(rows, key=lambda row: row["listing_id"]):
-                readings = list(group)
-                final = _closing_price(readings[-1], cutoff)
-                retail = _positive(readings[0]["estimated_retail"])
-                ends_at = _moment(readings[0]["ends_at"])
-                if final is None or retail is None or ends_at is None:
-                    continue
-                for stage in _stages_read(readings[:-1], ends_at, retail, cutoff):
-                    stages.setdefault(stage, []).append(final / retail)
-        return {
-            stage: tuple(sorted(shares))
-            for stage, shares in stages.items()
-            if len(shares) >= MINIMUM_STAGE_LOTS
-        }
-
-
-def _stages_read(
-    readings: list[sqlite3.Row], ends_at: datetime, retail: Decimal, cutoff: int
-) -> set[tuple[int, int]]:
-    """The stages one lot was read at before its close, each named once."""
-    stages = set()
-    for reading in readings:
-        observed_at = _moment(reading["observed_at"])
-        if observed_at is None:
-            continue
-        minutes = (ends_at - observed_at).total_seconds() / 60
-        # Inside the endpoint a reading already is the close, not a stage of it.
-        if minutes > cutoff:
-            bid = _positive(reading["current_bid"]) or Decimal(0)
-            stages.add(_stage(minutes / 60, bid / retail))
-    return stages
-
-
-def _stage(hours: float, share: Decimal) -> tuple[int, int]:
-    """Which band of time left, and of bid against retail, a reading is in."""
-    return bisect_right(STAGE_HOURS, hours), bisect_right(STAGE_SHARES, share)
-
-
-def _positive(value: object) -> Decimal | None:
-    """A stored amount above zero, or None for a blank, a zero or a bad one."""
-    try:
-        amount = parse_decimal(value, field_name="amount")
-    except (TypeError, ValueError):
-        return None
-    return amount if amount > 0 else None
-
-
-# Every reading of every lot that states a retail and a closing time, each
-# lot's readings together and oldest first, so the last of them is its close.
-_READINGS_WITH_RETAIL = """
-SELECT l.listing_id       AS listing_id,
-       l.estimated_retail AS estimated_retail,
-       l.ends_at          AS ends_at,
-       h.observed_at      AS observed_at,
-       h.current_bid      AS current_bid
-FROM listings AS l
-JOIN price_history AS h
-  ON h.source = l.source AND h.listing_id = l.listing_id
-WHERE l.ends_at IS NOT NULL
-  AND l.estimated_retail IS NOT NULL
-ORDER BY l.source, l.listing_id, h.observed_at
+# Every recorded sale, with the title it sold under so two lots of the same
+# product group together.
+_SETTLED_SALES = """
+SELECT s.listing_id AS listing_id,
+       s.final_bid   AS final_bid,
+       l.title       AS title
+FROM settled_closes AS s
+JOIN listings AS l
+  ON l.source = s.source AND l.listing_id = s.listing_id
 """
 
 
@@ -408,3 +360,16 @@ def _read_only(path: Path) -> Iterator[sqlite3.Connection]:
         yield connection
     finally:
         connection.close()
+
+
+def _positive_price(value: object) -> Decimal | None:
+    """A stored sale price, or None for a blank or unreadable one.
+
+    Zero is kept. A lot really can close with no bid at all, and that is a fact
+    about the product worth having rather than a missing value.
+    """
+    try:
+        amount = parse_decimal(value, field_name="final_bid")
+    except (TypeError, ValueError):
+        return None
+    return amount if amount >= 0 else None

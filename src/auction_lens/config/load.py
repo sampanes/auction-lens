@@ -118,6 +118,8 @@ def _acquisition(section: Section) -> AcquisitionConfig:
             development_minimum_interval_seconds=section.integer(
                 "development_minimum_interval_seconds", 2
             ),
+            settle_authorized=section.flag("settle_authorized", False),
+            seconds_between_settles=section.decimal("seconds_between_settles", "2"),
             search_url_template=section.text("search_url_template"),
             searches=section.lowercase_texts("searches"),
             search_cache_dir=section.text("search_cache_dir", DEFAULT_SEARCH_CACHE_DIR),
