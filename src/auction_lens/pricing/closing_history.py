@@ -121,10 +121,23 @@ def observed_ceiling(summary: ValuationSummary) -> Decimal | None:
     against a bid needs no conversion, and premium, tax and fee scale both
     sides identically, so the comparison is the same one either way.
     """
+    band = proven_band(summary)
+    return None if band is None else band.high
+
+
+def proven_band(summary: ValuationSummary) -> ValuationBand | None:
+    """This product's own record as recorded, best basis first.
+
+    Unlike `likely_close` nothing here is moved to meet the current bid. That
+    adjustment is right when forecasting where a lot will land and wrong when
+    asking what the product has already done, which is the only question a
+    claim about a lot being underpriced can rest on: a band raised to the bid
+    can never sit below it, so every lot would look fairly priced.
+    """
     for basis in BASIS_PREFERENCE:
         for band in summary.bands:
             if band.basis == basis:
-                return band.high
+                return band
     return None
 
 

@@ -15,6 +15,8 @@ from ..config.app import AppConfig
 from ..config.interests import ScoringConfig
 from ..config.pricing import EconomicsConfig
 from ..listings.model import Listing, ObservationChange
+from ..pricing.closing_history import proven_band
+from ..pricing.model import ValuationSummary
 from ..values import CENTS
 from .interests import (
     ScoringContext,
@@ -39,6 +41,16 @@ FIRST_OBSERVATION = ObservationChange(is_new=True, price_changed=False)
 NO_PREMIUM = Decimal("0")
 SECONDS_PER_MINUTE = 60
 ANOMALY_RULE_NAME = "retail-ratio"
+# The same claim as the above -- nobody asked for this, it is too cheap to
+# ignore -- resting on what the product really sold for instead of on what
+# the seller said it was worth. Named for its evidence, so a reader can see
+# at a glance which of the two witnesses a card is quoting.
+PROVEN_BARGAIN_RULE_ID = "proven-bargain"
+# What a reader sees as the heading, which `Candidate.section` takes from the
+# name rather than the id. The two are kept apart here because this one has
+# prose worth reading: a card grouped under BELOW EVERY PAST CLOSE has already
+# explained itself, where PROVEN-BARGAIN only names the machinery.
+PROVEN_BARGAIN_RULE_NAME = "below every past close"
 
 
 def evaluate(
@@ -48,8 +60,16 @@ def evaluate(
     *,
     logistics_decision: LogisticsDecision | None = None,
     now: datetime | None = None,
+    valuation: ValuationSummary | None = None,
 ) -> list[Candidate]:
-    """Score one listing against every configured interest and against anomaly."""
+    """Score one listing against every configured interest and both bargains.
+
+    The valuation is passed in rather than fetched. This module decides what a
+    score means and must not also own where evidence comes from, and a caller
+    that has already valued a listing should not pay to value it twice. Without
+    it the evidence-based bargain simply does not fire, which is the honest
+    answer when nothing has been looked up.
+    """
     context = build_context(
         listing,
         config,
@@ -64,6 +84,11 @@ def evaluate(
     anomaly = score_retail_anomaly(context, config.scoring)
     if anomaly is not None:
         candidates.append(anomaly)
+    bargain = score_proven_bargain(
+        context, valuation, config.scoring, config.economics
+    )
+    if bargain is not None:
+        candidates.append(bargain)
     return _worth_collecting(candidates, config)
 
 
@@ -211,6 +236,87 @@ def score_retail_anomaly(
         reasons=reasons,
         weight=scoring.anomaly_weight,
     )
+
+
+def score_proven_bargain(
+    context: ScoringContext,
+    valuation: ValuationSummary | None,
+    scoring: ScoringConfig,
+    economics: EconomicsConfig,
+) -> Candidate | None:
+    """Match a listing bid below everything its own product ever fetched here.
+
+    The retail anomaly beside this one asks what share of the seller's number
+    a lot costs. That number is inflated hardest on the goods deserving it
+    least, which is why evidence is only allowed to retire such a claim and
+    never to make one. This rule is the other half: where the same product has
+    really closed here before, that record can make the claim by itself, and
+    does not need stated retail to be mentioned at all.
+
+    The test is the band's low edge rather than its middle. Half of everything
+    sits below a median by construction, so "cheaper than usual" would admit
+    half the warehouse; below the least this product has ever gone for is a
+    claim that can be checked and can be wrong. It is also what makes the rule
+    safe on a damaged copy: `product_key` deliberately keeps one product
+    together whatever a warehouse shouted in its title, so the record already
+    contains whatever the broken ones went for, and the low edge is usually
+    one of them.
+
+    Compared in bid units, like every stored close, so premium and tax scale
+    both sides identically and no conversion can be got wrong.
+    """
+    if valuation is None:
+        return None
+    if not policy_admits(context.conditions, scoring.anomaly_condition):
+        return None
+    if context.listing.value_is_taxable_income:
+        # No bid was placed, so there is no price here to be below. Withheld
+        # for the same reason the retail anomaly withholds it.
+        return None
+    if not scoring.anomaly_price_is_tested(context.minutes_remaining):
+        # Hours out, every lot sits under its product's record, because the
+        # opening bid is not a price yet. Same fault, same answer.
+        return None
+    band = proven_band(valuation)
+    if band is None or band.sample_size < scoring.proven_bargain_minimum_closes:
+        return None
+    floor = band.low
+    if floor <= 0 or context.listing.current_bid >= floor:
+        return None
+
+    ratio = context.listing.current_bid / floor
+    penalty = context.baseline_penalty + penalty_for(
+        context.conditions, scoring.anomaly_condition.penalties
+    )
+    score = clamp_score(_discount_score(ratio) + context.score_bonus - penalty)
+    if score < scoring.proven_bargain_minimum_score:
+        return None
+    candidate = context.candidate(
+        category=CandidateCategory.ANOMALY,
+        rule_id=PROVEN_BARGAIN_RULE_ID,
+        rule_name=PROVEN_BARGAIN_RULE_NAME,
+        score=score,
+        reasons=(),
+        weight=scoring.proven_bargain_weight,
+    )
+    # Both figures are all-in and taken from the candidate itself, so a
+    # handling cost the operator added to this lot is counted against it, and
+    # so the sentence quotes the same kind of money as the rest of the card:
+    # the band is stored in bid units, and a reader told "$74" beside a likely
+    # total of "$92" has been handed two scales and no warning. A ratio cannot
+    # stand in for the saving either -- a free lot is 100% off a product that
+    # reliably sells for a dollar, which is the card this test refuses.
+    cheapest = total_cost_at_bid(candidate, floor, economics)
+    saving = cheapest - candidate.total_cost
+    if saving < scoring.proven_bargain_minimum_saving:
+        return None
+    reasons = [
+        f"bid is below all {band.sample_size} closes this product has here; "
+        f"the cheapest of them cost ${cheapest:,.0f} all-in"
+    ]
+    if context.is_ending_soon:
+        reasons.append("ending soon")
+    return replace(candidate, reasons=tuple(reasons))
 
 
 def _discount_score(ratio: Decimal) -> int:

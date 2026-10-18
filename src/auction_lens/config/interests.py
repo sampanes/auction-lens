@@ -145,6 +145,32 @@ class ScoringConfig:
     condition_penalties: dict[str, int] = field(default_factory=dict)
     rejected_conditions: frozenset[str] = frozenset()
     anomaly_condition: ConditionPolicy = field(default_factory=ConditionPolicy)
+    # What a lot has to beat to be called cheap on evidence rather than on the
+    # seller's claim: the least this product has ever actually closed at here.
+    # A saving in money, not a ratio, because a ratio alone calls a free lot a
+    # bargain when the product reliably sells for a dollar -- measured, the
+    # best-scoring such lot was a privacy screen bid to nothing against a $1
+    # record. Raise it to quieten the rule; like the anomaly beside it there is
+    # no separate switch, because a threshold nobody can reach is already off.
+    proven_bargain_minimum_saving: Decimal = Decimal("15")
+    # How much record a bargain claim needs. The valuation source already
+    # refuses to publish a band on fewer than two closes; this asks for more,
+    # because that band only has to describe a price and this has to contradict
+    # one.
+    proven_bargain_minimum_closes: int = 3
+    # Evidence beats the seller's number, so this outranks a retail anomaly --
+    # and still sits below a fair price on something actually asked for.
+    proven_bargain_weight: Decimal = Decimal("0.8")
+    # Its own floor, for the reason `_report_floor` gives about the large-lot
+    # band: this score is a discount, and the discount here is measured against
+    # the least the product ever fetched rather than against an inflated retail
+    # figure. Those are not the same scale. Under the general floor of 70 a lot
+    # would have to be bid below 30% of a price the product has actually held,
+    # which almost nothing is, so the gates that express the real claim -- below
+    # every recorded close, by a saving worth acting on -- would never get to
+    # decide anything. Measured on one night's field, 70 admitted 2 lots of the
+    # 5 that cleared those gates and this admits 3.
+    proven_bargain_minimum_score: int = 40
 
     def __post_init__(self) -> None:
         require_within(
@@ -183,6 +209,24 @@ class ScoringConfig:
             self.anomaly_within_minutes, field_name="anomaly_within_minutes"
         )
         require_not_negative(self.wanted_lead_days, field_name="wanted_lead_days")
+        require_not_negative(
+            self.proven_bargain_minimum_saving,
+            field_name="proven_bargain_minimum_saving",
+        )
+        require_at_least(
+            self.proven_bargain_minimum_closes,
+            2,
+            field_name="proven_bargain_minimum_closes",
+        )
+        require_not_negative(
+            self.proven_bargain_weight, field_name="proven_bargain_weight"
+        )
+        require_within(
+            self.proven_bargain_minimum_score,
+            low=LOWEST_SCORE,
+            high=HIGHEST_SCORE,
+            field_name="proven_bargain_minimum_score",
+        )
 
     def anomaly_price_is_tested(self, minutes_remaining: float | None) -> bool:
         """Whether enough of the clock has run for this price to mean anything.

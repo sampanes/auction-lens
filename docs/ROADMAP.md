@@ -54,9 +54,16 @@ Two things remain open, and both are deliberately not config:
    closing day, because before that its bid is an opening price and every pass
    that day still reaches it. `wanted_lead_days` opens that bar for a provider
    whose lots do not arrive in a daily batch.
-2. **Scoring.** Closing prices now reach the reader as a likely total, and an
-   anomaly bid past every close its product had is dropped, but no score is
-   ranked against them yet. Only a product's own closes are ever stated. The
+2. **Scoring.** Closing prices now reach the reader as a likely total, they
+   drop an anomaly bid past every close its product had, and they can now earn
+   a lot a card by themselves: `score_proven_bargain` reports a bid under every
+   close the product's own record holds, where the saving is worth acting on.
+   The low edge decides rather than the middle, because half of everything sits
+   below a median. It needed its own score floor -- the general 70 is a share of
+   an inflated retail figure turned around, and against a price the product
+   really held it would have demanded a bid under 30% of it, admitting 2 lots of
+   one night's 5 where 40 admits 3. Only a product's own closes are ever
+   stated. The
    same-stage range that used to stand in for them was removed: it was stated
    retail times one constant per stage, and the closing share of retail is a
    curve decaying from zero -- median 16.5%, mean 19.7% over 16,965 closes,

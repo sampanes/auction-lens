@@ -49,6 +49,12 @@ listing is desirable.
 
 - [`matching/evaluate.py`](../src/auction_lens/matching/evaluate.py) applies
   common gates, total cost, broad bargain discovery, and candidate creation.
+  Two bargain rules live here and argue from different witnesses:
+  `score_retail_anomaly` from the share of stated retail a lot costs, and
+  `score_proven_bargain` from the product's own record, which fires only on a
+  bid under every close that record holds. The second needs a valuation, and is
+  given one by the caller rather than fetching it, so this module keeps
+  deciding what a score means without also owning where evidence comes from.
 - [`matching/interests.py`](../src/auction_lens/matching/interests.py) answers
   whether a title satisfies one configured interest and condition policy, and
   holds back a request that closes after today, which `daily.py` then counts
@@ -93,7 +99,10 @@ those decisions.
   before the close, never the two pooled. `likely_close` turns those into the
   bids the lot is likely to finish at, which `matching/analyze.py` costs as the
   card's likely total; a product with too little record gets no figure, which
-  the card states plainly.
+  the card states plainly. `proven_band` is the same record left unmoved, for
+  asking what a product has already done rather than where a lot will land --
+  a band raised to meet the current bid can never sit below it, so only the
+  unmoved one can say a lot is underpriced.
 - [`pricing/reference.py`](../src/auction_lens/pricing/reference.py),
   [`pricing/xml_catalog.py`](../src/auction_lens/pricing/xml_catalog.py), and
   [`pricing/http_json.py`](../src/auction_lens/pricing/http_json.py) are the

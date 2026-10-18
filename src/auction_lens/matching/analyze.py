@@ -163,12 +163,19 @@ def analyze_listings(
             skipped += 1
             continue
         scored += 1
+        # Valued before scoring, not after. What a product has really closed at
+        # can now earn a lot a card by itself, so the evidence has to be in hand
+        # while the rules are deciding rather than attached to whatever they
+        # already chose. Measured at about a millisecond a listing, because the
+        # history is read once per run and answered from memory after that.
+        valuation = None if valuation_engine is None else valuation_engine.value(listing)
         matches = evaluate(
             listing,
             active_config,
             change,
             logistics_decision=decisions.get(listing.source, listing.listing_id),
             now=now,
+            valuation=valuation,
         )
         if not matches and not config.scoring.wanted_is_timely(
             days_until_close(listing, now, config.acquisition.zone)
@@ -180,7 +187,7 @@ def analyze_listings(
             # still earned a card on price alone is not reported as hidden.
             held_back += 1
         candidates.extend(
-            _with_valuation(matches, listing, valuation_engine, config.economics)
+            _with_valuation(matches, listing, valuation, config.economics)
         )
 
     # Word matching found these; the judge marks which are really the thing.
@@ -271,13 +278,18 @@ def still_open(listing: Listing, now: datetime) -> bool:
 def _with_valuation(
     matches: list[Candidate],
     listing: Listing,
-    engine: ValuationEngine | None,
+    valuation: ValuationSummary | None,
     economics: EconomicsConfig,
 ) -> list[Candidate]:
-    """Value a listing once, only when something about it is worth reporting."""
-    if engine is None or not matches:
+    """Attach the evidence already gathered to whatever the rules chose.
+
+    The lookup moved to the caller when a band became able to create a
+    candidate rather than only describe one, so this no longer decides whether
+    a listing is worth valuing -- by the time it runs, that is already paid
+    for and the answer is needed either way.
+    """
+    if valuation is None or not matches:
         return matches
-    valuation = engine.value(listing)
     priced = (
         replace(
             candidate,

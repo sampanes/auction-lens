@@ -152,6 +152,16 @@ def _scoring(section: Section, conditions: Section, profiles: Section) -> Scorin
             ending_soon_minutes=section.integer("ending_soon_minutes", 20),
             anomaly_within_minutes=section.integer("anomaly_within_minutes", 120),
             wanted_lead_days=section.integer("wanted_lead_days", 0),
+            proven_bargain_minimum_saving=section.decimal(
+                "proven_bargain_minimum_saving", 15
+            ),
+            proven_bargain_minimum_closes=section.integer(
+                "proven_bargain_minimum_closes", 3
+            ),
+            proven_bargain_weight=section.decimal("proven_bargain_weight", "0.8"),
+            proven_bargain_minimum_score=section.integer(
+                "proven_bargain_minimum_score", 40
+            ),
             maximum_retail_ratio=section.optional_decimal("maximum_retail_ratio"),
             condition_penalties=conditions.non_negative_integer_map("penalties"),
             rejected_conditions=frozenset(conditions.lowercase_texts("reject")),

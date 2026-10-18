@@ -17,6 +17,9 @@ from auction_lens.config.logistics import LocationPolicy
 from auction_lens.listings.model import ObservationChange
 from auction_lens.matching.evaluate import estimate_total_cost, evaluate
 from auction_lens.matching.logistics import LogisticsDecision
+from auction_lens.pricing.closing_history import BASIS as PRODUCT_CLOSES
+from auction_lens.pricing.closing_history import SETTLED_BASIS as PRODUCT_SALES
+from auction_lens.pricing.model import ValuationBand, ValuationSummary
 from support import (
     LASER_LEVEL,
     SOUNDBAR,
@@ -817,6 +820,119 @@ class AnomalyScoringTests(unittest.TestCase):
 
     def _anomaly(self, candidates):
         return next(item for item in candidates if item.category == "anomaly")
+
+
+class ProvenBargainTests(unittest.TestCase):
+    """A lot bid under everything its own product ever fetched here.
+
+    The anomaly beside this one argues from stated retail, which the seller
+    chose. This argues from the record, so the tests that matter are the ones
+    that stop it arguing from nothing: too little record, a product that is
+    simply cheap, and a band moved to meet the bid it is supposed to judge.
+    """
+
+    def setUp(self):
+        self.config = example_config()
+        self.listings = example_listings()
+        # The shared soundbar has no stated retail worth an anomaly, so any
+        # candidate it produces here came from the record and nowhere else.
+        self.listing = replace(
+            self.listings[SOUNDBAR], estimated_retail=Decimal("40.00")
+        )
+
+    def _closes(self, low, typical, high, *, count=4, basis=PRODUCT_CLOSES):
+        return ValuationSummary(
+            bands=(
+                ValuationBand(
+                    basis=basis,
+                    low=Decimal(low),
+                    typical=Decimal(typical),
+                    high=Decimal(high),
+                    source_count=1,
+                    sample_size=count,
+                ),
+            )
+        )
+
+    def _bargain(self, valuation, listing=None):
+        candidates = evaluate(
+            listing or self.listing, self.config, now=READING, valuation=valuation
+        )
+        return next(
+            (item for item in candidates if item.rule_id == "proven-bargain"), None
+        )
+
+    def test_a_bid_under_every_recorded_close_is_reported(self):
+        found = self._bargain(self._closes(80, 100, 120))
+        self.assertIsNotNone(found)
+        self.assertIn("below all 4 closes", found.reasons[0])
+        # The sentence quotes all-in money, like every other figure on a card.
+        self.assertIn("all-in", found.reasons[0])
+
+    def test_a_bid_inside_the_record_is_not_a_bargain(self):
+        """Half of everything sits below a median, so the low edge decides."""
+        self.assertIsNone(self._bargain(self._closes(10, 100, 120)))
+
+    def test_a_product_that_is_simply_cheap_is_not_a_bargain(self):
+        """Two thirds off a product that sells for three dollars.
+
+        The discount is real and the money is not worth a card. Written on a
+        dollar lot on purpose: at the shared fixture's $18 the saving and the
+        score floor fall in almost the same place, so only a cheap product
+        shows that the saving is doing its own work. The companion assertion
+        says which gate refused it, because a test that cannot tell is a test
+        that will pass once the reason has gone.
+        """
+        penny = replace(self.listing, current_bid=Decimal("1.00"))
+        self.assertIsNone(self._bargain(self._closes(3, 4, 5), listing=penny))
+        generous = replace(
+            self.config,
+            scoring=replace(
+                self.config.scoring, proven_bargain_minimum_saving=Decimal("0")
+            ),
+        )
+        admitted = evaluate(
+            penny, generous, now=READING, valuation=self._closes(3, 4, 5)
+        )
+        self.assertTrue(
+            any(item.rule_id == "proven-bargain" for item in admitted),
+            "the saving must be what refuses it, not a score floor",
+        )
+
+    def test_too_little_record_cannot_contradict_a_price(self):
+        thin = self._closes(80, 100, 120, count=2)
+        self.assertIsNone(self._bargain(thin))
+
+    def test_a_recorded_sale_answers_ahead_of_a_reading(self):
+        """Both bases are accepted, and a real sale is the better witness."""
+        found = self._bargain(self._closes(80, 100, 120, basis=PRODUCT_SALES))
+        self.assertIsNotNone(found)
+
+    def test_no_evidence_means_no_claim_rather_than_a_guess(self):
+        self.assertIsNone(self._bargain(None))
+        self.assertIsNone(self._bargain(ValuationSummary()))
+
+    def test_a_saving_too_small_to_act_on_is_declined(self):
+        """Below the record, but by less money than the rule asks for."""
+        config = replace(
+            self.config,
+            scoring=replace(
+                self.config.scoring, proven_bargain_minimum_saving=Decimal("500")
+            ),
+        )
+        candidates = evaluate(
+            self.listing, config, now=READING, valuation=self._closes(80, 100, 120)
+        )
+        self.assertEqual(
+            [item for item in candidates if item.rule_id == "proven-bargain"], []
+        )
+
+    def test_the_claim_outranks_a_retail_anomaly_on_the_same_lot(self):
+        """Evidence is the better witness, so it carries the greater weight."""
+        self.assertGreater(
+            self.config.scoring.proven_bargain_weight,
+            self.config.scoring.anomaly_weight,
+        )
 
 
 class UntestedPriceTests(unittest.TestCase):
