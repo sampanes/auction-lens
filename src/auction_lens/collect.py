@@ -20,7 +20,7 @@ from .files import read_json, write_json_atomically
 from .listings.files import dated, unique_lots
 from .providers.http import METADATA_SUFFIX, ResponseCache, fetch_authorized_page
 from .providers.registry import ProviderAdapter, resolve_provider
-from .providers.search_terms import search_terms
+from .providers.search_terms import distinct_terms, search_terms
 
 LISTINGS_KEY = "listings"
 NAMED_FAILED_PAGES = 5
@@ -31,19 +31,45 @@ class DiscoveryStatus:
     """What discovery could not read, safe to carry into an unattended report."""
 
     failed_pages: tuple[str, ...] = ()
+    unasked_terms: tuple[str, ...] = ()
 
     @property
     def notices(self) -> tuple[str, ...]:
         """A bounded, reader-facing warning when the resulting file is incomplete."""
+        return (*self._unread_notices(), *self._unasked_notices())
+
+    def _unread_notices(self) -> tuple[str, ...]:
         if not self.failed_pages:
             return ()
-        shown = ", ".join(self.failed_pages[:NAMED_FAILED_PAGES])
-        remaining = len(self.failed_pages) - NAMED_FAILED_PAGES
-        suffix = f", and {remaining} more" if remaining > 0 else ""
         return (
             f"Collection incomplete: {len(self.failed_pages)} provider page(s) "
-            f"could not be read ({shown}{suffix}); this report may omit listings.",
+            f"could not be read ({self._named(self.failed_pages)}); "
+            f"this report may omit listings.",
         )
+
+    def _unasked_notices(self) -> tuple[str, ...]:
+        """Terms this run was given and never requested, which nothing else says.
+
+        The per-run cap takes the first terms in order rather than taking
+        turns, so one past it is not deferred to the next run, it is never
+        asked at all. `doctor` can say this about the configured list ahead of
+        time, but only the run knows what it was really given: a term typed on
+        the command line disappears exactly as quietly.
+        """
+        if not self.unasked_terms:
+            return ()
+        return (
+            f"{len(self.unasked_terms)} search term(s) sat past this run's cap "
+            f"and were never asked for ({self._named(self.unasked_terms)}); "
+            f"the cap takes the first terms in order, so they wait for no run.",
+        )
+
+    @staticmethod
+    def _named(items: tuple[str, ...]) -> str:
+        """Name a few and count the rest, so one notice cannot flood a report."""
+        shown = ", ".join(items[:NAMED_FAILED_PAGES])
+        remaining = len(items) - NAMED_FAILED_PAGES
+        return f"{shown}, and {remaining} more" if remaining > 0 else shown
 
 
 def fetch(args: argparse.Namespace) -> int:
@@ -107,7 +133,21 @@ def run_discovery(
     print(f"Found {len(rows)} lot(s) from {len(captures)} page(s) into {args.output}.")
     for term, error in failures:
         print(f"  [!] could not read {term}: {error}")
-    return DiscoveryStatus(tuple(term for term, _error in failures))
+    return DiscoveryStatus(
+        failed_pages=tuple(term for term, _error in failures),
+        unasked_terms=_unasked(terms, captures),
+    )
+
+
+def _unasked(terms: list[str], captures: Sequence[object]) -> tuple[str, ...]:
+    """Which of the terms handed to the adapter it never asked the provider for.
+
+    Asked here rather than in the adapter, and by comparing what came back
+    with what went in, so that it holds for any provider that caps a run
+    instead of restating one provider's arithmetic.
+    """
+    asked = {getattr(capture, "term", None) for capture in captures}
+    return tuple(term for term in distinct_terms(terms) if term not in asked)
 
 
 def _require_something_readable(

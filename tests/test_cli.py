@@ -1721,6 +1721,28 @@ class DoctorCommandTests(unittest.TestCase):
         # The third of the example's interest terms, named rather than counted.
         self.assertIn("monitor", message)
 
+    def test_a_category_counts_once_per_entry_the_way_the_sweep_takes_them(self):
+        # Discovery slices the configured tuple as written, because a category
+        # keeps its case on the way into the address. Counting these as
+        # distinct phrases here would report nothing while the sweep spends
+        # both of its slots on the same page and never reaches the third.
+        with temporary_directory() as directory:
+            config = _ready_config(directory)
+            config.write_text(
+                config.read_text(encoding="utf-8").replace(
+                    "[provider.acquisition]\n",
+                    "[provider.acquisition]\n"
+                    "max_categories_per_run = 2\n"
+                    "category_url_template = "
+                    '"https://auctions.example.invalid/c?name={category}"\n'
+                    'categories = ["Electronics", "electronics", "Baby"]\n',
+                ),
+                encoding="utf-8",
+            )
+            message = run_cli(["doctor", "--config", str(config)])
+        self.assertIn("1 category(s) sit past the per-run cap of 2", message)
+        self.assertIn("Baby", message)
+
     def test_nothing_is_said_when_every_term_fits(self):
         with temporary_directory() as directory:
             config = _ready_config(directory)

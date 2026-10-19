@@ -274,6 +274,80 @@ class UnreadablePageTests(unittest.TestCase):
         self.assertIn("and 2 more", warning)
 
 
+class UnaskedTermTests(unittest.TestCase):
+    """A term the run's cap never reached, which nothing else would report.
+
+    The cap takes the first terms in order rather than taking turns, so a term
+    past it is not deferred to the next run, it is never asked at all.
+    ``doctor`` can say that about the configured list, but a term typed on the
+    command line never passes through the configured list and disappears just
+    as quietly, so the run reports what it did not ask for.
+    """
+
+    def _status(self, terms, asked):
+        """Run discovery where the adapter asked for only some of the terms."""
+        args = argparse.Namespace(output="")
+        captures = [_Capture(term) for term in asked]
+        adapter = SimpleNamespace(
+            discover_searches=lambda *_args: captures,
+            read_search_page=lambda html, *, source, page_url: [
+                {"listing_id": html, "source": source, "title": html}
+            ],
+        )
+        with temporary_directory() as directory:
+            args.output = str(directory / "listings.json")
+            with redirect_stdout(io.StringIO()):
+                return run_discovery(args, example_config(), terms, adapter=adapter)
+
+    def test_a_term_the_cap_dropped_is_named_in_the_report(self):
+        status = self._status(["lathe", "kiln", "anvil"], asked=["lathe", "kiln"])
+
+        (notice,) = status.notices
+        self.assertIn("1 search term(s)", notice)
+        self.assertIn("anvil", notice)
+        self.assertIn("never asked for", notice)
+        self.assertIn("wait for no run", notice)
+
+    def test_nothing_is_said_when_the_run_asked_for_everything(self):
+        status = self._status(["lathe", "kiln"], asked=["lathe", "kiln"])
+
+        self.assertEqual(status.notices, ())
+
+    def test_a_term_written_twice_was_never_a_second_page(self):
+        # Discovery asks for each distinct term once, so the repeat is not a
+        # page the run owed anybody and its absence is not an omission.
+        status = self._status(["lathe", "Lathe "], asked=["lathe"])
+
+        self.assertEqual(status.notices, ())
+
+    def test_the_two_warnings_are_separate_facts(self):
+        args = argparse.Namespace(output="")
+        captures = [_Capture("lathe", readable=False)]
+        adapter = SimpleNamespace(
+            discover_searches=lambda *_args: captures,
+            read_search_page=lambda *_a, **_k: (_ for _ in ()).throw(
+                ValueError("streamed payload used unknown marker -9")
+            ),
+        )
+        with temporary_directory() as directory:
+            args.output = str(directory / "listings.json")
+            with redirect_stdout(io.StringIO()):
+                with self.assertRaisesRegex(ValueError, "no page could be read"):
+                    run_discovery(
+                        args, example_config(), ["lathe", "kiln"], adapter=adapter
+                    )
+
+    def test_an_unattended_warning_names_a_few_terms_and_counts_the_rest(self):
+        wanted = [f"term-{index}" for index in range(8)]
+        status = self._status(wanted, asked=wanted[:1])
+
+        (notice,) = status.notices
+        self.assertIn("7 search term(s)", notice)
+        self.assertIn("term-5", notice)
+        self.assertNotIn("term-6", notice)
+        self.assertIn("and 2 more", notice)
+
+
 class DiscoveryTests(unittest.TestCase):
     def setUp(self):
         self.provider = ProviderConfig(provider_id="nellis", enabled=True)

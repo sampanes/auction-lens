@@ -74,7 +74,7 @@ def _check_acquisition(config: AppConfig, adapter, name: str) -> None:
 
 
 def _check_run_caps(acquisition: AcquisitionConfig, terms: list[str]) -> None:
-    """Name anything configured that a run's own caps will never ask for.
+    """Name anything in the config that a run's own caps will never ask for.
 
     Each cap takes the first entries in order rather than taking turns, so an
     entry past one is never requested on any run. That is deliberate, and it is
@@ -83,14 +83,21 @@ def _check_run_caps(acquisition: AcquisitionConfig, terms: list[str]) -> None:
     then retires the one at the bottom without a word. This is a notice rather
     than a fault, because a long list against a small cap is a legitimate
     arrangement -- the caps exist so that terms cannot starve the sweep.
+
+    It speaks only about the configured lists, and says so, because a preflight
+    cannot know what a run will be asked for: `--search` replaces the list
+    outright, and the daily fallback leaves out the terms of finite interests
+    that recorded outcomes have already filled. The run reports what its own
+    cap left out; this is the check an operator can make before one happens.
+
+    Both counts are made the way discovery makes them. It takes each distinct
+    term once, and it does not dedupe categories, because a category keeps its
+    case on the way into the address. Counting those as distinct here would
+    have the preflight disagree with the sweep it is describing.
     """
     for label, configured, cap in (
-        ("search term", distinct_terms(terms), acquisition.max_searches_per_run),
-        (
-            "category",
-            distinct_terms(acquisition.categories),
-            acquisition.max_categories_per_run,
-        ),
+        ("configured search term", distinct_terms(terms), acquisition.max_searches_per_run),
+        ("category", list(acquisition.categories), acquisition.max_categories_per_run),
     ):
         ignored = configured[cap:]
         if ignored:
