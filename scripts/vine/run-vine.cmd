@@ -30,9 +30,26 @@ if not exist "%CONFIG%" (
 
 pushd "%ROOT%" || exit /b 1
 
+REM Everything below is written to the log as well as attempted. This run is
+REM the one nobody sees: it mails at seven in the morning and its own commands
+REM wrote to a console Task Scheduler discards, so a failure recorded its exit
+REM code here and never the reason for it.
+REM
+REM The log is proven writable before anything is redirected into it. A
+REM redirect to a path cmd cannot open does not fail the line -- it stops the
+REM command from running at all and leaves errorlevel 0, so an unusable log
+REM would turn this into a silent success that mailed nothing. The trailing
+REM backslash is what tells a directory from a file, and the probe runs in a
+REM child cmd because only there does a failed redirect set an exit code.
+if not exist "%ROOT%\private\" mkdir "%ROOT%\private" 2>nul
+cmd /c "type nul >>""%LOG%"""
+if errorlevel 1 goto :nolog
+>>"%LOG%" echo ==== %DATE% %TIME% fresh-record run starting
+echo     logging this run to %LOG%
+
 REM Refuse before anything else if the mail settings or the judge are not
 REM ready. This is the check that makes an unattended run safe to schedule.
-"%AUCTION_LENS%" doctor --config "%CONFIG%" --email
+"%AUCTION_LENS%" doctor --config "%CONFIG%" --email >>"%LOG%" 2>&1
 if errorlevel 1 goto :failed
 
 REM Has anything arrived lately? Chrome closed for a day means no fresh
@@ -51,10 +68,10 @@ REM An exit code, not a captured string. Capturing output here means nesting
 REM quotes inside a `for /f`, which is exactly what the first version of this
 REM got wrong: both values came out empty, empty compared equal to empty, and
 REM the gate let a run through on the one morning it existed to stop.
-"%ROOT%\.venv\Scripts\python.exe" "%ROOT%\scripts\vine\fresh-records.py" --output "%FRESH_RECORDS%"
+"%ROOT%\.venv\Scripts\python.exe" "%ROOT%\scripts\vine\fresh-records.py" --output "%FRESH_RECORDS%" >>"%LOG%" 2>&1
 if errorlevel 1 (
     echo     sending nothing; the companion records when Chrome is next open
-    echo %DATE% %TIME% nothing fresh recorded, nothing sent>>"%LOG%"
+    >>"%LOG%" echo ---- %DATE% %TIME% nothing fresh recorded, nothing sent
     popd
     exit /b 0
 )
@@ -62,15 +79,23 @@ if errorlevel 1 (
 REM Collapse only fresh sightings into one lot per item, then score and mail.
 REM The private delivery ledger is what stops a lot already accepted at this
 REM value from being mailed a second time.
-"%AUCTION_LENS%" pull --config "%CONFIG%" --input "%FRESH_RECORDS%" --output "%LISTINGS%"
+"%AUCTION_LENS%" pull --config "%CONFIG%" --input "%FRESH_RECORDS%" --output "%LISTINGS%" >>"%LOG%" 2>&1
 if errorlevel 1 goto :failed
 
-"%AUCTION_LENS%" run --config "%CONFIG%" --input "%LISTINGS%" --email
+"%AUCTION_LENS%" run --config "%CONFIG%" --input "%LISTINGS%" --email >>"%LOG%" 2>&1
 if errorlevel 1 goto :failed
 
-echo %DATE% %TIME% fresh-record run completed>>"%LOG%"
+>>"%LOG%" echo ---- %DATE% %TIME% fresh-record run completed
 popd
 exit /b 0
+
+:nolog
+REM Refusing here is the point. Every command this runner exists for
+REM redirects into that log, and a redirect cmd cannot open silently skips
+REM the command it was attached to rather than failing it.
+echo [X] cannot write the run log at %LOG%
+popd
+exit /b 1
 
 :failed
 REM Task Scheduler should see the real code, not a flattened 1, and popd would
