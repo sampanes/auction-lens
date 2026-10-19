@@ -66,6 +66,50 @@ class UnansweredAxisTests(unittest.TestCase):
         grade = read_grade({"condition": "Refurbished By Elves"})
         self.assertEqual(grade.tags[0].tag, Tag.AMBER)
 
+    def test_a_word_nobody_has_seen_before_is_shown_rather_than_called_unknown(self):
+        # The fault that hid "Partial Set" for six weeks. An answered axis
+        # reported as unanswered is a false fact about the lot, and it reaches
+        # the scoring profiles under a label that means the opposite, so an
+        # unseen word is carried through as itself instead.
+        grade = read_grade({"condition": "Refurbished By Elves"})
+        self.assertEqual(grade.tags[0].label, "Refurbished By Elves")
+
+    def test_an_axis_graded_with_no_answer_at_all_is_still_unknown(self):
+        grade = read_grade({"missing_parts": ""})
+        (tag,) = grade.tags
+        self.assertEqual(tag.label, "Missing Parts Unknown")
+        self.assertEqual(tag.tag, Tag.AMBER)
+
+
+class PartialSetTests(unittest.TestCase):
+    """A stated fault the table did not know, read as an honest shrug.
+
+    The provider answers the missing-parts axis four ways, and "Partial Set"
+    is one of them: the lot is some of a multi-piece product. Until 2026-10-18
+    this table knew three, so a partial set took the unanswered path and was
+    reported as "Missing Parts Unknown" -- amber where the provider's own page
+    shows red, and charged nothing by the profile that charges 45 for the same
+    fault worded "Yes". A full corner bed at 2% of its stated retail scored 97
+    on that silence and was mailed as a bargain.
+    """
+
+    def test_a_partial_set_is_red_and_says_so_in_the_provider_s_words(self):
+        grade = read_grade({"missing_parts": "Partial Set"})
+        (tag,) = grade.tags
+        self.assertEqual(tag.tag, Tag.RED)
+        self.assertEqual(tag.label, "Partial Set")
+
+    def test_a_partial_set_is_never_reported_as_an_unanswered_axis(self):
+        grade = read_grade({"missing_parts": "Partial Set"})
+        self.assertNotIn("Missing Parts Unknown", [tag.label for tag in grade.tags])
+
+    def test_a_partial_set_reaches_scoring_as_its_own_word(self):
+        # Condition matching is exact, so a profile refusing "missing parts"
+        # does not refuse this. Both wordings have to be named in config, and
+        # this is the label they have to name.
+        grade = read_grade({"missing_parts": "Partial Set", "condition": "New"})
+        self.assertEqual(grade.words, ("partial set",))
+
 
 class RatingTests(unittest.TestCase):
     def test_a_rating_outside_the_scale_is_refused(self):
@@ -91,6 +135,7 @@ class RecordedSampleTests(unittest.TestCase):
             "sample-001": ["green"] * 6,
             "sample-002": ["red", "red", "red", "amber", "red", "green"],
             "sample-003": ["red", "green", "green", "green", "green", "green"],
+            "sample-004": ["green", "green", "green", "red", "red", "green"],
         }
         for sample in _samples():
             with self.subTest(sample=sample["id"]):

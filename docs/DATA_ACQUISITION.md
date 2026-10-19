@@ -100,9 +100,17 @@ Two traps are worth stating out loud, because a parser gets them wrong silently:
 2. **`Unknown` renders no tag at all.** A lot whose `missingPartsType` is
    `Unknown` shows nothing where a red tag would sit, so on the site the absence
    of a warning does not mean the answer was good.
+3. **A word the reader has never seen is not an unanswered axis.** The
+   vocabulary is the provider's and it grows: `missingPartsType` answers
+   `Partial Set` on about 2% of lots, which the first reading of the axis missed.
+   Treating an unrecognised answer as "nobody checked" turns a stated fault into
+   a blank space, on the one axis where the page shows a red pill and a
+   condition profile charges 45 points. An unknown word is reported as itself.
 
 `id` values are per-axis, not globally unique: `5` is `New` for `conditionType`
 and `Yes` for `packageType`. Match on the axis together with the description.
+The ids are also not contiguous -- `missingPartsType` uses 5, 6, 7 and 9 -- so a
+gap is not evidence that the vocabulary is complete.
 
 The observed vocabulary and three redacted samples are in
 `fixtures/nellis/product-grade-samples.json`.

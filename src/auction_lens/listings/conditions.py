@@ -27,9 +27,9 @@ it is the blank space on it given a name.
 
 RecordedSampleTests guards this against a well-meaning correction.
 
-The vocabulary was read off real listings on 2026-09-06; see
-docs/DATA_ACQUISITION.md for how, and fixtures/nellis/product-grade-samples.json
-for the samples.
+The vocabulary was read off real listings on 2026-09-06 and read again on
+2026-10-18, which is when "Partial Set" turned up; see docs/DATA_ACQUISITION.md
+for how, and fixtures/nellis/product-grade-samples.json for the samples.
 """
 
 from __future__ import annotations
@@ -75,11 +75,25 @@ class Axis:
     answers: dict[str, Answer]
 
     def read(self, written: str) -> ConditionTag:
-        """Turn one written answer into a tag, naming the axis it answers."""
-        answer = self.answers.get(written.strip().lower())
-        if answer is None:
+        """Turn one written answer into a tag, naming the axis it answers.
+
+        A word this table has never seen is not the same fact as an unanswered
+        axis, and reading it as one is how a stated fault turns invisible. The
+        provider grades about 2% of lots "Partial Set" on missing parts; the
+        table did not know the phrase, so every one of them was reported as
+        "Missing Parts Unknown" -- amber where the page shows red, and charged
+        nothing by a profile that charges 45 for the same fault worded "Yes".
+        So an unrecognised answer is shown as the word itself. That costs
+        nothing until a profile names it, which is true of every label here,
+        and unlike a wrong label it is visible on the first card.
+        """
+        word = written.strip().lower()
+        answer = self.answers.get(word)
+        if answer is not None:
+            return ConditionTag(self.name, answer.label, answer.tag)
+        if not word or word == UNANSWERED:
             return ConditionTag(self.name, self.unanswered_label, Tag.AMBER)
-        return ConditionTag(self.name, answer.label, answer.tag)
+        return ConditionTag(self.name, written.strip(), Tag.AMBER)
 
 
 @dataclass(frozen=True)
@@ -131,6 +145,13 @@ AXES = (
         {
             "no": Answer("No Missing Parts", Tag.GREEN),
             "yes": Answer("Missing Parts", Tag.RED),
+            # The provider's fourth answer on this axis, and its own red pill.
+            # It keeps its own label rather than becoming a second name for
+            # "Missing Parts" because the page says these two words and a
+            # report agreeing with the page is the point of this table. A
+            # profile refusing the stated fault has to name this one too:
+            # exact matching means "missing parts" does not cover it.
+            "partial set": Answer("Partial Set", Tag.RED),
         },
     ),
     Axis(
