@@ -66,15 +66,20 @@ class UnansweredAxisTests(unittest.TestCase):
         grade = read_grade({"condition": "Refurbished By Elves"})
         self.assertEqual(grade.tags[0].tag, Tag.AMBER)
 
-    def test_a_word_nobody_has_seen_before_is_shown_rather_than_called_unknown(self):
-        # The fault that hid "Partial Set" for six weeks. An answered axis
-        # reported as unanswered is a false fact about the lot, and it reaches
-        # the scoring profiles under a label that means the opposite, so an
-        # unseen word is carried through as itself instead.
-        grade = read_grade({"condition": "Refurbished By Elves"})
-        self.assertEqual(grade.tags[0].label, "Refurbished By Elves")
+    def test_a_word_nobody_has_seen_before_keeps_the_axis_it_was_answering(self):
+        # Reporting the provider's own word here instead was tried and is the
+        # worse fault: this label is the exact key a profile penalises and
+        # rejects by, and it carries no axis with it. An unknown damage answer
+        # of "Used" would reach scoring as "used" and be refused by a profile
+        # that meant the condition axis -- a lot discarded by a word from the
+        # wrong question. A growing vocabulary is handled by adding the answer,
+        # not by passing it through.
+        grade = read_grade({"damage": "Used"})
+        (tag,) = grade.tags
+        self.assertEqual(tag.label, "Damage Unknown")
+        self.assertEqual(grade.words, ("damage unknown",))
 
-    def test_an_axis_graded_with_no_answer_at_all_is_still_unknown(self):
+    def test_an_axis_graded_with_no_answer_at_all_is_unknown(self):
         grade = read_grade({"missing_parts": ""})
         (tag,) = grade.tags
         self.assertEqual(tag.label, "Missing Parts Unknown")
@@ -109,6 +114,15 @@ class PartialSetTests(unittest.TestCase):
         # this is the label they have to name.
         grade = read_grade({"missing_parts": "Partial Set", "condition": "New"})
         self.assertEqual(grade.words, ("partial set",))
+
+    def test_the_shipped_profile_charges_a_partial_set_what_it_charges_yes(self):
+        # A red tag no profile names costs nothing, so the example config has
+        # to price both wordings or a new installation keeps the old hole.
+        from auction_lens.config.load import load_config
+
+        config = load_config("config/providers/nellis.example.toml")
+        penalties = config.scoring.anomaly_condition.penalties
+        self.assertEqual(penalties.get("partial set"), penalties.get("missing parts"))
 
 
 class RatingTests(unittest.TestCase):

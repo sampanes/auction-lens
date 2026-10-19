@@ -77,23 +77,26 @@ class Axis:
     def read(self, written: str) -> ConditionTag:
         """Turn one written answer into a tag, naming the axis it answers.
 
-        A word this table has never seen is not the same fact as an unanswered
-        axis, and reading it as one is how a stated fault turns invisible. The
-        provider grades about 2% of lots "Partial Set" on missing parts; the
-        table did not know the phrase, so every one of them was reported as
-        "Missing Parts Unknown" -- amber where the page shows red, and charged
-        nothing by a profile that charges 45 for the same fault worded "Yes".
-        So an unrecognised answer is shown as the word itself. That costs
-        nothing until a profile names it, which is true of every label here,
-        and unlike a wrong label it is visible on the first card.
+        A word this table does not know takes the unanswered label, and that is
+        the deliberate choice rather than the easy one. Showing the provider's
+        own word instead was tried, on the argument that an answered axis
+        reported as unanswered is a false fact; it is a worse fault, because
+        this label is not only shown. Lowercased it is the exact key a
+        condition profile penalises and rejects by, and it joins the listing's
+        searchable text, and it carries no axis with it to either place. An
+        unknown damage answer of "Used" therefore arrives at scoring as "used"
+        and is refused by a profile that meant the condition axis -- a lot
+        thrown away by a word from the wrong question. The honest-looking
+        version of this function silently rejects lots.
+
+        So an unknown word is reported as the axis being unanswered, which is
+        at least a fact about the right question, and the way a vocabulary that
+        grows is kept safe is by adding the answer below.
         """
-        word = written.strip().lower()
-        answer = self.answers.get(word)
-        if answer is not None:
-            return ConditionTag(self.name, answer.label, answer.tag)
-        if not word or word == UNANSWERED:
+        answer = self.answers.get(written.strip().lower())
+        if answer is None:
             return ConditionTag(self.name, self.unanswered_label, Tag.AMBER)
-        return ConditionTag(self.name, written.strip(), Tag.AMBER)
+        return ConditionTag(self.name, answer.label, answer.tag)
 
 
 @dataclass(frozen=True)

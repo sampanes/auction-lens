@@ -108,6 +108,11 @@ reject = ["not functional", "parts only"]
 
 [condition_profiles.ready_to_use.penalties]
 "missing parts" = 45
+# The provider states the same fault two ways and condition matching is exact,
+# so both have to be named. A red tag no profile names costs a lot nothing:
+# until this line existed, a partial set reached the report at the whole
+# discount against the complete product's stated retail.
+"partial set" = 45
 "major damage" = 45
 "untested" = 22
 "minor damage" = 12
