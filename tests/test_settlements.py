@@ -10,17 +10,29 @@ exactly the error settling exists to remove.
 
 from __future__ import annotations
 
+import argparse
+import http.client
+import io
 import unittest
+from contextlib import redirect_stdout
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import Mock, patch
+from urllib.error import HTTPError, URLError
 
 from auction_lens.cli import main as cli_main
+from auction_lens.cli.exit_codes import OPERATOR_ERROR
+from auction_lens.cli.settle import settle as settle_command
 from auction_lens.config.provider import AcquisitionConfig, AcquisitionMode, ProviderConfig
 from auction_lens.history.settlements import SettlementStore
-from auction_lens.listings.model import PendingLot, Settlement
-from auction_lens.providers.nellis.settle import require_settling_allowed, settle_lots
+from auction_lens.listings.model import PendingLot, Settlement, SettleOutcome
+from auction_lens.providers.nellis.settle import (
+    CONSECUTIVE_FAILURES_BEFORE_STOPPING,
+    require_settling_allowed,
+    settle_lots,
+)
 from auction_lens.providers.registry import resolve_provider
 from support import temporary_database, temporary_directory
 
@@ -213,6 +225,203 @@ class SettlingTests(unittest.TestCase):
         )
         self.assertEqual(outcome.requested, 0)
         self.assertEqual(opener.calls, [])
+
+
+class DroppedConnectionTests(unittest.TestCase):
+    """A pass that loses a connection must not lose what it already read.
+
+    This is the regression guard for the night of 2026-10-19, when the run
+    asked for 2,720 closed lots, the provider closed a connection without
+    answering about seventeen minutes in, and the exception left `settle_lots`
+    carrying every reading gathered before it. The command stores only after
+    the loop returns, so all of them went unstored -- which is why the
+    settlements table held five rows after a month of nightly runs.
+
+    A settled close is the best price evidence this project has, so the rule
+    is the opposite of the usual one: the pass keeps going where it can, stops
+    where the provider has plainly stopped answering, and reports rather than
+    raises, because only a value that comes back can be written down.
+    """
+
+    def setUp(self):
+        self._directory = temporary_directory()
+        self.ledger = str(Path(self._directory.__enter__()) / "poll-ledger.json")
+        self.addCleanup(self._directory.__exit__, None, None, None)
+        identified = patch.dict(
+            "os.environ",
+            {AcquisitionConfig().user_agent_env: CONTACT_USER_AGENT},
+            clear=False,
+        )
+        identified.start()
+        self.addCleanup(identified.stop)
+
+    def _opener(self, answers):
+        """An opener that answers each call from a script of outcomes.
+
+        An entry is either an exception to raise or a page to serve, and the
+        last entry repeats, so a test can say "fail from here on" without
+        counting the lots.
+        """
+        body = CLOSED_PAGE.read_text(encoding="utf-8")
+        calls = []
+
+        def opener(request, timeout=None):
+            calls.append(request.full_url)
+            answer = answers[min(len(calls) - 1, len(answers) - 1)]
+            if isinstance(answer, Exception):
+                raise answer
+            return FakeResponse(body)
+
+        opener.calls = calls
+        return opener
+
+    def _settle(self, answers, lots):
+        return settle_lots(
+            enabled_provider(),
+            acquisition(ledger_file=self.ledger),
+            lots,
+            instant=NOW,
+            opener=self._opener(answers),
+            sleeper=lambda _seconds: None,
+        )
+
+    def test_one_dropped_connection_costs_its_lot_and_not_the_pass(self):
+        outcome = self._settle(
+            [http.client.RemoteDisconnected("Remote end closed connection"), None],
+            [pending(listing_id="1"), pending(listing_id="2")],
+        )
+
+        self.assertEqual(len(outcome.settlements), 1)
+        self.assertEqual(outcome.unreachable, 1, "a closed socket is not a bad page")
+        self.assertEqual(outcome.unreadable, 0)
+        self.assertEqual(outcome.stopped_early, "")
+
+    def test_a_reading_taken_before_the_drop_is_still_returned(self):
+        # The whole point. The first lot answered, so its close exists and must
+        # survive the failure of everything after it.
+        outcome = self._settle(
+            [None, OSError("connection reset by peer")],
+            [pending(listing_id=str(index)) for index in range(12)],
+        )
+
+        self.assertEqual(len(outcome.settlements), 1)
+        self.assertTrue(outcome.stopped_early)
+
+    def test_the_pass_stops_once_the_provider_has_stopped_answering(self):
+        lots = [pending(listing_id=str(index)) for index in range(200)]
+        opener = self._opener([URLError("connection refused")])
+        outcome = settle_lots(
+            enabled_provider(),
+            acquisition(ledger_file=self.ledger),
+            lots,
+            instant=NOW,
+            opener=opener,
+            sleeper=lambda _seconds: None,
+        )
+
+        self.assertEqual(len(opener.calls), CONSECUTIVE_FAILURES_BEFORE_STOPPING)
+        self.assertIn("stopped answering", outcome.stopped_early)
+        self.assertIn("in a row", outcome.stopped_early)
+
+    def test_a_patch_of_bad_luck_does_not_end_a_good_night(self):
+        # Failures have to be consecutive to mean anything. Alternating ones
+        # are a flaky connection, and the pass is supposed to ride those out.
+        answers = []
+        for _ in range(20):
+            answers.extend([OSError("reset"), None])
+        outcome = self._settle(
+            answers, [pending(listing_id=str(index)) for index in range(40)]
+        )
+
+        self.assertEqual(outcome.stopped_early, "")
+        self.assertEqual(len(outcome.settlements), 20)
+        self.assertEqual(outcome.unreachable, 20)
+
+    def test_being_told_to_slow_down_still_ends_the_pass_outright(self):
+        # The one answer that must not be ridden out: a rate limit is the
+        # provider asking this program to stop, and it stays an exception so
+        # that no later code can mistake it for a lot that merely failed.
+        too_many = HTTPError(ADDRESS, 429, "Too Many Requests", {}, None)
+        with self.assertRaises(RuntimeError):
+            self._settle([too_many], [pending()])
+
+    def test_a_pass_that_recorded_nothing_and_stopped_early_is_a_failure(self):
+        # The exit code is what an unattended run is read by, so a pass that
+        # achieved nothing has to look different from one that did its job.
+        outcome = SettleOutcome((), 0, 0, 0, 9, stopped_early="the provider stopped")
+        with temporary_database() as database:
+            self._owed_lot(database)
+            exit_code = self._run_settle(database, outcome)
+        self.assertEqual(exit_code, OPERATOR_ERROR)
+
+    def test_a_pass_that_recorded_something_is_not_a_failure(self):
+        # It advanced the record and the lots it never reached stay owed, which
+        # is a working pass on a bad night, not a broken one.
+        outcome = SettleOutcome(
+            (
+                Settlement(
+                    source="nellis",
+                    listing_id="1",
+                    final_bid=Decimal("12"),
+                    bid_count=3,
+                    closed_at=NOW,
+                    scheduled_close=NOW,
+                    extended=False,
+                ),
+            ),
+            0,
+            0,
+            0,
+            9,
+            stopped_early="the provider stopped",
+        )
+        with temporary_database() as database:
+            self._owed_lot(database)
+            exit_code = self._run_settle(database, outcome)
+            with database.connect() as connection:
+                stored = connection.execute(
+                    "SELECT COUNT(*) FROM settled_closes"
+                ).fetchone()[0]
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(stored, 1, "the reading it did take must be stored")
+
+    def _owed_lot(self, database):
+        """A closed lot still owed a reading, so the command has work to do.
+
+        Without one, `settle` returns before it ever reaches the adapter and
+        the exit code under test is the one for an idle night. Timed against
+        the real clock rather than this module's NOW, because the command asks
+        for the window around the moment it actually runs.
+        """
+        closed = datetime.now(UTC) - timedelta(hours=2)
+        with database.connect() as connection:
+            connection.execute(
+                "INSERT INTO listings (source, listing_id, title, url,"
+                " current_bid, estimated_retail, bid_count, ends_at, location,"
+                " conditions, image_url, first_seen, last_seen)"
+                " VALUES ('nellis', '1', 'Example Lot', ?, '5', '100', 3, ?,"
+                " 'Example', '', '', ?, ?)",
+                (ADDRESS, closed.isoformat(), closed.isoformat(), closed.isoformat()),
+            )
+
+    def _run_settle(self, database, outcome):
+        """Run the command with the adapter replaced by a known outcome."""
+        arguments = argparse.Namespace(
+            config="config/local.toml",
+            database=database.path,
+            since_hours=24,
+            limit=None,
+        )
+        adapter = SimpleNamespace(
+            settles=True, settle_lots=lambda *_args, **_kwargs: outcome
+        )
+        with patch("auction_lens.cli.settle.resolve_provider", return_value=adapter):
+            with patch("auction_lens.cli.settle.load_config") as loaded:
+                loaded.return_value = SimpleNamespace(
+                    provider=SimpleNamespace(provider_id="nellis"), acquisition=None
+                )
+                with redirect_stdout(io.StringIO()):
+                    return settle_command(arguments)
 
 
 class SettlementStoreTests(unittest.TestCase):

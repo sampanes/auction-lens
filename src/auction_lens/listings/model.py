@@ -253,17 +253,33 @@ class SettleOutcome:
     The failures are counted separately because they mean different things to
     whoever reads the run. A lot still open was asked too early and will answer
     next time; a missing one was withdrawn and never will; an unreadable one is
-    a parsing problem worth knowing about rather than a fact about the lot.
+    a parsing problem worth knowing about rather than a fact about the lot; an
+    unreachable one never answered at all, which is not about the lot in any
+    way and may be about every lot still to come.
     """
 
     settlements: tuple[Settlement, ...] = ()
     still_open: int = 0
     missing: int = 0
     unreadable: int = 0
+    unreachable: int = 0
+    # Why the pass ended before it ran out of lots, in words a report can
+    # print, and empty when it did not. A pass that stopped early is not a
+    # failed one: what it read is still stored and the rest stays owed. The
+    # reason is carried rather than raised precisely so that is possible --
+    # an exception leaving here discards every reading the pass had gathered,
+    # which is how this provider's nightly run stored five rows in a month.
+    stopped_early: str = ""
 
     @property
     def requested(self) -> int:
-        return len(self.settlements) + self.still_open + self.missing + self.unreadable
+        return (
+            len(self.settlements)
+            + self.still_open
+            + self.missing
+            + self.unreadable
+            + self.unreachable
+        )
 
 
 def _photos(data: dict[str, Any]) -> tuple[str, ...]:

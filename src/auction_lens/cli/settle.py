@@ -20,7 +20,7 @@ from ..config.load import load_config
 from ..history.database import Database
 from ..history.settlements import SettlementStore
 from ..providers.registry import resolve_provider
-from .exit_codes import SUCCESS
+from .exit_codes import OPERATOR_ERROR, SUCCESS
 
 # Far enough past a close that bidding cannot still be extending it. Lots
 # extend in thirty-second steps while bids keep arriving, so a lot read a
@@ -54,8 +54,18 @@ def settle(args: argparse.Namespace) -> int:
         return SUCCESS
 
     outcome = adapter.settle_lots(config.provider, config.acquisition, lots)
+    # Stored before anything is reported, and before any decision about the
+    # exit code. A pass that ended early still read real closes, and those are
+    # the most reliable prices this project has: throwing them away to signal a
+    # failure would be trading the evidence for the complaint.
     recorded = store.record(list(outcome.settlements), settled_at=now)
     _report(outcome, recorded)
+    if outcome.stopped_early and not recorded:
+        # Nothing read and nowhere to continue from, which is a failed pass and
+        # should look like one to whatever scheduled it. A pass that recorded
+        # something did its job; the lots it never reached are still owed and
+        # the next run asks for them.
+        return OPERATOR_ERROR
     return SUCCESS
 
 
@@ -90,3 +100,13 @@ def _report(outcome, recorded: int) -> None:
         print(f"{outcome.missing} lot(s) no longer have a page to read.")
     if outcome.unreadable:
         print(f"{outcome.unreadable} page(s) could not be read; their lots stay owed.")
+    if outcome.unreachable:
+        print(
+            f"{outcome.unreachable} lot(s) could not be reached at all, so the "
+            "provider never answered for them; their lots stay owed."
+        )
+    if outcome.stopped_early:
+        print(
+            f"Stopped before the end: {outcome.stopped_early}. "
+            "What was read above is stored; the rest stay owed for the next run."
+        )

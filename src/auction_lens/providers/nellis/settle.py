@@ -22,11 +22,12 @@ being asked too often.
 
 from __future__ import annotations
 
+import http.client
 import time
 from collections.abc import Callable, Iterable
 from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
-from urllib.error import HTTPError
+from urllib.error import HTTPError, URLError
 from urllib.request import Request
 
 from ...config.provider import AcquisitionConfig, ProviderConfig
@@ -48,6 +49,26 @@ from .parse import _product
 # A page that 404s or 410s has no result to read and never will, so a run says
 # so and moves on rather than failing the night over one withdrawn lot.
 GONE_STATUSES = (404, 410)
+
+# How many lots in a row may fail at the transport level before the pass
+# decides the provider has stopped answering and stops asking.
+#
+# One failed socket is a fact about one request: this pass makes thousands of
+# them and some will lose a connection. A run of them is a fact about the
+# provider, and continuing is then thousands of requests into a closed door --
+# rude, slow, and certain to fail. Ten is small enough to notice an outage
+# quickly and large enough that an unlucky patch does not end a good night.
+#
+# Measured on 2026-10-19: without this, one "Remote end closed connection
+# without response" at about lot 500 of 2,720 raised out of this function and
+# took every reading gathered before it with it.
+CONSECUTIVE_FAILURES_BEFORE_STOPPING = 10
+
+# A transport failure, as distinct from a page that answered and could not be
+# parsed. Kept apart from None because the two mean different things to the
+# loop: one lot's page being broken says nothing about the next lot's, while a
+# socket that will not open may be about every lot left.
+UNREACHABLE = object()
 
 
 def settle_lots(
@@ -97,9 +118,25 @@ def settle_lots(
         sleeper=sleeper,
     )
     settled: list[Settlement] = []
-    still_open = missing = unreadable = 0
+    still_open = missing = unreadable = unreachable = 0
+    consecutive_failures = 0
+    stopped_early = ""
     for lot in pending:
         page = _read_page(lot, config, user_agent, opener, throttle)
+        if page is UNREACHABLE:
+            # The lot stays owed, exactly as an unreadable page does, but it is
+            # counted apart from one: nothing here answered, so there is no
+            # page to blame and no parser to fix.
+            unreachable += 1
+            consecutive_failures += 1
+            if consecutive_failures >= CONSECUTIVE_FAILURES_BEFORE_STOPPING:
+                stopped_early = (
+                    f"the provider stopped answering: "
+                    f"{consecutive_failures} lots in a row could not be reached"
+                )
+                break
+            continue
+        consecutive_failures = 0
         if page is None:
             missing += 1
             continue
@@ -110,7 +147,14 @@ def settle_lots(
             still_open += 1
         else:
             settled.append(result)
-    return SettleOutcome(tuple(settled), still_open, missing, unreadable)
+    return SettleOutcome(
+        tuple(settled),
+        still_open,
+        missing,
+        unreadable,
+        unreachable,
+        stopped_early=stopped_early,
+    )
 
 
 def require_settling_allowed(config: AcquisitionConfig) -> None:
@@ -147,8 +191,14 @@ def _read_page(
     user_agent: str,
     opener: Callable,
     throttle: RequestThrottle,
-) -> str | None:
-    """Fetch one lot's page, or None when there is no page to read."""
+):
+    """Fetch one lot's page.
+
+    Three answers, because the caller has to tell them apart: the page, None
+    when there is no page to read and never will be, and UNREACHABLE when the
+    request itself did not complete. Only the last one may be about the lots
+    still to come.
+    """
     try:
         # This address came out of a parsed page, so it is checked here rather
         # than trusted. One unusable address costs its own lot and not the run.
@@ -169,8 +219,17 @@ def _read_page(
     except HTTPError as error:
         if error.code in GONE_STATUSES:
             return None
+        # Being told to slow down is the one answer that must still end the
+        # run, and it raises so that no later code can mistake it for a lot
+        # that merely failed. The caller stores what it gathered first.
         require_not_rate_limited(error)
-        raise
+        return UNREACHABLE
+    except (URLError, http.client.HTTPException, OSError):
+        # The request did not complete: a closed connection, a reset, a
+        # timeout, a name that would not resolve. None of that is a fact about
+        # this lot, so it costs the lot and the pass counts it toward deciding
+        # whether the provider has stopped answering altogether.
+        return UNREACHABLE
 
 
 def _settlement_of(html: str, lot: PendingLot) -> Settlement | None:
