@@ -64,7 +64,18 @@ if errorlevel 1 goto :failed
 
 REM Read the closes and store them. The counts go to stdout, which Task
 REM Scheduler discards; the point of this run is the rows written.
-"%AUCTION_LENS%" settle >>"%LOG%" 2>&1
+REM
+REM The limit is the measurement from 2026-10-19, not caution. Asking for all
+REM 2,720 of a night's closes got a connection closed without an answer about
+REM seventeen minutes in, every reading before it discarded, and exit 2 in the
+REM scheduler; five lots retried by hand were all dropped at the transport
+REM level while the parser read a real captured product page without trouble.
+REM So the provider is declining the volume rather than the request. At the
+REM configured two seconds apart, 300 lots is ten minutes of polite asking and
+REM roughly 2,100 settled prices a week, which is what every price range in
+REM the reports is built from. Raise it by agreement with the provider, not
+REM because a night looks quiet.
+"%AUCTION_LENS%" settle --limit 300 >>"%LOG%" 2>&1
 if errorlevel 1 goto :failed
 
 >>"%LOG%" echo ---- %DATE% %TIME% completed
