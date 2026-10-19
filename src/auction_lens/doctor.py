@@ -11,9 +11,9 @@ import argparse
 
 from .config.app import AppConfig
 from .config.load import load_config
-from .config.provider import RunMode
+from .config.provider import AcquisitionConfig, RunMode
 from .providers.registry import resolve_provider
-from .providers.search_terms import search_terms
+from .providers.search_terms import distinct_terms, search_terms
 from .reports.send import preflight_reports
 
 
@@ -69,7 +69,35 @@ def _check_acquisition(config: AppConfig, adapter, name: str) -> None:
     adapter.check_discovery_ready(
         config.provider, config.acquisition, search_terms(config, [])
     )
+    _check_run_caps(config.acquisition, search_terms(config, []))
     print(f"[OK] {name}: discovery is configured and authorized.")
+
+
+def _check_run_caps(acquisition: AcquisitionConfig, terms: list[str]) -> None:
+    """Name anything configured that a run's own caps will never ask for.
+
+    Each cap takes the first entries in order rather than taking turns, so an
+    entry past one is never requested on any run. That is deliberate, and it is
+    also invisible: the list and its cap are naturally set to the same number
+    by an operator who means "ask for all of these", and the next phrase added
+    then retires the one at the bottom without a word. This is a notice rather
+    than a fault, because a long list against a small cap is a legitimate
+    arrangement -- the caps exist so that terms cannot starve the sweep.
+    """
+    for label, configured, cap in (
+        ("search term", distinct_terms(terms), acquisition.max_searches_per_run),
+        (
+            "category",
+            distinct_terms(acquisition.categories),
+            acquisition.max_categories_per_run,
+        ),
+    ):
+        ignored = configured[cap:]
+        if ignored:
+            print(
+                f"[!] {len(ignored)} {label}(s) sit past the per-run cap of {cap} "
+                f"and are never asked for: {', '.join(ignored)}"
+            )
 
 
 def _check_judging(config: AppConfig) -> None:

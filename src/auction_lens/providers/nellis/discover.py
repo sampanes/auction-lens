@@ -45,6 +45,7 @@ from ..http import (
     require_fetch_allowed,
     require_not_rate_limited,
 )
+from ..search_terms import distinct_terms
 
 # Enough digest to keep two similar terms in separate files, short enough that a
 # person can still see at a glance which file belongs to which search.
@@ -196,13 +197,15 @@ def _addresses(config: AcquisitionConfig, terms: Iterable[str]) -> list[tuple[st
 
 
 def _terms_to_ask(terms: Iterable[str], config: AcquisitionConfig) -> list[str]:
-    """Take each distinct term once, in the order given, up to the run's cap."""
-    seen: dict[str, None] = {}
-    for term in terms:
-        cleaned = term.strip().lower()
-        if cleaned:
-            seen.setdefault(cleaned, None)
-    return list(seen)[: config.max_searches_per_run]
+    """Take each distinct term once, in the order given, up to the run's cap.
+
+    The cap takes the first terms rather than taking turns, so a phrase past it
+    is not postponed to the next run, it is never asked at all. That is the
+    intended trade -- a long list of terms must not starve the category sweep
+    -- but it is not one to discover by accident, so `doctor` names what the
+    caps leave out, counting distinct terms the same way this does.
+    """
+    return distinct_terms(terms)[: config.max_searches_per_run]
 
 
 def _search_address(config: AcquisitionConfig, term: str) -> str:

@@ -1701,6 +1701,32 @@ class DoctorCommandTests(unittest.TestCase):
         self.assertIn("email is enabled", message)
         self.assertIn("no network requests were made", message)
 
+    def test_a_term_the_per_run_cap_will_never_reach_is_named(self):
+        # The cap takes the first terms rather than taking turns, so one past
+        # it is never asked on any run. An operator who sets the cap to the
+        # length of the list, meaning "all of these", retires the bottom entry
+        # the moment they add another, and nothing else in the program says so.
+        with temporary_directory() as directory:
+            config = _ready_config(directory)
+            config.write_text(
+                config.read_text(encoding="utf-8").replace(
+                    "[provider.acquisition]\n",
+                    "[provider.acquisition]\nmax_searches_per_run = 2\n",
+                ),
+                encoding="utf-8",
+            )
+            message = run_cli(["doctor", "--config", str(config)])
+        self.assertIn("sit past the per-run cap of 2", message)
+        self.assertIn("never asked for", message)
+        # The third of the example's interest terms, named rather than counted.
+        self.assertIn("monitor", message)
+
+    def test_nothing_is_said_when_every_term_fits(self):
+        with temporary_directory() as directory:
+            config = _ready_config(directory)
+            message = run_cli(["doctor", "--config", str(config)])
+        self.assertNotIn("per-run cap", message)
+
     @patch("auction_lens.reports.send.email_destination", return_value="a" * 64)
     def test_it_validates_a_missing_ledger_without_creating_it(
         self, email_destination

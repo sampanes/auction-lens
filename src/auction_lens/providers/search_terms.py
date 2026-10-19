@@ -7,6 +7,8 @@ about it, or a search typed on the command line would mean one thing to
 
 from __future__ import annotations
 
+from collections.abc import Iterable
+
 from ..config.app import AppConfig
 from ..config.interests import InterestRule
 
@@ -42,5 +44,22 @@ def daily_search_terms(
 
 
 def _interest_search_terms(interests: tuple[InterestRule, ...]) -> list[str]:
-    """Flatten configured phrases in rule order; discovery owns deduping and caps."""
+    """Flatten configured phrases in rule order; discovery owns the caps."""
     return [term for rule in interests for term in rule.any_terms]
+
+
+def distinct_terms(terms: Iterable[str]) -> list[str]:
+    """Each phrase once, cleaned, in the order it was written.
+
+    Separate from the caps below it because two callers need the same answer
+    for different reasons: a run asks which phrases to request, and `doctor`
+    asks how many were configured, so that it can say which of them a cap will
+    never reach. Counted two different ways those two disagree, and the one
+    that disagrees quietly is the preflight.
+    """
+    seen: dict[str, None] = {}
+    for term in terms:
+        cleaned = term.strip().lower()
+        if cleaned:
+            seen.setdefault(cleaned, None)
+    return list(seen)
