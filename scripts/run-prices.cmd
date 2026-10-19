@@ -23,6 +23,7 @@ setlocal
 
 set "ROOT=%~dp0.."
 set "AUCTION_LENS=%ROOT%\.venv\Scripts\auction-lens.exe"
+set "LOG=%ROOT%\private\prices-run.log"
 
 if not exist "%AUCTION_LENS%" (
     echo [X] no installed application at %AUCTION_LENS%
@@ -32,18 +33,27 @@ if not exist "%AUCTION_LENS%" (
 
 pushd "%ROOT%" || exit /b 1
 
+REM Everything below is written to a log as well as attempted, because these
+REM runs are unattended: without one, a failure leaves nothing but Task
+REM Scheduler's "Last Result" and the reason is gone by morning. The directory
+REM is checked first so that logging can never itself be what breaks a run.
+if not exist "%ROOT%\private" mkdir "%ROOT%\private"
+echo ==== %DATE% %TIME% closing-price run starting>>"%LOG%"
+echo     logging this run to %LOG%
+
 REM Refuse before discovery if provider authorization is incomplete. No
 REM --email here on purpose: this run has nothing to send, and failing it over
 REM an unset mail password would throw away the night's closing prices.
-"%AUCTION_LENS%" doctor
+"%AUCTION_LENS%" doctor >>"%LOG%" 2>&1
 if errorlevel 1 goto :failed
 
 REM Collect, score, and record. The report is still rendered to stdout, which
 REM Task Scheduler discards; the point of this run is the observation written
 REM to the database and the watchlist.
-"%AUCTION_LENS%" daily
+"%AUCTION_LENS%" daily >>"%LOG%" 2>&1
 if errorlevel 1 goto :failed
 
+echo ---- %DATE% %TIME% completed>>"%LOG%"
 popd
 exit /b 0
 
@@ -51,5 +61,6 @@ exit /b 0
 REM Task Scheduler should see the real code, not a flattened 1, and popd would
 REM clear it, so read it before restoring the directory.
 set "EXIT_CODE=%errorlevel%"
+>>"%LOG%" echo ---- %DATE% %TIME% FAILED with %EXIT_CODE%
 popd
 exit /b %EXIT_CODE%

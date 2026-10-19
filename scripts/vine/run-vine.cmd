@@ -76,6 +76,6 @@ exit /b 0
 REM Task Scheduler should see the real code, not a flattened 1, and popd would
 REM clear it, so read it before restoring the directory.
 set "EXIT_CODE=%errorlevel%"
-echo %DATE% %TIME% failed with %EXIT_CODE%>>"%LOG%"
+>>"%LOG%" echo %DATE% %TIME% failed with %EXIT_CODE%
 popd
 exit /b %EXIT_CODE%
