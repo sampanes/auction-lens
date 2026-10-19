@@ -35,10 +35,19 @@ pushd "%ROOT%" || exit /b 1
 
 REM Everything below is written to a log as well as attempted, because these
 REM runs are unattended: without one, a failure leaves nothing but Task
-REM Scheduler's "Last Result" and the reason is gone by morning. The directory
-REM is checked first so that logging can never itself be what breaks a run.
-if not exist "%ROOT%\private" mkdir "%ROOT%\private"
-echo ==== %DATE% %TIME% closing-price run starting>>"%LOG%"
+REM Scheduler's "Last Result" and the reason is gone by morning.
+REM
+REM The log is proven writable before anything is redirected into it. A
+REM redirect to a path cmd cannot open does not fail the line -- it stops the
+REM command from running at all and leaves errorlevel 0, so an unusable log
+REM would turn an unattended run into a silent success that did nothing.
+REM Measured with a file standing where the directory should be. The trailing
+REM backslash is what tells a directory from a file, and the probe runs in a
+REM child cmd because only there does a failed redirect set an exit code.
+if not exist "%ROOT%\private\" mkdir "%ROOT%\private" 2>nul
+cmd /c "type nul >>""%LOG%"""
+if errorlevel 1 goto :nolog
+>>"%LOG%" echo ==== %DATE% %TIME% closing-price run starting
 echo     logging this run to %LOG%
 
 REM Refuse before discovery if provider authorization is incomplete. No
@@ -53,9 +62,17 @@ REM to the database and the watchlist.
 "%AUCTION_LENS%" daily >>"%LOG%" 2>&1
 if errorlevel 1 goto :failed
 
-echo ---- %DATE% %TIME% completed>>"%LOG%"
+>>"%LOG%" echo ---- %DATE% %TIME% completed
 popd
 exit /b 0
+
+:nolog
+REM Refusing here is the point. Every command this runner exists for redirects
+REM into that log, and a redirect cmd cannot open silently skips the command it
+REM was attached to rather than failing it.
+echo [X] cannot write the run log at %LOG%
+popd
+exit /b 1
 
 :failed
 REM Task Scheduler should see the real code, not a flattened 1, and popd would
