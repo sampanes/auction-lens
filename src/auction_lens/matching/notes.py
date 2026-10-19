@@ -20,17 +20,24 @@ from ..listings.model import Listing
 from .text import mentions
 
 
-def notes_for(
-    listing: Listing, notes: tuple[ProductNote, ...]
-) -> tuple[str, ...]:
+def notes_for(listing: Listing, notes: tuple[ProductNote, ...]) -> tuple[str, ...]:
     """The note text of every configured note this listing's title names.
 
     Reads the shared searchable text rather than the raw title, so a note is
     found under the same normalization a rule's terms are found under.
     """
     searchable = listing.searchable_text
-    return tuple(
-        note.note
-        for note in notes
-        if any(mentions(searchable, term) for term in note.terms)
-    )
+    return tuple(note.note for note in notes if _carries(searchable, note))
+
+
+def _carries(searchable: str, note: ProductNote) -> bool:
+    """Whether this text both names the product and is the kind of thing meant.
+
+    Two tests rather than one because the name alone is not enough. A maker
+    known for mowers also sells leaf blowers and hose reels, and a note
+    about a mower's deck belt appearing on a hose reel is the kind of wrong
+    answer that teaches a reader to stop reading the label.
+    """
+    if not any(mentions(searchable, term) for term in note.any_terms):
+        return False
+    return all(mentions(searchable, term) for term in note.all_terms)

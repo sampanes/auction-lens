@@ -274,8 +274,13 @@ minimum_score = 70
 # and owner feedback describes a model in general while the lot on the card is
 # one used example of it. Use `none_terms` on a rule to refuse a product
 # outright; use a note to tell the reader what to check before bidding.
+# `any_terms` finds the product and `all_terms`, if given, must all appear as
+# well. The pair is what makes a broad name safe: a maker known for mowers also
+# sells leaf blowers and hose reels, so keying a note on the maker alone puts
+# mower advice on a hose reel. Requiring the thing itself beside the name costs nothing.
 [[product_notes]]
-terms = ["example pressure washer"]
+any_terms = ["example pressure washer", "example power washer"]
+all_terms = ["washer"]
 note = """
     Owners report the pump seals failing in the second season and the unloader
     valve being unavailable as a part. Worth it under $40; check that the wand

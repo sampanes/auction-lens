@@ -34,7 +34,7 @@ any_terms = ["example"]
 
 _NOTE = """
 [[product_notes]]
-terms = ["acme", "acme garden"]
+any_terms = ["acme", "acme garden"]
 note = \"\"\"
     Owners report the deck belt slipping on wet grass. Check it before bidding.
 \"\"\"
@@ -70,7 +70,7 @@ class ConfiguredNoteTests(unittest.TestCase):
         config = parse_config(_PROVIDER + _NOTE)
 
         (note,) = config.product_notes
-        self.assertEqual(note.terms, ("acme", "acme garden"))
+        self.assertEqual(note.any_terms, ("acme", "acme garden"))
         self.assertTrue(note.note.startswith("Owners report"))
         self.assertTrue(note.note.endswith("before bidding."))
 
@@ -85,14 +85,14 @@ class ConfiguredNoteTests(unittest.TestCase):
         with self.assertRaises(ValueError) as caught:
             parse_config(
                 _PROVIDER
-                + '\n[[product_notes]]\nterms = []\nnote = "something"\n'
+                + '\n[[product_notes]]\nany_terms = []\nnote = "something"\n'
             )
 
-        self.assertIn("terms", str(caught.exception))
+        self.assertIn("any_terms", str(caught.exception))
 
     def test_a_note_with_no_text_is_refused(self):
         with self.assertRaises(ValueError):
-            parse_config(_PROVIDER + '\n[[product_notes]]\nterms = ["acme"]\n')
+            parse_config(_PROVIDER + '\n[[product_notes]]\nany_terms = ["acme"]\n')
 
 
 class NoteMatchingTests(unittest.TestCase):
@@ -121,16 +121,52 @@ class NoteMatchingTests(unittest.TestCase):
 
     def test_two_notes_about_one_product_are_both_carried_in_order(self):
         notes = (
-            ProductNote(terms=("acme",), note="first"),
-            ProductNote(terms=("mower",), note="second"),
+            ProductNote(any_terms=("acme",), note="first"),
+            ProductNote(any_terms=("mower",), note="second"),
         )
 
         self.assertEqual(self._notes_on("Acme Mower", notes), ("first", "second"))
 
     def test_one_note_is_shown_once_however_many_of_its_terms_match(self):
-        notes = (ProductNote(terms=("acme", "mower"), note="only once"),)
+        notes = (ProductNote(any_terms=("acme", "mower"), note="only once"),)
 
         self.assertEqual(self._notes_on("Acme Mower", notes), ("only once",))
+
+
+    def test_a_required_term_keeps_a_makers_name_off_its_other_products(self):
+        # Keyed on the name alone, a note about one maker's mowers would also
+        # reach its leaf blowers and hose reels.
+        notes = (
+            ProductNote(
+                any_terms=("acme",), all_terms=("mower",), note="about the mower"
+            ),
+        )
+
+        self.assertEqual(
+            self._notes_on("Acme 21 Inch Electric Lawn Mower", notes), ("about the mower",)
+        )
+        self.assertEqual(self._notes_on("Acme Cordless Leaf Blower", notes), ())
+        self.assertEqual(self._notes_on("Acme Expandable Hose Reel", notes), ())
+
+    def test_every_required_term_has_to_appear_not_just_one(self):
+        notes = (
+            ProductNote(
+                any_terms=("acme",),
+                all_terms=("mower", "electric"),
+                note="about the electric mower",
+            ),
+        )
+
+        self.assertEqual(
+            self._notes_on("Acme 21 Inch Electric Lawn Mower", notes),
+            ("about the electric mower",),
+        )
+        self.assertEqual(self._notes_on("Acme 21 Inch Gas Lawn Mower", notes), ())
+
+    def test_a_note_with_no_required_terms_is_unrestricted(self):
+        notes = (ProductNote(any_terms=("acme",), note="anything acme"),)
+
+        self.assertEqual(self._notes_on("Acme Leaf Blower", notes), ("anything acme",))
 
 
 class RenderedNoteTests(unittest.TestCase):

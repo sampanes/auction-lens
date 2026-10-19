@@ -208,13 +208,17 @@ def _product_notes(root: Section) -> tuple[ProductNote, ...]:
 
 def _product_note(item: Section) -> ProductNote:
     with in_section(item):
-        terms = item.lowercase_texts("terms")
-        if not terms:
+        any_terms = item.lowercase_texts("any_terms")
+        if not any_terms:
             raise ValueError(
-                f"{item.label('terms')} needs at least one term; "
+                f"{item.label('any_terms')} needs at least one term; "
                 "a note no title can match would never be shown"
             )
-        return ProductNote(terms=terms, note=item.required_text("note").strip())
+        return ProductNote(
+            any_terms=any_terms,
+            all_terms=item.lowercase_texts("all_terms"),
+            note=item.required_text("note").strip(),
+        )
 
 
 def _require_unique_interests(interests: tuple[InterestRule, ...]) -> None:

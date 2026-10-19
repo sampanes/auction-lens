@@ -29,12 +29,19 @@ from dataclasses import dataclass
 class ProductNote:
     """One researched fact about a product, and the titles it belongs to.
 
-    `terms` are matched literally against a title, as whole phrases, which is
-    why a maker's name is the usual spelling: it is the part of a title that
-    survives the warehouse rewording the rest. A note with no terms matches
-    nothing and is refused at load, because a note nobody can see is worse
-    than no note -- it reads as covered.
+    The two word lists are the pair the interest rules already use, and for
+    the same reason. `any_terms` finds the product and has to stay broad
+    enough to catch it however the warehouse worded the title, usually by the
+    maker's name because that is the part they leave alone. `all_terms` is
+    what makes a broad name safe: a maker sells more than the one product a
+    note was written about, and a note keyed on the name alone lands on all
+    of them. Requiring the thing itself beside the name costs nothing and
+    removes them.
+
+    A note with no `any_terms` matches nothing and is refused at load, because
+    a note nobody can see is worse than no note -- it reads as covered.
     """
 
-    terms: tuple[str, ...]
+    any_terms: tuple[str, ...]
     note: str
+    all_terms: tuple[str, ...] = ()
