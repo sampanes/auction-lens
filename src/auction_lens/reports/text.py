@@ -102,10 +102,22 @@ def _finding_lines(finding: Finding) -> Iterator[str]:
     yield f"Score {finding.score}"
     yield from _fact_lines(finding.facts.full_report)
     yield f"Why: {'; '.join(finding.reasons)}"
+    yield from _known_lines(finding.known)
     yield from _handling_lines(finding.handling)
     yield finding.url
     yield from _valuation_lines(finding.valuation)
     yield ""
+
+
+def _known_lines(known: tuple[str, ...]) -> Iterator[str]:
+    """Print researched product knowledge under its own label.
+
+    Labelled apart from "Why" on purpose: that line is this lot's scoring, and
+    this one is true of the model whoever is selling it. Collapsing them would
+    let a note read as though the program had measured it.
+    """
+    for note in known:
+        yield f"Known: {' '.join(note.split())}"
 
 
 def _fact_lines(facts: tuple[Fact, ...]) -> Iterator[str]:

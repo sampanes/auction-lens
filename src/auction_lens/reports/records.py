@@ -137,6 +137,11 @@ class Finding:
     photos: tuple[Photo, ...]
     handling: Handling
     valuation: Valuation
+    # Researched knowledge about the product, not about this lot: what owners
+    # of one report, what it is really big enough for, what breaks. Separate
+    # from `reasons`, which say why this lot scored as it did -- a note is
+    # equally true of the same model on a day nobody is selling one.
+    known: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)

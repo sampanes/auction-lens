@@ -103,6 +103,11 @@ class Candidate:
     # Such a lot is kept rather than dropped, so that a rule wrongly matching
     # something can be seen and fixed, but a reader has to be told plainly.
     set_aside: bool = False
+    # What was already known about this product before the lot existed, from
+    # research the program cannot do for itself. It is carried beside the
+    # score rather than inside it: the figures are about this lot, and a note
+    # is about every example of the model, including the good ones.
+    known: tuple[str, ...] = ()
 
     @property
     def section(self) -> str:

@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from ..values import require_at_least
 from .interests import InterestRule, ScoringConfig
 from .logistics import LocationPolicy, LogisticsConfig
+from .notes import ProductNote
 from .pricing import EconomicsConfig, ValuationConfig
 from .provider import AcquisitionConfig, ProviderConfig
 from .reports import EmailConfig, ReportsConfig, WebhookConfig
@@ -43,3 +44,7 @@ class AppConfig:
     locations: LocationPolicy = field(default_factory=LocationPolicy)
     reports: ReportsConfig = field(default_factory=ReportsConfig)
     judging: JudgingConfig = field(default_factory=JudgingConfig)
+    # Researched product knowledge, carried on any card whose title names the
+    # product. Last because it changes no decision the rest of this makes: it
+    # is the one section a run reads and only prints.
+    product_notes: tuple[ProductNote, ...] = ()

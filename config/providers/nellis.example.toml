@@ -256,6 +256,32 @@ none_terms = ["blood pressure", "baby monitor", "pet monitor", "heart rate"]
 max_total_cost = 80
 minimum_score = 70
 
+# What you already know about a product, which no run can find out for itself.
+#
+# The program measures what a product fetches here, and that is real evidence,
+# but a price never says which part breaks or whether the thing is simply too
+# small for the job. That comes from people who owned one. Research it once,
+# write it here, and every card for that product carries it from then on --
+# nothing is fetched while a report is built, so a note costs one phrase test
+# and survives a run with no network.
+#
+# `terms` are matched literally, as whole phrases, against the same text a
+# rule's words are matched against. A maker's name is the usual spelling,
+# because it is the part of a title the warehouse leaves alone.
+#
+# A note only ever prints. It cannot move a score, and that is deliberate: a
+# sentence somebody typed is not the kind of evidence the scoring rules weigh,
+# and owner feedback describes a model in general while the lot on the card is
+# one used example of it. Use `none_terms` on a rule to refuse a product
+# outright; use a note to tell the reader what to check before bidding.
+[[product_notes]]
+terms = ["example pressure washer"]
+note = """
+    Owners report the pump seals failing in the second season and the unloader
+    valve being unavailable as a part. Worth it under $40; check that the wand
+    trigger holds pressure before bidding.
+"""
+
 [valuation]
 enabled = true
 currency = "USD"

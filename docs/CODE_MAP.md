@@ -74,6 +74,12 @@ listing is desirable.
   active and retired finite interests from explicit outcomes.
 - [`matching/searches.py`](../src/auction_lens/matching/searches.py) finds a few
   provider search phrases for crowded report sections.
+- [`matching/notes.py`](../src/auction_lens/matching/notes.py) decides which
+  researched product notes a title carries, reusing the same whole-phrase test
+  the rules use so the two cannot disagree about what a title says.
+  [`config/notes.py`](../src/auction_lens/config/notes.py) is the note itself:
+  knowledge the program cannot gather, written in advance, carried onto every
+  card for that product and never into a score.
 
 [`tests/test_matching.py`](../tests/test_matching.py),
 [`tests/test_judging.py`](../tests/test_judging.py), and

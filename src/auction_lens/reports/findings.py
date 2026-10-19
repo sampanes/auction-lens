@@ -267,6 +267,7 @@ def _finding(candidate: Candidate, zone: ZoneInfo, priority_rank: int) -> Findin
         photos=_photos(candidate),
         handling=_handling(candidate),
         valuation=_valuation(candidate.valuation),
+        known=candidate.known,
     )
 
 

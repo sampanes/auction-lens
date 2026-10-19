@@ -11,6 +11,7 @@ from datetime import UTC, datetime
 
 from ..config.app import AppConfig
 from ..config.interests import InterestRule
+from ..config.notes import ProductNote
 from ..config.pricing import EconomicsConfig
 from ..history.logistics import LogisticsDecisionStore
 from ..history.observations import ObservationStore
@@ -30,6 +31,7 @@ from .model import (
     harvest_of,
     ranked,
 )
+from .notes import notes_for
 from .progress import InterestProgress, InterestRef, plan_interests
 from .searches import SearchHint, search_hints
 
@@ -187,7 +189,11 @@ def analyze_listings(
             # still earned a card on price alone is not reported as hidden.
             held_back += 1
         candidates.extend(
-            _with_valuation(matches, listing, valuation, config.economics)
+            _with_notes(
+                _with_valuation(matches, listing, valuation, config.economics),
+                listing,
+                config.product_notes,
+            )
         )
 
     # Word matching found these; the judge marks which are really the thing.
@@ -301,6 +307,26 @@ def _with_valuation(
     return [
         candidate for candidate in priced if not _already_costs_more(candidate, listing)
     ]
+
+
+def _with_notes(
+    matches: list[Candidate],
+    listing: Listing,
+    notes: tuple[ProductNote, ...],
+) -> list[Candidate]:
+    """Carry any researched note about this product onto every card for it.
+
+    Looked up once per listing rather than once per candidate, because a note
+    is a fact about the product and two rules matching the same lot cannot
+    disagree about it. Nothing is fetched and nothing is scored, so this is
+    safe to run on every match: the cost is one phrase test per note.
+    """
+    if not notes or not matches:
+        return matches
+    known = notes_for(listing, notes)
+    if not known:
+        return matches
+    return [replace(candidate, known=known) for candidate in matches]
 
 
 def _likely_total(

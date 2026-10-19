@@ -160,6 +160,7 @@ def _card(finding: Finding) -> str:
             f"<p><strong>Score {finding.score}{SEPARATOR}{escape(finding.change)}</strong></p>",
             f"<p>{_facts(finding.facts.full_report)}</p>",
             f"<p>{escape('; '.join(finding.reasons))}</p>",
+            _known(finding.known),
             _photos(finding),
             _handling(finding.handling),
             _valuation(finding.valuation),
@@ -167,6 +168,16 @@ def _card(finding: Finding) -> str:
             "</article>",
         )
     )
+
+
+def _known(known: tuple[str, ...]) -> str:
+    """Researched product knowledge, labelled so it is not read as scoring."""
+    if not known:
+        return ""
+    notes = "".join(
+        f"<li>{escape(' '.join(note.split()))}</li>" for note in known
+    )
+    return f"<p><strong>Known</strong></p><ul>{notes}</ul>"
 
 
 def _photos(finding: Finding) -> str:

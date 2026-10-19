@@ -21,6 +21,7 @@ from .logistics import (
     LocationPolicy,
     LogisticsConfig,
 )
+from .notes import ProductNote
 from .people import read_people, resolve_person
 from .pricing import EconomicsConfig, ValuationConfig, ValuationSourceConfig
 from .provider import (
@@ -78,6 +79,7 @@ def _app_config(root: Section) -> AppConfig:
         locations=_locations(root.table("locations")),
         reports=_reports(root.table("reports")),
         judging=_judging(root.table("judging")),
+        product_notes=_product_notes(root),
     )
 
 
@@ -189,6 +191,30 @@ def _interests(
     )
     _require_unique_interests(interests)
     return interests
+
+
+def _product_notes(root: Section) -> tuple[ProductNote, ...]:
+    """Every researched note, in the order they were written.
+
+    Both fields are required rather than defaulted. A note with no terms can
+    never appear and a note with no text has nothing to say, and either one
+    reads to whoever wrote the file as though the product were covered, which
+    is a worse state than an empty section.
+    """
+    return tuple(
+        _product_note(item) for item in root.tables("product_notes")
+    )
+
+
+def _product_note(item: Section) -> ProductNote:
+    with in_section(item):
+        terms = item.lowercase_texts("terms")
+        if not terms:
+            raise ValueError(
+                f"{item.label('terms')} needs at least one term; "
+                "a note no title can match would never be shown"
+            )
+        return ProductNote(terms=terms, note=item.required_text("note").strip())
 
 
 def _require_unique_interests(interests: tuple[InterestRule, ...]) -> None:
