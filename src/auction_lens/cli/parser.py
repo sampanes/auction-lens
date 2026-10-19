@@ -36,6 +36,7 @@ WATCH = "watch"
 WATCHLIST = "watchlist"
 FEEDBACK = "feedback"
 SOLD = "sold"
+COMPS = "comps"
 SETTLE = "settle"
 REVIEW = "review"
 
@@ -95,6 +96,7 @@ def build_parser() -> argparse.ArgumentParser:
     _add_watchlist(subparsers)
     _add_feedback(subparsers)
     _add_sold(subparsers)
+    _add_comps(subparsers)
     _add_settle(subparsers)
     return parser
 
@@ -340,6 +342,32 @@ def _add_feedback(subparsers) -> None:
         action=_RememberedOption,
         help="ignored directory for immutable proposal artifacts",
     )
+
+
+def _add_comps(subparsers) -> None:
+    """Ask the record about a product rather than waiting for a card about it."""
+    comps = subparsers.add_parser(
+        COMPS,
+        help=(
+            "show what a product has really closed at here, from the record "
+            "this tool has already kept"
+        ),
+    )
+    comps.add_argument(
+        "--match",
+        default="",
+        help="only products whose title contains this phrase",
+    )
+    comps.add_argument(
+        "--minimum-closes",
+        type=int,
+        default=1,
+        help=(
+            "how many closes a product needs before it is shown; two is the "
+            "fewest that can disagree, and one is still a data point"
+        ),
+    )
+    _add_config(comps)
 
 
 def _add_sold(subparsers) -> None:

@@ -124,6 +124,7 @@ provider, SMTP server, or webhook:
 | `watchlist` | You want to read or email followed lots |
 | `feedback` | You want to record a reaction or review repeated evidence |
 | `sold` | You want closing-price floors from observation history |
+| `comps` | You want what one product has really closed at here |
 
 Run `auction-lens COMMAND --help` for flags and defaults. The command parser is
 the sole authority for that public surface.

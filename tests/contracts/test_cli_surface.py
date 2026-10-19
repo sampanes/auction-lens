@@ -27,6 +27,7 @@ COMMANDS = (
     "watchlist",
     "feedback",
     "sold",
+    "comps",
     "settle",
 )
 
@@ -120,6 +121,7 @@ OPTIONS = {
         "--proposal-dir",
     },
     "sold": {"--help", "--database", "--within-minutes", "--match", "--limit", "--config"},
+    "comps": {"--help", "--match", "--minimum-closes", "--config"},
     "settle": {
         "--help",
         "--database",
@@ -146,6 +148,7 @@ MINIMUM_ARGUMENTS = {
     "watchlist": [],
     "feedback": ["review"],
     "sold": [],
+    "comps": [],
     "settle": [],
 }
 

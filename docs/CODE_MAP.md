@@ -197,7 +197,8 @@ Credentials and contact values belong in ignored `.env`, not in TOML.
 - The large workflows have plain top-level names: `setup.py`, `doctor.py`,
   `collect.py`, and `daily.py`.
 - The remaining [`cli/`](../src/auction_lens/cli/) modules adapt inherently
-  interactive watchlist and logistics actions plus the local `sold` query.
+  interactive watchlist and logistics actions plus the local `sold` and
+  `comps` queries, which read recorded observations and never the network.
 
 The exact public surface is frozen by
 [`tests/contracts/test_cli_surface.py`](../tests/contracts/test_cli_surface.py).

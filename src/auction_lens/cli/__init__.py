@@ -7,10 +7,12 @@ import sys
 from .. import collect, daily, doctor, setup
 from ..config.environment import load_env_file
 from ..config.profile_wizard import profile
+from . import comps as comps_command
 from . import feedback, logistics, sold, watchlist
 from . import settle as settle_command
 from .exit_codes import OPERATOR_ERROR
 from .parser import (
+    COMPS,
     DAILY,
     DISCOVER,
     DOCTOR,
@@ -46,6 +48,7 @@ COMMANDS = {
     FEEDBACK: feedback.feedback,
     SETTLE: settle_command.settle,
     SOLD: sold.sold,
+    COMPS: comps_command.comps,
 }
 
 # Commands that validate or use provider and delivery settings load the ignored

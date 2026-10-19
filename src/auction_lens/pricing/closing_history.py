@@ -108,6 +108,10 @@ class Close:
 
     listing_id: str
     price: object
+    # The title it closed under. Pricing has no use for it -- a product key is
+    # what groups these -- but a person asking about a product needs to see a
+    # name they recognise rather than the flattened key.
+    title: str = ""
 
 
 def observed_ceiling(summary: ValuationSummary) -> Decimal | None:
@@ -277,7 +281,11 @@ class ClosingHistoryAdapter:
                 if price is None:
                     continue
                 grouped.setdefault(product_key(row["title"]), []).append(
-                    Close(listing_id=str(row["listing_id"]), price=price)
+                    Close(
+                        listing_id=str(row["listing_id"]),
+                        price=price,
+                        title=str(row["title"]),
+                    )
                 )
         return grouped
 
@@ -294,9 +302,89 @@ class ClosingHistoryAdapter:
                     continue
                 key = product_key(row["title"])
                 grouped.setdefault(key, []).append(
-                    Close(listing_id=str(row["listing_id"]), price=price)
+                    Close(
+                        listing_id=str(row["listing_id"]),
+                        price=price,
+                        title=str(row["title"]),
+                    )
                 )
         return grouped
+
+
+@dataclass(frozen=True)
+class ProductRecord:
+    """Every recorded close of one product, ready to show somebody.
+
+    `settled` says which table it came from, because the difference matters
+    more than the numbers do: a settled close is what a lot sold for, read
+    from its own page after it shut, and an observed one is the last bid seen
+    before the hammer and therefore a floor.
+    """
+
+    title: str
+    key: str
+    prices: tuple[Decimal, ...]
+    settled: bool
+
+    @property
+    def low(self) -> Decimal:
+        return self.prices[0]
+
+    @property
+    def typical(self) -> Decimal:
+        return median(self.prices).quantize(CENTS)
+
+    @property
+    def high(self) -> Decimal:
+        return self.prices[-1]
+
+
+def recorded_products(
+    adapter: ClosingHistoryAdapter, phrase: str = ""
+) -> list[ProductRecord]:
+    """Every product with a recorded close, best evidenced first.
+
+    Asked here rather than in the command because this module owns what counts
+    as a close: the endpoint window, the preference for a settled sale over a
+    reading, and the grouping that decides two titles are one product. A
+    caller that re-derived any of those could print a range no card would
+    ever quote.
+
+    A product appears once. Where it has both kinds of record the settled one
+    wins outright, for the reason `collect` gives: averaging a sale with a bid
+    taken an hour early pulls the better answer down by exactly the error that
+    made readings worth replacing.
+    """
+    wanted = phrase.strip().lower()
+    records: dict[str, ProductRecord] = {}
+    for settled, grouped in ((True, adapter._sold()), (False, adapter._history())):
+        for key, closes in grouped.items():
+            if key in records:
+                continue
+            if wanted and wanted not in key:
+                continue
+            prices = sorted(close.price for close in closes)
+            records[key] = ProductRecord(
+                title=_shown_title(closes),
+                key=key,
+                prices=tuple(price.quantize(CENTS) for price in prices),
+                settled=settled,
+            )
+    return sorted(
+        records.values(), key=lambda item: (len(item.prices), item.typical), reverse=True
+    )
+
+
+def _shown_title(closes: list[Close]) -> str:
+    """One title to stand for the group: the plainest of the ones on offer.
+
+    The shortest is chosen because the differences between titles of the same
+    product are the warehouse's additions -- a stock-photo notice, a pickup
+    instruction, a condition shouted in capitals -- and the shortest is the one
+    carrying fewest of them.
+    """
+    titles = [close.title for close in closes if close.title]
+    return min(titles, key=len) if titles else ""
 
 # Every recorded sale, with the title it sold under so two lots of the same
 # product group together.
