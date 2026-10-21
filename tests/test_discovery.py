@@ -57,11 +57,11 @@ def _page() -> str:
 
 
 class SearchPageTests(unittest.TestCase):
-    def _read_route(self, route):
+    def _read_route(self, route, name="routes/search"):
         links = "".join(
             f'<a href="/p/example/{product["id"]}">lot</a>' for product in route["products"]
         )
-        payload = {"loaderData": {"routes/search": route}}
+        payload = {"loaderData": {name: route}}
         with patch("auction_lens.providers.nellis.parse._payload", return_value=payload):
             return read_search_page(links, source="nellis", page_url=PAGE_URL)
 
@@ -71,6 +71,11 @@ class SearchPageTests(unittest.TestCase):
         self.assertEqual(
             [row["listing_id"] for row in rows], ["900000101", "900000102"]
         )
+
+    def test_the_renamed_search_route_is_read_like_the_old_one(self):
+        route = {"products": [{"id": 900000101, "title": "Soundbar"}]}
+        rows = self._read_route(route, name="routes/search._index")
+        self.assertEqual([row["listing_id"] for row in rows], ["900000101"])
 
     def test_a_lot_that_has_already_sold_is_left_out(self):
         # Nothing can be bid on any more, so reporting it would be noise.

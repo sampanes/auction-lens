@@ -35,8 +35,10 @@ CANONICAL_URL_PATTERN = re.compile(
 PRODUCT_ROUTE = "routes/p.$title.$productId._index"
 
 # A search page carries every result in one payload, complete with grades, so
-# one request describes a whole page of lots rather than one lot.
-SEARCH_ROUTE = "routes/search"
+# one request describes a whole page of lots rather than one lot. The results
+# moved from the layout route to its index on 2026-10-19, and pages cached
+# before then are still read again, so the route is whichever carries them.
+SEARCH_ROUTES = ("routes/search._index", "routes/search")
 PRODUCTS_KEY = "products"
 
 # Search hits omit taxonomy and brand, but the surrounding route keeps the
@@ -126,7 +128,7 @@ def read_search_page(html: str, *, source: str, page_url: str) -> list[dict[str,
     marks as closed are left out, because nothing can be bid on any more.
     """
     payload = _payload(html)
-    route = (payload.get("loaderData") or {}).get(SEARCH_ROUTE) or {}
+    route = _search_route(payload.get("loaderData") or {}) or {}
     listed = route.get(PRODUCTS_KEY)
     if not isinstance(listed, list):
         raise ValueError("no search results found; this is not a search page")
@@ -154,9 +156,20 @@ def read_saved_page(html: str, *, source: str, page_url: str = "") -> list[dict[
     way means a caller never has to know which it got.
     """
     routes = _payload(html).get("loaderData") or {}
-    if SEARCH_ROUTE in routes:
+    if any(name in routes for name in SEARCH_ROUTES):
         return read_search_page(html, source=source, page_url=page_url)
     return [read_product_page(html, source=source)]
+
+
+def _search_route(routes: dict[str, Any]) -> dict[str, Any] | None:
+    return next(
+        (
+            routes[name]
+            for name in SEARCH_ROUTES
+            if isinstance(routes.get(name), dict) and PRODUCTS_KEY in routes[name]
+        ),
+        None,
+    )
 
 
 def _product_addresses(html: str, page_url: str) -> dict[str, str]:
