@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import unittest
+from contextlib import nullcontext
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from unittest.mock import patch
@@ -43,17 +44,18 @@ class AuthorizedFetchTests(unittest.TestCase):
         self.assertIn("operator@auction-lens.dev", opener.calls[0][0].get_header("User-agent"))
         self.assertIn("fixture-v1", metadata)
 
-    @patch("auction_lens.providers.http.public_https_opener")
-    def test_the_default_fetch_path_uses_the_redirect_safe_opener(self, opener_factory):
+    @patch("auction_lens.providers.browser.browser_opener")
+    def test_the_default_fetch_path_goes_through_the_identified_browser(self, browser):
         opener = RecordingOpener(FakeResponse(b"<html>fixture</html>"))
-        opener_factory.return_value = opener
+        browser.return_value = nullcontext(opener)
         with temporary_directory() as directory:
             acquisition = self._acquisition(directory)
             with self._environment(acquisition):
                 fetch_authorized_page(
                     self.config.provider, acquisition, now=self._instant()
                 )
-        opener_factory.assert_called_once_with()
+        (user_agent,), _ = browser.call_args
+        self.assertIn("operator@auction-lens.dev", user_agent)
         self.assertEqual(opener.request_count, 1)
 
     def test_second_request_inside_the_interval_is_refused(self):

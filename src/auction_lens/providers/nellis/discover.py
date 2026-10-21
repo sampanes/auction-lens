@@ -20,11 +20,10 @@ import time
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from http.cookiejar import CookieJar
 from pathlib import Path
 from urllib.error import HTTPError
 from urllib.parse import quote_plus, urlencode
-from urllib.request import HTTPCookieProcessor, Request
+from urllib.request import Request
 
 from ...config.provider import (
     CATEGORY_PLACEHOLDER,
@@ -32,8 +31,8 @@ from ...config.provider import (
     AcquisitionConfig,
     ProviderConfig,
 )
-from ...http_safety import public_https_opener
 from ...throttle import RequestThrottle
+from ..browser import transport
 from ..http import (
     ACCEPTED_CONTENT,
     HTTP_NOT_MODIFIED,
@@ -78,7 +77,6 @@ def discover_searches(
     """Fetch one search page per term, or explain why this run must not."""
     instant = _timezone_aware(now or datetime.now(UTC))
     addresses, user_agent = _prepare_discovery(provider, config, terms)
-    opener = session_opener() if opener is None else opener
 
     ledger = PollLedger.at(config.ledger_file)
     enforce_request_limits(ledger.attempts(), config, instant)
@@ -92,12 +90,15 @@ def discover_searches(
         minimum_interval_seconds=float(config.seconds_between_searches),
         sleeper=sleeper,
     )
-    if config.session_url:
-        choose_branch(config, user_agent, opener, throttle)
-    return [
-        _fetch_one(term, url, config, user_agent, instant, opener, throttle)
-        for term, url in addresses
-    ]
+    # One browser session for the whole run, so the branch it chooses holds
+    # for every search after it.
+    with transport(user_agent, opener) as session:
+        if config.session_url:
+            choose_branch(config, user_agent, session, throttle)
+        return [
+            _fetch_one(term, url, config, user_agent, instant, session, throttle)
+            for term, url in addresses
+        ]
 
 
 def check_discovery_ready(
@@ -123,17 +124,6 @@ def _prepare_discovery(
         require_fetch_allowed(provider, config, config.session_url)
         require_session_change_allowed(config)
     return addresses, authorized_user_agent(config)
-
-
-def session_opener() -> Callable:
-    """An opener that keeps the provider's session cookies for one run.
-
-    A provider that serves one branch at a time remembers which one through a
-    cookie, so the searches have to be made by the same client that chose it.
-    The jar lives and dies with the run: a fresh session every time is one more
-    request, and removes any chance of yesterday's branch quietly persisting.
-    """
-    return public_https_opener(HTTPCookieProcessor(CookieJar()))
 
 
 def choose_branch(

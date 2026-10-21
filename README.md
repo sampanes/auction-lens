@@ -25,7 +25,8 @@ retail value as verified market value.
 ## Quick start
 
 Auction Lens requires Python 3.11 or newer and keeps runtime dependencies
-minimal; Windows installations may add the timezone-data package. These
+minimal: Playwright, which fetches provider pages through an installed Google
+Chrome, and on Windows the timezone-data package. These
 examples use Windows `cmd`; on macOS or Linux, use the equivalent executables
 under `.venv/bin`.
 

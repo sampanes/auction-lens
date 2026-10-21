@@ -21,6 +21,8 @@ Read those four in that order for the shortest end-to-end tour.
 
 - [`providers/http.py`](../src/auction_lens/providers/http.py) enforces explicit
   authorization, identification, caching, pacing, redirect safety, and run limits.
+- [`providers/browser.py`](../src/auction_lens/providers/browser.py) is the
+  transport: one headless Chrome per run, JavaScript off, one document per request.
 - [`providers/registry.py`](../src/auction_lens/providers/registry.py) maps each
   configured provider id to the four site-specific collection operations.
 - [`providers/search_terms.py`](../src/auction_lens/providers/search_terms.py)

@@ -6,7 +6,7 @@ import argparse
 import io
 import json
 import unittest
-from contextlib import redirect_stdout
+from contextlib import nullcontext, redirect_stdout
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
@@ -17,13 +17,11 @@ from urllib.error import HTTPError
 
 from auction_lens.collect import DiscoveryStatus, run_discovery
 from auction_lens.config.provider import AcquisitionConfig, AcquisitionMode, ProviderConfig
-from auction_lens.http_safety import PublicHttpsRedirectHandler
 from auction_lens.listings.model import Listing
 from auction_lens.providers.http import PollLedger
 from auction_lens.providers.nellis.discover import (
     check_discovery_ready,
     discover_searches,
-    session_opener,
 )
 from auction_lens.providers.nellis.parse import read_search_page
 from support import ROOT, FakeResponse, example_config, temporary_directory
@@ -408,14 +406,19 @@ class DiscoveryTests(unittest.TestCase):
             self.assertFalse((directory / "searches").exists())
         self.assertEqual(self.opener.urls, [])
 
-    def test_the_real_session_opener_installs_the_redirect_guard(self):
-        opener = session_opener()
-        self.assertTrue(
-            any(
-                isinstance(handler, PublicHttpsRedirectHandler)
-                for handler in opener.__self__.handlers
-            )
-        )
+    def test_the_default_session_is_one_browser_carrying_the_operators_contact(self):
+        with (
+            patch(
+                "auction_lens.providers.browser.browser_opener",
+                return_value=nullcontext(self.opener),
+            ) as browser,
+            temporary_directory() as directory,
+        ):
+            config = self._config(directory)
+            with self._environment(config):
+                discover_searches(self.provider, config, ["soundbar"], now=NOW)
+        browser.assert_called_once_with(CONTACT_USER_AGENT)
+        self.assertEqual(len(self.opener.urls), 1)
 
     def test_a_term_written_twice_is_asked_for_once(self):
         with temporary_directory() as directory:

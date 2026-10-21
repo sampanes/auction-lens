@@ -60,15 +60,23 @@ class PublicHttpsRedirectHandler(HTTPRedirectHandler):
         self, request, response, code, message, headers, new_url
     ):
         require_public_https(new_url)
-        original = urlsplit(request.full_url)
-        redirected = urlsplit(new_url)
-        if _origin(redirected) != _origin(original):
-            raise RuntimeError(
-                "source redirected to a different origin; configure that final URL "
-                "and reconfirm authorization before contacting it"
-            )
+        require_same_origin(request.full_url, new_url)
         return super().redirect_request(
             request, response, code, message, headers, new_url
+        )
+
+
+def same_origin(original: str, other: str) -> bool:
+    """Whether a second address is served by the server the first one named."""
+    return _origin(urlsplit(other)) == _origin(urlsplit(original))
+
+
+def require_same_origin(original: str, redirected: str) -> None:
+    """Refuse a redirect that would carry the request to another server."""
+    if not same_origin(original, redirected):
+        raise RuntimeError(
+            "source redirected to a different origin; configure that final URL "
+            "and reconfirm authorization before contacting it"
         )
 
 

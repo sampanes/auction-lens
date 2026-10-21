@@ -34,6 +34,7 @@ from ...config.provider import AcquisitionConfig, ProviderConfig
 from ...http_safety import require_public_https
 from ...listings.model import PendingLot, Settlement, SettleOutcome
 from ...throttle import RequestThrottle
+from ..browser import transport
 from ..http import (
     ACCEPTED_CONTENT,
     HTTP_OK,
@@ -43,7 +44,6 @@ from ..http import (
     require_fetch_allowed,
     require_not_rate_limited,
 )
-from .discover import session_opener
 from .parse import _product
 
 # A page that 404s or 410s has no result to read and never will, so a run says
@@ -102,7 +102,6 @@ def settle_lots(
         return SettleOutcome((), 0, 0, 0)
 
     user_agent = authorized_user_agent(config)
-    opener = session_opener() if opener is None else opener
     moment = datetime.now(UTC) if instant is None else instant
 
     ledger = PollLedger.at(config.ledger_file)
@@ -121,32 +120,33 @@ def settle_lots(
     still_open = missing = unreadable = unreachable = 0
     consecutive_failures = 0
     stopped_early = ""
-    for lot in pending:
-        page = _read_page(lot, config, user_agent, opener, throttle)
-        if page is UNREACHABLE:
-            # The lot stays owed, exactly as an unreadable page does, but it is
-            # counted apart from one: nothing here answered, so there is no
-            # page to blame and no parser to fix.
-            unreachable += 1
-            consecutive_failures += 1
-            if consecutive_failures >= CONSECUTIVE_FAILURES_BEFORE_STOPPING:
-                stopped_early = (
-                    f"the provider stopped answering: "
-                    f"{consecutive_failures} lots in a row could not be reached"
-                )
-                break
-            continue
-        consecutive_failures = 0
-        if page is None:
-            missing += 1
-            continue
-        result = _settlement_of(page, lot)
-        if result is None:
-            unreadable += 1
-        elif result is OPEN_STILL:
-            still_open += 1
-        else:
-            settled.append(result)
+    with transport(user_agent, opener) as session:
+        for lot in pending:
+            page = _read_page(lot, config, user_agent, session, throttle)
+            if page is UNREACHABLE:
+                # The lot stays owed, exactly as an unreadable page does, but it is
+                # counted apart from one: nothing here answered, so there is no
+                # page to blame and no parser to fix.
+                unreachable += 1
+                consecutive_failures += 1
+                if consecutive_failures >= CONSECUTIVE_FAILURES_BEFORE_STOPPING:
+                    stopped_early = (
+                        f"the provider stopped answering: "
+                        f"{consecutive_failures} lots in a row could not be reached"
+                    )
+                    break
+                continue
+            consecutive_failures = 0
+            if page is None:
+                missing += 1
+                continue
+            result = _settlement_of(page, lot)
+            if result is None:
+                unreadable += 1
+            elif result is OPEN_STILL:
+                still_open += 1
+            else:
+                settled.append(result)
     return SettleOutcome(
         tuple(settled),
         still_open,

@@ -9,6 +9,8 @@ description = "Provider-agnostic auction scoring, configurable market valuation,
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
+    # The provider transport: headless Chrome, see providers/browser.py.
+    "playwright==1.59.0",
     "tzdata>=2024.1; platform_system == 'Windows'",
 ]
 

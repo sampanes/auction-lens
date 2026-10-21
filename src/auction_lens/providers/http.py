@@ -19,7 +19,8 @@ from zoneinfo import ZoneInfo
 
 from ..config.provider import AcquisitionConfig, AcquisitionMode, ProviderConfig, RunMode
 from ..files import read_json, write_bytes_atomically, write_json_atomically
-from ..http_safety import public_https_opener, require_public_https
+from ..http_safety import require_public_https
+from .browser import transport
 
 ACCEPTED_CONTENT = "text/html,application/xhtml+xml"
 
@@ -67,7 +68,6 @@ def fetch_authorized_page(
     require_fetch_allowed(provider, config, config.url)
     user_agent = authorized_user_agent(config)
     instant = _timezone_aware(now or datetime.now(UTC))
-    opener = public_https_opener() if opener is None else opener
 
     ledger = PollLedger.at(config.ledger_file)
     enforce_request_limits(ledger.attempts(), config, instant)
@@ -84,7 +84,10 @@ def fetch_authorized_page(
     ledger.record(instant)
     request = Request(config.url, headers=headers, method="GET")
     try:
-        with opener(request, timeout=config.timeout_seconds) as response:
+        with (
+            transport(user_agent, opener) as session,
+            session(request, timeout=config.timeout_seconds) as response,
+        ):
             body = response.read()
             status = int(response.status)
             response_headers = response.headers
