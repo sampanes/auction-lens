@@ -29,6 +29,7 @@ set "NELLIS=%ROOT%\scripts\run-daily.cmd"
 set "PRICES=%ROOT%\scripts\run-prices.cmd"
 set "SETTLE=%ROOT%\scripts\run-settle.cmd"
 set "VINE=%ROOT%\scripts\vine\run-vine.cmd"
+set "VINE_SINK=%ROOT%\scripts\vine\ensure-sink.cmd"
 set "PREFIX=AuctionLens"
 
 REM Task name, start time, which runner, and what the comment should say. One
@@ -72,6 +73,11 @@ REM The Vine run mails only if the companion swept today, which it does the
 REM first time Chrome is open after local midnight. Seven leaves the night for
 REM that to have happened, and it sends nothing rather than repeat yesterday.
 set "RUN_7=Vine|07:00|%VINE%|morning Vine digest: what the companion found overnight"
+REM The companion sweeps only while its sink is listening, and nothing else
+REM starts the sink: closed once, it stayed closed for ten days. This puts it
+REM back before midnight, when the next sweep falls due, and leaves a running
+REM one alone so a sweep in progress is never cut short.
+set "RUN_8=Vine-Sink|23:30|%VINE_SINK%|keeps the Vine sink listening for the overnight sweep"
 
 if /i "%~1"=="status"  goto :status
 if /i "%~1"=="install" goto :install
@@ -82,7 +88,7 @@ goto :usage
 :status
 echo Scheduled runs for %PREFIX%:
 echo.
-for %%R in ("%RUN_1%" "%RUN_2%" "%RUN_3%" "%RUN_4%" "%RUN_5%" "%RUN_6%" "%RUN_7%") do call :report %%R
+for %%R in ("%RUN_1%" "%RUN_2%" "%RUN_3%" "%RUN_4%" "%RUN_5%" "%RUN_6%" "%RUN_7%" "%RUN_8%") do call :report %%R
 echo.
 echo Provider budget is in config/local.toml as max_requests_per_day.
 goto :done
@@ -105,7 +111,11 @@ if not exist "%VINE%" (
     echo [X] no runner at %VINE%
     exit /b 1
 )
-for %%R in ("%RUN_1%" "%RUN_2%" "%RUN_3%" "%RUN_4%" "%RUN_5%" "%RUN_6%" "%RUN_7%") do call :create %%R
+if not exist "%VINE_SINK%" (
+    echo [X] no runner at %VINE_SINK%
+    exit /b 1
+)
+for %%R in ("%RUN_1%" "%RUN_2%" "%RUN_3%" "%RUN_4%" "%RUN_5%" "%RUN_6%" "%RUN_7%" "%RUN_8%") do call :create %%R
 if errorlevel 1 exit /b 1
 echo.
 echo [OK] installed. Run "schedule.cmd status" to see the next fire times.
@@ -113,7 +123,7 @@ goto :done
 
 
 :remove
-for %%R in ("%RUN_1%" "%RUN_2%" "%RUN_3%" "%RUN_4%" "%RUN_5%" "%RUN_6%" "%RUN_7%") do call :destroy %%R
+for %%R in ("%RUN_1%" "%RUN_2%" "%RUN_3%" "%RUN_4%" "%RUN_5%" "%RUN_6%" "%RUN_7%" "%RUN_8%") do call :destroy %%R
 echo.
 echo [OK] removed. Nothing will fetch on a schedule until you install again.
 goto :done

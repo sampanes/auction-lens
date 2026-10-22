@@ -51,6 +51,11 @@ first one rather than leaving two fighting over port 8787.
     netstat -ano | findstr :8787
     scripts\vine\stop-sink.cmd
 
+`scripts\schedule.cmd install` also runs `ensure-sink.cmd` at 23:30, which
+starts a sink only when nothing is serving the port. A sink closed during the
+day is back before the next sweep falls due, and a running one is left alone,
+because replacing it mid-sweep would end the sweep.
+
 Load the extension once, in Chrome: `chrome://extensions`, enable Developer
 mode, "Load unpacked", choose `scripts\vine\extension`.
 
