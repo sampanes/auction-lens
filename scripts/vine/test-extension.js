@@ -44,9 +44,12 @@ const PLAN = {
   spacing_seconds: 0
 };
 
-function tile(asin, title) {
+function tile(asin, title, details) {
   return {
     querySelector(selector) {
+      if (selector === "input[data-recommendation-id]") {
+        return details ? { dataset: details } : null;
+      }
       if (selector.includes("/dp/")) {
         return { getAttribute: () => "/dp/" + asin };
       }
@@ -66,8 +69,12 @@ const BIRDHOUSE = tile("B0SYNTH002", "Acme Birdhouse, Cedar");
 const TRIVET = tile("B0SYNTH003", "Acme Trivet, Two Pack");
 
 // One page load, as Chrome injects harvest.js afresh on every navigation.
-function loadPage(url, tiles, hasGrid, sendMessage) {
+// `options.fetch` answers the page's own requests, which only the value lookup
+// makes; without it any request from the page is a failure.
+function loadPage(url, tiles, hasGrid, sendMessage, options) {
+  const settings = options || {};
   const timers = [];
+  const listeners = {};
   const watchers = [];
   const grid = hasGrid ? { children: tiles } : null;
   const address = new URL(url);
@@ -86,9 +93,15 @@ function loadPage(url, tiles, hasGrid, sendMessage) {
     document: document,
     window: {
       location: { search: address.search, pathname: address.pathname },
-      setTimeout: (fn) => timers.push(fn),
+      // The lookup's pause between requests is real time the harness does
+      // not need to spend, so a timer given a delay runs at once; the grid
+      // deadline is the only timer the tests fire by hand.
+      setTimeout: (fn, ms) => (ms === 2000 ? Promise.resolve().then(fn) : timers.push(fn)),
       clearTimeout: () => {}
     },
+    fetch: settings.fetch || (async (where) => {
+      throw new Error("the page made a request nobody asked for: " + where);
+    }),
     MutationObserver: class {
       constructor(fn) {
         this.fn = fn;
@@ -104,7 +117,12 @@ function loadPage(url, tiles, hasGrid, sendMessage) {
     Number: Number,
     Array: Array,
     Date: Date,
-    chrome: { runtime: { sendMessage: sendMessage } },
+    chrome: {
+      runtime: {
+        sendMessage: sendMessage,
+        onMessage: { addListener: (fn) => { listeners.message = fn; } }
+      }
+    },
     console: { log: () => {} }
   };
   context.globalThis = context;
@@ -113,6 +131,10 @@ function loadPage(url, tiles, hasGrid, sendMessage) {
   return {
     // Jump to the grid deadline, which is where an empty page answers.
     fire: () => timers.splice(0).forEach((fn) => fn()),
+    // The worker asking this page for values, answered as Chrome would.
+    askValues: (asins) => new Promise((resolve) => {
+      listeners.message({ type: "values", asins: asins }, {}, resolve);
+    }),
     // Amazon rewriting a grid in place after the page already answered.
     rewrite: (replacement) => {
       grid.children = replacement;
@@ -131,7 +153,12 @@ function makeWorkerWorld() {
     tabs: { opened: 0, closed: [] },
     listeners: {},
     finished: null,
-    alarmSerial: 0
+    alarmSerial: 0,
+    // Which items the stubbed sink asks values for, once, and what the page
+    // answers when the worker relays the question.
+    wantEtv: [],
+    valueRequests: [],
+    valueAnswer: { items: [] }
   };
 }
 
@@ -182,10 +209,14 @@ function loadWorker(shared) {
           return { id: 9 };
         },
         remove: async (id) => { tabs.closed.push(id); },
-        update: async (id, options) => { visited.push(options.url); }
+        update: async (id, options) => { visited.push(options.url); },
+        sendMessage: async (id, message) => {
+          world.valueRequests.push(message);
+          return world.valueAnswer;
+        }
       },
       runtime: {
-        getManifest: () => ({ version: "0.3.2" }),
+        getManifest: () => ({ version: "0.4.0" }),
         onMessage: { addListener: (fn) => { listeners.message = fn; } },
         onInstalled: { addListener: () => {} },
         onStartup: { addListener: () => {} }
@@ -201,7 +232,11 @@ function loadWorker(shared) {
       }
       if (url.endsWith("/items")) {
         posted.push(JSON.parse(options.body).items.length);
-        return { ok: true, json: async () => ({ recorded: 1, file: "records.ndjson" }) };
+        const wanted = world.wantEtv.splice(0);
+        return {
+          ok: true,
+          json: async () => ({ recorded: 1, file: "records.ndjson", want_etv: wanted })
+        };
       }
       if (url.endsWith("/swept")) {
         world.finished = JSON.parse(options.body);
@@ -242,6 +277,7 @@ function loadWorker(shared) {
     state: () => store.sweep || {},
     forceState: (patch) => { store.sweep = Object.assign({}, store.sweep, patch); },
     restart: () => loadWorker(world),
+    world: world,
     click: async () => {
       await listeners.clicked();
       await settle();
@@ -316,7 +352,76 @@ async function sweepOver(pages) {
   return worker;
 }
 
+// Values made inside a VM context carry that context's prototypes, which a
+// deep comparison counts as a difference. Their contents are what is checked.
+function plain(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+
 const CASES = [
+  [
+    "a value is read through the details paths and nothing else",
+    // The one request the page makes of its own. It must only ever read, so
+    // every path it builds has to be a details path, and a parent item has to
+    // be read through one of its variations.
+    async (check) => {
+      const asked = [];
+      const answers = {
+        "/vine/api/recommendations/R%231/item/B0SYNTH001":
+          { result: { taxValue: 24.99, taxCurrency: "USD" } },
+        "/vine/api/recommendations/R%232":
+          { result: { variations: [{ asin: "B0SYNTH0V1" }, { asin: "B0SYNTH0V2" }] } },
+        "/vine/api/recommendations/R%232/item/B0SYNTH0V1":
+          { result: { taxValue: 12.5, taxCurrency: "USD" } }
+      };
+      const single = tile("B0SYNTH001", "Acme Sundial, Brass",
+        { recommendationId: "R#1", asin: "B0SYNTH001", isParentAsin: "false" });
+      const parent = tile("B0SYNTH002", "Acme Birdhouse, Cedar",
+        { recommendationId: "R#2", asin: "B0SYNTH002", isParentAsin: "true" });
+      const dom = loadPage(
+        "https://www.amazon.com/vine/vine-items?queue=encore&search=sundial",
+        [single, parent, TRIVET],
+        true,
+        () => {},
+        {
+          fetch: async (where) => {
+            asked.push(where);
+            return { ok: true, json: async () => answers[where] || { result: null } };
+          }
+        }
+      );
+      dom.fire();
+      const reply = await dom.askValues(["B0SYNTH001", "B0SYNTH002"]);
+      check("only details paths were read",
+        asked.every((where) => where.indexOf("/vine/api/recommendations/") === 0), true);
+      check("three reads: one plain item, a parent and its first variation",
+        asked.length, 3);
+      check("both values came back",
+        plain(reply.items.map((item) => [item.asin, item.etv, item.etv_variants])),
+        [["B0SYNTH001", 24.99, 0], ["B0SYNTH002", 12.5, 2]]);
+      check("and each is a whole record", reply.items[0].title, "Acme Sundial, Brass");
+    }
+  ],
+  [
+    "a wanted value is read before the sweep moves on",
+    async (check) => {
+      const worker = loadWorker();
+      worker.world.wantEtv = ["B0SYNTH001"];
+      worker.world.valueAnswer = {
+        items: [{ source: "vine", asin: "B0SYNTH001", title: "Acme Sundial, Brass", etv: 24.99 }]
+      };
+      await worker.wake();
+      const dom = loadPage(worker.visited[0], [SUNDIAL], true, (message) => worker.say(message));
+      dom.fire();
+      await worker.settle();
+      check("the page was asked for that value",
+        plain(worker.world.valueRequests), [{ type: "values", asins: ["B0SYNTH001"] }]);
+      check("the tiles and then the value were recorded", worker.posted, [1, 1]);
+      check("and the sweep still moved on",
+        Boolean(worker.alarms[worker.state().nextAlarm]), true);
+      check("to the next term", worker.state().index, 1);
+    }
+  ],
   [
     "a term with no results costs a term, not the sweep",
     // The whole feature turned on this. A search with no results renders the
@@ -336,6 +441,8 @@ const CASES = [
       const worker = await sweepOver([{ tiles: [] }, { tiles: [] }, { tiles: [] }]);
       check("it is no longer running", worker.state().active, false);
       check("it reported itself finished", (worker.finished() || {}).searches, 3);
+      check("naming every term it searched",
+        (worker.finished() || {}).searched_terms, ["sundial", "birdhouse", "trivet"]);
       check("and closed the tab it opened", worker.tabs.closed, [9]);
     }
   ],

@@ -24,16 +24,17 @@ const PLAN_URL = SINK + "/plan";
 const DUE_URL = SINK + "/due";
 const SWEPT_URL = SINK + "/swept";
 
-// The daily sweep. The sink decides whether one is owed, because it is the
-// side that knows when the last one finished; this only asks, and only while
+// The scheduled sweeps. The sink decides whether one is owed, because it owns
+// the slots and knows when each last finished; this only asks, and only while
 // Chrome happens to be running. Nothing here wakes a machine or opens a
-// browser: a day with Chrome closed simply has no sweep, and the morning mail
-// stays silent rather than reporting yesterday again.
+// browser: a slot with Chrome closed simply has no sweep, and no mail.
 //
 // Checking is free of consequence -- /due does not move the rota, which is why
-// it is a different route from /plan.
+// it is a different route from /plan -- so it is asked often. Half an hour
+// was fine for "some time tonight" and is not for a sweep that has to finish
+// before a five o'clock mail.
 const DAILY_ALARM = "vine-daily";
-const CHECK_EVERY_MINUTES = 30;
+const CHECK_EVERY_MINUTES = 5;
 
 // A service worker timer dies with the worker. Chrome alarms survive that
 // boundary, but Chrome will not fire one more often than every 30 seconds.
@@ -124,9 +125,10 @@ function searchUrl(term, page) {
   return SEARCH_URL + "?" + params.toString();
 }
 
+// The sink's reply to a batch, or null when there was none.
 async function postItems(items, context, sweeping) {
   if (items.length === 0) {
-    return;
+    return null;
   }
   try {
     const response = await fetch(ITEMS_URL, {
@@ -138,7 +140,7 @@ async function postItems(items, context, sweeping) {
       console.log("[vine] sink refused the batch:", response.status);
       setBadge("err", "#b00020");
       setStatus("Sink refused the last batch (" + response.status + ")");
-      return;
+      return null;
     }
     const body = await response.json();
     console.log("[vine] recorded", body.recorded, "items to", body.file);
@@ -150,16 +152,38 @@ async function postItems(items, context, sweeping) {
     if (!sweeping) {
       setBadge(String(body.recorded), "#1a7f37");
     }
+    return body;
   } catch (error) {
     // The sink not running is the ordinary case, not a failure worth shouting
     // about: the operator may simply be browsing Vine with nothing collecting.
     console.log("[vine] sink unreachable; nothing recorded:", error.message);
     setBadge("off", "#6b6b6b");
     setStatus("Sink unreachable. Start scripts\\vine\\start-sink.cmd");
+    return null;
   }
 }
 
-async function reportSwept(searches, reason, strays) {
+// Ask the page the sweep is on for the values of the items the sink wants,
+// and record what comes back. The page holds the details buttons and the
+// signed-in session, so the lookup is made there; this only relays.
+async function lookUpValues(state, asins) {
+  try {
+    const answer = await chrome.tabs.sendMessage(state.tabId, {
+      type: "values",
+      asins: asins
+    });
+    if (answer && answer.items && answer.items.length) {
+      console.log("[vine] read", answer.items.length, "value(s) of", asins.length, "asked");
+      await postItems(answer.items, {}, true);
+    }
+  } catch (error) {
+    // A missing value leaves one card saying "unknown". It is not worth
+    // stopping a sweep over.
+    console.log("[vine] value lookup failed:", error.message);
+  }
+}
+
+async function reportSwept(searches, reason, strays, searched) {
   // Every ending is reported, including one that searched nothing. The sink
   // decides what it means: how many searches were spent is what hands the
   // unused terms back to the rota, and whether the sweep spent its whole
@@ -174,7 +198,10 @@ async function reportSwept(searches, reason, strays) {
       body: JSON.stringify({
         searches: searches,
         reason: reason,
-        stray_reports: strays
+        stray_reports: strays,
+        // The terms finished, in order. A term with no results posts no rows,
+        // so without this the sink could not tell it from one never searched.
+        searched_terms: searched
       })
     });
   } catch (error) {
@@ -191,7 +218,12 @@ async function stopSweep(reason) {
     await chrome.alarms.clear(state.nextAlarm);
   }
   await chrome.alarms.clear(BACKOFF_ALARM);
-  await reportSwept(state.searches || 0, reason, state.strayReports || 0);
+  await reportSwept(
+    state.searches || 0,
+    reason,
+    state.strayReports || 0,
+    (state.terms || []).slice(0, state.index || 0)
+  );
   if (state.ownTab && state.tabId !== null) {
     try {
       await chrome.tabs.remove(state.tabId);
@@ -375,8 +407,25 @@ async function handleMessage(message, sender) {
   const fromSweptTab = state.active && sender.tab && sender.tab.id === state.tabId;
 
   if (message.type === "tiles") {
-    await postItems(message.items, message.context, state.active);
+    const reply = await postItems(message.items, message.context, state.active);
     if (fromSweptTab) {
+      const wanted = (reply && reply.want_etv) || [];
+      const current =
+        message.context.search_term === state.terms[state.index] &&
+        message.context.page === state.page;
+      if (wanted.length && current) {
+        // Before moving on, while this page and its details buttons are still
+        // the one in the tab. The next search is at least thirty seconds
+        // away, and a handful of lookups two seconds apart fits inside it.
+        await lookUpValues(state, wanted);
+        // Re-read, because the lookup awaited: whatever happened meanwhile is
+        // in storage, not in the copy this handler started with.
+        const after = await readState();
+        if (after.active && after.tabId === state.tabId) {
+          await continueSweep(after, message.context);
+        }
+        return;
+      }
       await continueSweep(state, message.context);
       return;
     }

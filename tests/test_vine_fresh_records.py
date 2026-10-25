@@ -71,6 +71,22 @@ class FreshRecordStagingTests(unittest.TestCase):
             )
             self.assertEqual(newest, self.NOW - timedelta(hours=2))
 
+    def test_a_named_sweep_stages_only_what_that_sweep_saw(self):
+        """An earlier sweep's item may be claimed since; mailing it misleads."""
+        with temporary_directory() as directory:
+            earlier = {**self.row("EARLIER", 8), "sweep": "evening-one"}
+            mine = {**self.row("MINE", 1), "sweep": "morning-two"}
+            browsed = self.row("BROWSED", 1)
+            self.write_records(directory, earlier, mine, browsed)
+            output = directory / "fresh.ndjson"
+
+            count, _newest = fresh_records.stage_fresh_records(
+                output, now=self.NOW, record_dir=directory, sweep="morning-two"
+            )
+
+            self.assertEqual(count, 1)
+            self.assertEqual([row["asin"] for row in self.staged(output)], ["MINE"])
+
     def test_a_recent_row_does_not_carry_a_stale_sibling_into_the_stage(self):
         with temporary_directory() as directory:
             self.write_records(directory, self.row("OLD", 30), self.row("NEW", 1))
@@ -149,7 +165,7 @@ class MorningRunnerContractTests(unittest.TestCase):
     def test_runner_pulls_the_fresh_stage_and_logs_truthful_completion(self):
         runner = RUNNER.read_text(encoding="utf-8")
 
-        self.assertIn('fresh-records.py" --output "%FRESH_RECORDS%"', runner)
+        self.assertIn('fresh-records.py" --output "%FRESH_RECORDS%" --sweep "%~1"', runner)
         self.assertIn('pull --config "%CONFIG%" --input "%FRESH_RECORDS%"', runner)
         self.assertIn("fresh-record run completed", runner)
         self.assertNotIn("report sent", runner)

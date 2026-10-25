@@ -1,16 +1,25 @@
 // Read the Vine item grid that is already on screen and report it.
 //
-// This file makes no requests of its own. It runs when the operator loads a
-// Vine item page -- whether they navigated there themselves or the sweep did
-// -- reads the tiles the page already rendered, and hands them to sweep.js.
+// It runs when the operator loads a Vine item page -- whether they navigated
+// there themselves or the sweep did -- reads the tiles the page already
+// rendered, and hands them to sweep.js. Its one request of its own is the
+// value lookup below, made only when the sweep asks for it.
 //
 // Observed page contract, checked 2026-10-06 against a live signed-in queue:
 //   queue is one of potluck (recommended), last_chance (available for all),
 //   encore (additional items); &search=TERM filters and ignores the queue;
 //   &page=N pages 36 tiles; &pn=NODE narrows to a category. A tile carries
 //   its ASIN in a /dp/ link and its full title in the offscreen half of
-//   Amazon's truncation widget. No tile carries an ETV; that number lives
-//   only in the details modal, which is why nothing here tries to read one.
+//   Amazon's truncation widget. No tile carries an ETV.
+//
+// The ETV, checked 2026-10-22: a tile's details button carries
+// data-recommendation-id, data-asin and data-is-parent-asin. The details
+// modal reads GET /vine/api/recommendations/{id}/item/{asin}, whose result
+// holds taxValue and taxCurrency. A parent ASIN's item is one of its
+// variations: GET /vine/api/recommendations/{id} lists them, and the first
+// one's value is the one recorded. Both are reads. Nothing here clicks
+// anything, and the request button is never touched -- its endpoint is not
+// named anywhere in this extension.
 
 const GRID_SELECTOR = "#vvp-items-grid";
 const PAGER_SELECTOR = ".a-pagination";
@@ -234,5 +243,111 @@ function waitForGrid() {
     chrome.runtime.sendMessage({ type: "blocked", url: window.location.pathname });
   }, GRID_TIMEOUT_MS);
 }
+
+// Every path this file requests starts here, and nothing else is built.
+const DETAILS_PATH = "/vine/api/recommendations/";
+const DETAILS_BUTTON = "input[data-recommendation-id]";
+
+// The modal is opened by a person, one at a time. Two seconds between lookups
+// keeps a handful of them from arriving as a burst.
+const VALUE_SPACING_MS = 2000;
+
+function pause(ms) {
+  return new Promise(function (resolve) {
+    window.setTimeout(resolve, ms);
+  });
+}
+
+async function readDetails(path) {
+  const response = await fetch(path, {
+    headers: { Accept: "application/json" },
+    credentials: "same-origin"
+  });
+  if (!response.ok) {
+    return null;
+  }
+  const body = await response.json();
+  return body && body.result ? body.result : null;
+}
+
+async function valueOf(button) {
+  const base = DETAILS_PATH + encodeURIComponent(button.dataset.recommendationId);
+  let asin = button.dataset.asin;
+  let variants = 0;
+  if (button.dataset.isParentAsin === "true") {
+    const parent = await readDetails(base);
+    const variations = parent && parent.variations;
+    if (!variations || !variations.length) {
+      return null;
+    }
+    variants = variations.length;
+    asin = variations[0].asin;
+    await pause(VALUE_SPACING_MS);
+  }
+  const item = await readDetails(base + "/item/" + encodeURIComponent(asin));
+  if (!item || typeof item.taxValue !== "number") {
+    return null;
+  }
+  return {
+    etv: item.taxValue,
+    etv_currency: item.taxCurrency || "",
+    // A parent's variations can carry different values. Recording how many
+    // there were says the value is one of several rather than the only one.
+    etv_variants: variants
+  };
+}
+
+// The items asked for, read again from the grid with their values filled in.
+// Rebuilt from the tile rather than sent as a bare number, so each one is a
+// complete record and the newest sighting of an item is always a whole row.
+async function lookUpValues(asins) {
+  if (!foundGrid) {
+    return [];
+  }
+  const tiles = Array.from(foundGrid.children);
+  const items = readTiles(foundGrid).items;
+  const valued = [];
+  let asked = 0;
+  for (const item of items) {
+    if (asins.indexOf(item.asin) === -1) {
+      continue;
+    }
+    const tile = tiles.find(function (candidate) {
+      return tileAsin(candidate) === item.asin;
+    });
+    const button = tile && tile.querySelector(DETAILS_BUTTON);
+    if (!button) {
+      continue;
+    }
+    if (asked > 0) {
+      await pause(VALUE_SPACING_MS);
+    }
+    asked = asked + 1;
+    try {
+      const value = await valueOf(button);
+      if (value) {
+        valued.push(Object.assign({}, item, value, { seen_at: new Date().toISOString() }));
+      }
+    } catch (error) {
+      console.log("[vine] could not read the value of", item.asin, error.message);
+    }
+  }
+  return valued;
+}
+
+chrome.runtime.onMessage.addListener(function (message, sender, sendResponse) {
+  if (!message || message.type !== "values") {
+    return false;
+  }
+  lookUpValues(message.asins || []).then(
+    function (items) {
+      sendResponse({ items: items });
+    },
+    function (error) {
+      sendResponse({ items: [], error: error.message });
+    }
+  );
+  return true;
+});
 
 waitForGrid();

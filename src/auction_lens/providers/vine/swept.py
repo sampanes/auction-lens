@@ -9,11 +9,13 @@ They are deliberately different questions, asked at opposite ends of the night,
 and they are answered from different evidence. Getting either one wrong has
 silenced the feature completely once already, so both reasons are written down.
 
-The companion's question is a calendar one: a sweep becomes owed at local
-midnight and runs the first time Chrome is open after that, so a machine that
-was switched off at whatever minute was chosen still gets its sweep rather than
-losing the day. Its evidence is the note the companion writes when a sweep
-finishes.
+The companion's question is a clock one: a sweep is owed inside a slot, a
+window of the operator's day, until a sweep has finished in it. It used to be a
+calendar question -- owed from midnight, run whenever Chrome was next open --
+and that answered "was anything searched today" while the reader wanted "what
+is there now". Vine items are claimed within hours, so a digest has to be read
+minutes after its sweep, and the sweep has to happen at a chosen hour. Its
+evidence is the note the companion writes when a sweep finishes.
 
 The mail's question is about age, not the calendar. Asked whether a sweep
 happened "today", the gate rejected a sweep from seven hours earlier and sent
@@ -40,7 +42,8 @@ the clocks do, and record filenames are UTC because they are storage.
 from __future__ import annotations
 
 from collections.abc import Iterable
-from datetime import UTC, date, datetime, timedelta
+from dataclasses import dataclass
+from datetime import UTC, date, datetime, time, timedelta
 from typing import Any
 
 # How old the newest record may be and still be worth mailing. Wide enough that
@@ -136,23 +139,70 @@ def describe_age(moment: datetime | None, now: datetime) -> str:
     return f"{hours:.1f} hours ago"
 
 
-def last_sweep_date(stamp: Any) -> str:
-    """The date in the companion's note, or empty when there is nothing to read.
+@dataclass(frozen=True)
+class Slot:
+    """A window of the operator's day in which one sweep is owed.
 
-    Anything unreadable is treated as "never swept" rather than raised on. The
-    cost of being wrong is one extra sweep, and the alternative is a scheduled
-    run that dies on a corrupt one-line file.
+    ``every_days`` thins a slot out without moving it: three means the slot is
+    open on one day in three, always the same days, so its readings form a
+    series rather than a scatter.
     """
-    if not isinstance(stamp, dict):
-        return ""
-    value = stamp.get("date")
-    return value if isinstance(value, str) else ""
+
+    name: str
+    starts: time
+    ends: time
+    every_days: int
+    mails: bool
+
+    def open_at(self, moment: datetime) -> bool:
+        """Whether this local moment falls inside the slot on a day it runs."""
+        if moment.date().toordinal() % self.every_days:
+            return False
+        return self.starts <= moment.time() < self.ends
 
 
-def sweep_is_due(stamp: Any, now: str) -> bool:
-    """True until a sweep has finished today. The companion's question.
+# The morning slot is the digest: swept just after four so the mail is in by
+# five, read while what it lists can still be requested. The evening slot mails
+# nothing. It exists to test one claim -- that items arrive around midnight and
+# only thin out through the day -- so it reads every third evening, which is
+# enough to show an evening sweep finding new items, if any ever does, without
+# doubling the searching every day to say so.
+SLOTS = (
+    Slot("morning", time(4, 20), time(8, 0), every_days=1, mails=True),
+    Slot("evening", time(21, 0), time(23, 59), every_days=3, mails=False),
+)
 
-    A date from the future is still "not today", so a clock that went backwards
-    asks for one more sweep instead of never asking again.
+
+def slots_swept(stamp: Any) -> dict[str, str]:
+    """Which local date each slot last finished a sweep, from the note.
+
+    Anything unreadable reads as "never swept". The cost of being wrong is one
+    extra sweep, and the alternative is a sink that dies on a corrupt file.
     """
-    return last_sweep_date(stamp) != now
+    slots = stamp.get("slots") if isinstance(stamp, dict) else None
+    if not isinstance(slots, dict):
+        return {}
+    return {
+        name: value
+        for name, value in slots.items()
+        if isinstance(name, str) and isinstance(value, str)
+    }
+
+
+def slot_owed(moment: datetime, stamp: Any) -> Slot | None:
+    """The open slot still owed a sweep at this local moment, if there is one.
+
+    A date from the future is still "not today", so a clock that went
+    backwards asks for one more sweep instead of never asking again.
+    """
+    swept = slots_swept(stamp)
+    day = moment.date().isoformat()
+    for slot in SLOTS:
+        if slot.open_at(moment) and swept.get(slot.name) != day:
+            return slot
+    return None
+
+
+def slot_named(name: Any) -> Slot | None:
+    """The slot a sweep said it was for, or None for one nobody scheduled."""
+    return next((slot for slot in SLOTS if slot.name == name), None)

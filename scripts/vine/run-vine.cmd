@@ -1,12 +1,14 @@
 @echo off
-REM The scheduled Vine run: read what the companion recorded, score it, mail it.
+REM The Vine digest: read what the companion recorded, score it, mail it.
 REM
 REM This is the back half only. Nothing here asks Amazon for anything -- both
 REM Vine discovery callables raise, so no schedule can make them. The front
-REM half is the browser companion, which sweeps once a day while Chrome happens
-REM to be open and tells the sink when it finished.
+REM half is the browser companion, which sweeps in the sink's slots while
+REM Chrome is open and tells the sink when it finished.
 REM
-REM scripts\schedule.cmd owns the actual run time and points the task here.
+REM The sink starts this the moment a mailing sweep ends, and names the sweep
+REM as the one argument, so the digest lists only what that sweep saw. Run by
+REM hand with no argument it reads every fresh record, as it always has.
 setlocal
 
 set "ROOT=%~dp0..\.."
@@ -68,7 +70,7 @@ REM An exit code, not a captured string. Capturing output here means nesting
 REM quotes inside a `for /f`, which is exactly what the first version of this
 REM got wrong: both values came out empty, empty compared equal to empty, and
 REM the gate let a run through on the one morning it existed to stop.
-"%ROOT%\.venv\Scripts\python.exe" "%ROOT%\scripts\vine\fresh-records.py" --output "%FRESH_RECORDS%" >>"%LOG%" 2>&1
+"%ROOT%\.venv\Scripts\python.exe" "%ROOT%\scripts\vine\fresh-records.py" --output "%FRESH_RECORDS%" --sweep "%~1" >>"%LOG%" 2>&1
 if errorlevel 1 (
     echo     sending nothing; the companion records when Chrome is next open
     >>"%LOG%" echo ---- %DATE% %TIME% nothing fresh recorded, nothing sent

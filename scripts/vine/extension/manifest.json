@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Auction Lens Vine companion",
-  "version": "0.3.2",
-  "description": "Records the Vine item grid you are already viewing, and runs one sweep of your configured terms a day. Reads only; never requests an item.",
+  "version": "0.4.0",
+  "description": "Records the Vine item grid you are already viewing, sweeps your configured terms in the sink's slots, and reads the value of items a rule wants. Reads only; never requests an item.",
   "permissions": [
     "tabs",
     "storage",

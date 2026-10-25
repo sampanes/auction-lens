@@ -15,18 +15,50 @@ from __future__ import annotations
 
 import argparse
 import json
+import subprocess
+import sys
 from datetime import UTC, datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
+from auction_lens.config.app import AppConfig
 from auction_lens.config.load import load_config
+from auction_lens.listings.model import Listing
 from auction_lens.local_files import DEFAULT_CONFIG
+from auction_lens.matching.evaluate import evaluate
 from auction_lens.providers.search_terms import search_terms
+from auction_lens.providers.vine.pattern import (
+    describe,
+    logged_sweeps,
+    readings,
+    record_rows,
+)
+from auction_lens.providers.vine.read import record_row
 from auction_lens.providers.vine.rota import Rota, next_window, resume_after
-from auction_lens.providers.vine.swept import last_sweep_date, sweep_is_due, today
+from auction_lens.providers.vine.swept import (
+    slot_named,
+    slot_owed,
+    slots_swept,
+    today,
+)
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 RECORD_DIR = ROOT / "private" / "vine"
+
+# One line per sweep: when it ran, for which slot, and which terms it really
+# searched. The records cannot say that last part -- a term with no results
+# posts no rows -- and without it "searched and empty" reads the same as
+# "never searched", which is the difference the pattern report turns on.
+SWEEP_LOG = RECORD_DIR / "sweeps.ndjson"
+
+# The digest a morning sweep sends as soon as it finishes. Run from here
+# rather than from a fixed hour, because a Vine item is claimed within hours
+# and the mail is only worth what it lists while that can still be requested.
+MAILER = ROOT / "scripts" / "vine" / "run-vine.cmd"
+
+# A details lookup is one more request in the operator's session, so it is
+# spent only on items a rule already wants, and only so many per page.
+MAX_VALUES_PER_PAGE = 6
 
 # Where the rotation left off, and which window was last handed out. The
 # arithmetic that uses them lives in the package beside the provider, so it can
@@ -41,14 +73,13 @@ OFFSET_FILE = RECORD_DIR / "sweep-offset.json"
 # an evening of inference twice. A line per event is cheap.
 LOG_FILE = RECORD_DIR / "sink.log"
 
-# Whether a sweep has finished today, which two unrelated readers both need:
-# the companion asks so it knows to start one, and the morning mail runner asks
-# so it can stay silent rather than send a digest of nothing new. One file, so
-# they cannot disagree about it.
+# Which slot last finished a sweep on which day, so the companion is told one
+# is owed until it has been.
 #
-# The date here is local, not UTC. "Has today's sweep happened" is a question
-# about the operator's day; the record filenames are UTC because they are
-# storage. Mixing the two deliberately, because they answer different things.
+# The date here is local, not UTC. "Has this morning's sweep happened" is a
+# question about the operator's day; the record filenames are UTC because they
+# are storage. Mixing the two deliberately, because they answer different
+# things.
 LAST_SWEEP_FILE = RECORD_DIR / "last-sweep.json"
 
 # Refused here rather than fixed in search_terms, because the fallback is
@@ -68,7 +99,12 @@ NO_SEARCHES = (
 # provider, and borrowing it here would quietly claim an authorization nobody
 # gave. These two numbers are deliberately the sink's own, and visible.
 DEFAULT_SPACING_SECONDS = 6
-DEFAULT_MAX_SEARCHES = 12
+
+# Every term, every sweep. Twelve a sweep and one sweep a day meant a term was
+# searched once in four days, against items claimed within hours, and a
+# comparison of two sweeps compared two different lists. --max-searches still
+# narrows it.
+DEFAULT_MAX_SEARCHES = None
 
 # One page is 36 tiles, which is enough to judge whether a term is productive.
 # Paging deeper costs a request per page out of the same budget, so the default
@@ -131,30 +167,35 @@ def write_offset(offset: int, served_from: int = 0, served: int = 0) -> None:
     )
 
 
-def read_last_sweep() -> str:
-    """The local date a sweep last finished, or empty if none ever has."""
+def read_stamp() -> object:
+    """The last-sweep note as stored, or nothing readable."""
     try:
-        stored = json.loads(LAST_SWEEP_FILE.read_text(encoding="utf-8"))
+        return json.loads(LAST_SWEEP_FILE.read_text(encoding="utf-8"))
     except (OSError, ValueError):
-        return ""
-    return last_sweep_date(stored)
+        return {}
 
 
-def record_sweep(searches: int) -> str:
-    """Remember that a sweep ran today, so neither reader asks for another."""
+def record_sweep(searches: int, slot: str) -> str:
+    """Remember that this slot was swept today, so it is not owed again."""
     RECORD_DIR.mkdir(parents=True, exist_ok=True)
+    swept = slots_swept(read_stamp())
+    if slot:
+        swept[slot] = today()
     stamp = {
         "date": today(),
+        "slot": slot,
         "searches": searches,
         "finished_at": datetime.now(UTC).isoformat(),
+        "slots": swept,
     }
     LAST_SWEEP_FILE.write_text(json.dumps(stamp), encoding="utf-8")
     return stamp["date"]
 
 
-def sweep_due() -> bool:
-    """True until a sweep has finished today, per the shared reader."""
-    return sweep_is_due({"date": read_last_sweep()}, today())
+def owed_slot() -> str:
+    """The name of the open slot still owed a sweep, or empty."""
+    slot = slot_owed(datetime.now().astimezone(), read_stamp())
+    return slot.name if slot else ""
 
 
 def serve_next_window(terms: list[str], size: int) -> Rota:
@@ -177,22 +218,26 @@ def serve_next_window(terms: list[str], size: int) -> Rota:
     return rota
 
 
-def record_attempt(spent: int, reason: str, total: int, strays: int = 0) -> bool:
-    """Take a sweep's account of itself: rewind the rota, claim the day or not.
+def record_attempt(
+    spent: int, reason: str, total: int, strays: int = 0, slot: str = ""
+) -> bool:
+    """Take a sweep's account of itself: rewind the rota, claim the slot or not.
 
-    Returns whether the day is now claimed. A sweep that spent everything it
-    was lent has done what a day's sweep is for; one cut short has not, so
-    another is still owed and the terms it never reached are handed back.
+    Returns whether the slot is now claimed. A sweep that spent everything it
+    was lent has done what the slot's sweep is for; one cut short has not, so
+    another is still owed while the slot is open and the terms it never
+    reached are handed back.
     """
     served_from = _stored_number("served_from")
     served = _stored_number("served")
     write_offset(resume_after(served_from, served, spent, total), served_from, served)
     finished = served > 0 and spent >= served
+    named = f"the {slot} slot" if slot else "a sweep started by hand"
     if finished:
-        date = record_sweep(spent)
-        note(f"sweep finished for {date} after {spent} search(es); none owed until tomorrow")
+        date = record_sweep(spent, slot)
+        note(f"sweep finished for {named} on {date} after {spent} search(es)")
     else:
-        note(f"sweep ended after {spent} of {served} search(es): {reason}; another is owed")
+        note(f"sweep for {named} ended after {spent} of {served} search(es): {reason}")
     if strays:
         # A page that reported while the sweep ran but was not the sweep's own
         # tab. One or two is the operator browsing Vine at the same time. A
@@ -202,14 +247,114 @@ def record_attempt(spent: int, reason: str, total: int, strays: int = 0) -> bool
     return finished
 
 
-def append_records(items: list[dict[str, object]]) -> int:
-    """Append each observation as one JSON line, stamped with arrival time."""
+def append_records(items: list[dict[str, object]], sweep: str = "") -> int:
+    """Append each observation as one JSON line, stamped with arrival time.
+
+    A row arriving while a sweep runs also names that sweep, which is what lets
+    one sweep be compared with another and lets the mail send exactly what the
+    sweep that just finished saw. A row from the operator's own browsing names
+    none.
+    """
     RECORD_DIR.mkdir(parents=True, exist_ok=True)
-    received_at = datetime.now(UTC).isoformat()
+    stamp = {"received_at": datetime.now(UTC).isoformat()}
+    if sweep:
+        stamp["sweep"] = sweep
     with record_file().open("a", encoding="utf-8", newline="\n") as handle:
         for item in items:
-            handle.write(json.dumps({**item, "received_at": received_at}) + "\n")
+            handle.write(json.dumps({**item, **stamp}) + "\n")
     return len(items)
+
+
+def begin_sweep(slot: str) -> dict[str, str]:
+    """Name a sweep as its plan is handed out.
+
+    The name is safe to pass on a command line, because the mailer is given
+    it: a timestamp and the slot, nothing a shell would read as an operator.
+    """
+    started = datetime.now(UTC)
+    name = started.strftime("%Y%m%dT%H%M%SZ") + "-" + (slot or "hand")
+    return {"sweep": name, "slot": slot, "started_at": started.isoformat()}
+
+
+def end_sweep(current: dict[str, str], searched: list[str], spent: int, reason: str) -> None:
+    """Log what a sweep searched, say how it compares, and mail if it should.
+
+    The comparison is printed for the record rather than mailed: it is
+    evidence about when Vine adds items, gathered a line at a time.
+    """
+    if not current:
+        return
+    entry = {
+        **current,
+        "ended_at": datetime.now(UTC).isoformat(),
+        "searched_terms": searched,
+        "searches": spent,
+        "reason": reason,
+    }
+    RECORD_DIR.mkdir(parents=True, exist_ok=True)
+    with SWEEP_LOG.open("a", encoding="utf-8", newline="\n") as handle:
+        handle.write(json.dumps(entry) + "\n")
+    try:
+        found = readings(record_rows(RECORD_DIR), logged_sweeps(SWEEP_LOG))
+        mine = next(reading for reading in found if reading.sweep == current["sweep"])
+        note("  " + describe(mine, datetime.now().astimezone().tzinfo))
+    except (OSError, StopIteration, ValueError) as error:
+        note(f"  could not compare this sweep with the last: {error}")
+    slot = slot_named(current.get("slot"))
+    if slot is not None and slot.mails and spent > 0:
+        send_digest(current["sweep"])
+
+
+def send_digest(sweep: str) -> None:
+    """Start the mailer for one sweep's rows, and do not wait for it.
+
+    The mailer logs to its own file, so this returns at once and the sink keeps
+    answering. Off Windows there is no .cmd to run, and saying so is the honest
+    outcome rather than a traceback in a request handler.
+    """
+    if sys.platform != "win32":
+        note("  not on Windows, so the digest was not sent")
+        return
+    subprocess.Popen(
+        ["cmd", "/c", str(MAILER), sweep],
+        cwd=str(ROOT),
+        creationflags=subprocess.CREATE_NO_WINDOW,
+    )
+    note(f"  digest for {sweep} started; see private/vine-run.log")
+
+
+def known_values(directory: Path) -> set[str]:
+    """Items whose taxable value some earlier record already holds."""
+    return {
+        str(row.get("asin"))
+        for row in record_rows(directory)
+        if row.get("etv") is not None and row.get("asin")
+    }
+
+
+def wanted_for_value(
+    items: list[dict[str, object]], config: AppConfig, known: set[str]
+) -> list[str]:
+    """Which of these items a rule wants, and whose value nobody has read yet.
+
+    Asking for every item's value would be a request per tile; asking only for
+    the ones a want already matches keeps the lookups to a handful a page.
+    Matching here uses the rules alone and not the judge, so a few lookups go
+    to items the judge will later set aside, which costs a request and no
+    more.
+    """
+    wanted: list[str] = []
+    for item in items:
+        asin = str(item.get("asin") or "")
+        if item.get("etv") is not None:
+            known.add(asin)
+            continue
+        if not asin or asin in known or asin in wanted:
+            continue
+        row = record_row(item, source="vine")
+        if row is not None and evaluate(Listing.from_mapping(row), config):
+            wanted.append(asin)
+    return wanted[:MAX_VALUES_PER_PAGE]
 
 
 def read_items(payload: object) -> list[dict[str, object]]:
@@ -233,18 +378,24 @@ class SinkHandler(BaseHTTPRequestHandler):
 
     # Set by ``serve`` so every request answers from one parsed configuration.
     plan: dict[str, object] = {}
+    config: AppConfig | None = None
+    # Items whose value is already recorded, so a lookup is never repeated.
+    known: set[str] = set()
+    # The sweep now running, named when its plan was handed out and cleared
+    # when it reports its end. Empty while nothing is sweeping.
+    current: dict[str, str] = {}
     server_version = "auction-lens-vine-sink"
     sys_version = ""
 
     def do_GET(self) -> None:
         """Answer whether a sweep is owed, or hand out one sweep's terms."""
         # Asking whether a sweep is due has to be free of consequence: the
-        # companion asks every half hour while Chrome is open, and /plan moves
-        # the rota on. Answering both from one route would walk the whole term
+        # companion asks every few minutes while Chrome is open, and /plan
+        # moves the rota on. Answering both from one route would walk the term
         # list in an afternoon of polling and never search any of it.
         if self.path == "/due":
-            due = sweep_due()
-            self.send_json(200, {"sweep_due": due, "last_sweep": read_last_sweep()})
+            slot = owed_slot()
+            self.send_json(200, {"sweep_due": bool(slot), "slot": slot})
             return
         if self.path != "/plan":
             self.send_json(404, {"error": f"unknown path {self.path}"})
@@ -252,7 +403,8 @@ class SinkHandler(BaseHTTPRequestHandler):
         # Built per request rather than once at startup, because each sweep is
         # meant to get the next slice of the rota rather than the same one.
         rota = serve_next_window(list(self.plan["terms"]), int(self.plan["max_searches"]))
-        note(f"serving {rota.description()}")
+        SinkHandler.current = begin_sweep(owed_slot())
+        note(f"serving {rota.description()} as {SinkHandler.current['sweep']}")
         self.send_json(200, {**self.plan, "terms": rota.terms})
 
     def do_OPTIONS(self) -> None:
@@ -289,23 +441,47 @@ class SinkHandler(BaseHTTPRequestHandler):
             # rewinds the rota and the reason is the only account of a failed
             # night that survives it; refusing to hear about a sweep that
             # searched nothing threw away both.
-            spent = payload.get("searches") if isinstance(payload, dict) else 0
-            why = payload.get("reason") if isinstance(payload, dict) else ""
-            strays = payload.get("stray_reports") if isinstance(payload, dict) else 0
+            body = payload if isinstance(payload, dict) else {}
+            spent = body.get("searches")
+            spent = spent if isinstance(spent, int) and spent >= 0 else 0
+            why = body.get("reason")
+            why = why if isinstance(why, str) and why else "no reason given"
+            strays = body.get("stray_reports")
+            searched = body.get("searched_terms")
+            current, SinkHandler.current = SinkHandler.current, {}
             finished = record_attempt(
-                spent if isinstance(spent, int) and spent >= 0 else 0,
-                why if isinstance(why, str) and why else "no reason given",
+                spent,
+                why,
                 len(self.plan["terms"]),
                 strays if isinstance(strays, int) and strays >= 0 else 0,
+                current.get("slot", ""),
             )
-            self.send_json(200, {"finished": finished, "date": read_last_sweep()})
+            end_sweep(
+                current,
+                [str(term) for term in searched] if isinstance(searched, list) else [],
+                spent,
+                why,
+            )
+            self.send_json(200, {"finished": finished})
             return
         try:
             items = read_items(payload)
         except ValueError as error:
             self.send_json(400, {"error": str(error)})
             return
-        self.send_json(200, {"recorded": append_records(items), "file": record_file().name})
+        recorded = append_records(items, SinkHandler.current.get("sweep", ""))
+        wanted: list[str] = []
+        if self.config is not None:
+            # A rule that cannot judge one odd row must not cost the batch its
+            # reply; the rows are already written, and a missed lookup only
+            # leaves one value unknown.
+            try:
+                wanted = wanted_for_value(items, self.config, SinkHandler.known)
+            except (ValueError, TypeError, KeyError) as error:
+                note(f"could not decide which values to look up: {error}")
+        self.send_json(
+            200, {"recorded": recorded, "file": record_file().name, "want_etv": wanted}
+        )
 
     def log_message(self, fmt: str, *args: object) -> None:
         """Keep the console to one readable line per request."""
@@ -327,28 +503,31 @@ class SinkHandler(BaseHTTPRequestHandler):
 
 
 def build_plan(
-    config_path: str, spacing: int, max_searches: int, max_pages: int
+    config: AppConfig, spacing: int, max_searches: int | None, max_pages: int
 ) -> dict[str, object]:
     """Read the terms the configuration already declares, plus the sink's pacing.
 
     Every term is kept here rather than truncated to the budget. The budget is
     how many may be spent in one sweep, which is not the same claim as which
     ones exist, and conflating the two is what made a long list a short one.
+    No budget at all means the whole list.
     """
-    config = load_config(config_path)
     if not config.acquisition.searches:
         raise ValueError(NO_SEARCHES)
+    terms = search_terms(config, [])
     return {
-        "terms": search_terms(config, []),
+        "terms": terms,
         "spacing_seconds": spacing,
-        "max_searches": max_searches,
+        "max_searches": len(terms) if max_searches is None else max_searches,
         "max_pages_per_term": max_pages,
     }
 
 
-def serve(port: int, plan: dict[str, object]) -> None:
+def serve(port: int, plan: dict[str, object], config: AppConfig) -> None:
     """Answer on loopback only, until interrupted."""
     SinkHandler.plan = plan
+    SinkHandler.config = config
+    SinkHandler.known = known_values(RECORD_DIR)
     server = ThreadingHTTPServer((LOCAL_HOST, port), SinkHandler)
     terms = plan["terms"]
     spacing = plan["spacing_seconds"]
@@ -369,9 +548,10 @@ def serve(port: int, plan: dict[str, object]) -> None:
     else:
         print("[!] a budget of zero searches means a sweep does nothing", flush=True)
     note(f"recording to {RECORD_DIR}")
-    last = read_last_sweep()
-    owed = "a sweep is owed today" if sweep_due() else f"already swept {last}"
-    note(f"{owed}; the companion checks every half hour")
+    slot = owed_slot()
+    owed = f"the {slot} slot is owed a sweep now" if slot else "no slot is owed a sweep now"
+    note(f"{owed}; the companion checks every few minutes")
+    note(f"{len(SinkHandler.known)} item(s) already have a recorded value")
     print("[sink] stop with Ctrl+C or scripts\\vine\\stop-sink.cmd", flush=True)
     try:
         server.serve_forever()
@@ -396,7 +576,7 @@ def main() -> int:
         "--max-searches",
         type=int,
         default=DEFAULT_MAX_SEARCHES,
-        help="most searches the companion may run in one sweep",
+        help="most searches the companion may run in one sweep (default: every term)",
     )
     parser.add_argument(
         "--max-pages",
@@ -406,11 +586,12 @@ def main() -> int:
     )
     args = parser.parse_args()
     try:
-        plan = build_plan(args.config, args.spacing, args.max_searches, args.max_pages)
+        config = load_config(args.config)
+        plan = build_plan(config, args.spacing, args.max_searches, args.max_pages)
     except ValueError as error:
         print(f"[X] {error}")
         return 1
-    serve(args.port, plan)
+    serve(args.port, plan, config)
     return 0
 
 

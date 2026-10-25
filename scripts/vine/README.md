@@ -73,27 +73,32 @@ alarm delay. The badge counts the terms remaining. Clicking again stops it. It
 also stops when
 the terms run out or the search budget is spent.
 
-**One sweep a day, which nobody starts.** Every half hour, while Chrome happens
-to be running, the extension asks the sink whether a sweep is owed. One is owed
-until a sweep has finished today. When it is, the extension opens its own
-background tab, sweeps the window of terms, closes the tab again, and tells the
-sink it is done. Nothing of the operator's is touched: their tabs are left as
-they were, and a tab is only ever closed if this opened it.
+**Scheduled sweeps, which nobody starts.** Every five minutes, while Chrome
+happens to be running, the extension asks the sink whether a sweep is owed. The
+sink owns the slots, in `providers/vine/swept.py`: a morning slot owed from
+04:20 until 08:00 every day, and an evening slot owed from 21:00 every third
+day. A slot is owed until a sweep has finished in it. When one is, the
+extension opens its own background tab, searches every term, closes the tab
+again, and tells the sink it is done. Nothing of the operator's is touched:
+their tabs are left as they were, and a tab is only ever closed if this opened
+it.
+
+The morning sweep is the digest, and the sink mails it the moment the sweep
+ends. The evening sweep mails nothing; it is there to test when Vine adds
+items, which is what the pattern below is for.
 
 The due question is a different route from the plan on purpose. Asking costs
 nothing and happens constantly; `/plan` moves the rota on, so answering both
 from one route would walk the whole term list in an afternoon of polling and
 search none of it.
 
-It is a local date, not a time of day. A sweep becomes owed at midnight and
-runs the first time Chrome is open after that, so a machine that was asleep at
-whatever hour was chosen still gets its sweep rather than losing the day.
-
-The morning mail asks a different question, and the two must not be merged.
-This one is a calendar question about whether a sweep is owed. That one is
-about how old the last sweep is, because a sweep happens in the evening and
-the mail goes at seven -- so the freshest records that exist are always
-stamped yesterday. A day with Chrome closed throughout still mails nothing.
+It is a time of day, not a date, and it used to be the other way round. Owed
+from midnight and run whenever Chrome was next open answered "was anything
+searched today", and the reader wanted "what is there now": Vine items are
+claimed within hours, so a digest read at seven of a sweep made at midnight
+listed things already gone. A slot missed entirely -- Chrome closed through it
+-- is let go rather than swept at noon, because a noon digest is not the early
+mail and pretending otherwise would also blur the pattern.
 
 A term deeper than `--max-pages` is followed only that far. Every page visited
 spends the same budget a term does, which is what keeps one productive term
@@ -251,6 +256,11 @@ delete a lot whose title happens to contain the word.
 
 ## The rota
 
+By default every sweep searches every term. Twelve a sweep, one sweep a day,
+meant each term was searched once in four days against items claimed within
+hours, and it made two sweeps impossible to compare. `--max-searches` still
+narrows a sweep, and then the rota below applies.
+
 `max_searches` is how many searches one sweep may spend, which is not the same
 claim as how many terms exist. A list longer than the budget is served a window
 at a time and the sink remembers where it stopped, so consecutive sweeps cover
@@ -289,9 +299,11 @@ photo, and ETV rather than an older copy of the same ASIN.
 
 ## The morning mail
 
-`scripts\vine\run-vine.cmd` is the unattended version of those two commands,
-and `scripts\schedule.cmd` owns the time it runs at, as it does for every other
-run. It is the back half only: nothing in it asks Amazon for anything.
+`scripts\vine\run-vine.cmd` is the unattended version of those two commands.
+The sink starts it as soon as a morning sweep ends and names that sweep, so the
+digest lists exactly what that sweep saw and nothing an earlier sweep saw that
+may since have been claimed. `scripts\schedule.cmd` no longer gives it a time.
+It is the back half only: nothing in it asks Amazon for anything.
 
     doctor --email        refuse now if the mail or the judge is not ready
     fresh-records.py      atomically stage rows inside the 18h window
@@ -356,12 +368,36 @@ cost is the rate times the value, so the discount is the rate for every item in
 the catalogue alike -- identical, and therefore no evidence about any of them.
 A Vine lot reaches a report because an interest asked for it.
 
-Until ETV is read, `etv` is null on every row, so `estimated_retail` is unset.
-Terms and conditions still match; money does not. Reports say `Taxable value:
-unknown` and `Estimated income tax: unknown` rather than claiming both are
-zero. If a later capture starts carrying ETV, that value becomes a delivery
-revision and the item is reported once more with its newly actionable cost.
-Reading ETV from Amazon remains the next thing worth building.
+ETV is read for wanted items only. When the sink records a batch it scores the
+items against the rules -- the rules alone, not the judge -- and answers with
+the ones a rule wants whose value no record holds yet, at most six a page. The
+extension asks the page for those, and the page makes the same read the
+details modal makes, two seconds apart, and posts each item again with its
+value. Every other row keeps `etv` null, so its report says `Taxable value:
+unknown` rather than claiming zero. A parent item is valued by its first
+variation and records how many variations it had, because they can differ.
+When a value arrives for an item already mailed, it becomes a delivery revision
+and the item is reported once more with its newly actionable cost.
+
+## The pattern
+
+Every sweep is logged to `private/vine/sweeps.ndjson`: its slot, when it ran,
+and which terms it finished. The records cannot say that last part -- a term
+with no results posts no rows -- and without it "searched and empty" reads the
+same as "never searched". Rows recorded during a sweep name it.
+
+    .venv\Scripts\python.exe scripts\vine\pattern.py
+
+prints one line per sweep: how many items it saw, how many no record had seen
+before it began, and how many of the previous sweep's items it no longer found.
+The sink writes the same line to `private/vine/sink.log` when each sweep ends.
+"Gone" is counted only over terms both sweeps searched and whose results fitted
+on one page both times, because an item pushed off a full first page has not
+left Vine; the line says how many terms that was.
+
+The claim it exists to test: items arrive around midnight and only thin out
+through the day. Evening sweeps that keep finding new items refute it; evening
+sweeps that only find fewer support it.
 
 ## Observed page contract
 

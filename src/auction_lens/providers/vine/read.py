@@ -91,7 +91,7 @@ def read_records(text: str, *, source: str, page_url: str = "") -> list[dict[str
             continue
         if not isinstance(record, dict):
             continue
-        row = _row(record, source=source)
+        row = record_row(record, source=source)
         if row is not None:
             rows.append(row)
     if not rows:
@@ -99,7 +99,7 @@ def read_records(text: str, *, source: str, page_url: str = "") -> list[dict[str
     return rows
 
 
-def _row(record: dict[str, Any], *, source: str) -> dict[str, Any] | None:
+def record_row(record: dict[str, Any], *, source: str) -> dict[str, Any] | None:
     """Turn one observed tile into a canonical row, or decline it."""
     asin = str(record.get("asin") or "").strip()
     title = _decoded(record.get("title"))

@@ -13,7 +13,7 @@ import json
 import unittest
 from contextlib import redirect_stdout
 from dataclasses import replace
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from decimal import Decimal
 from pathlib import Path
 
@@ -22,15 +22,16 @@ from auction_lens.doctor import doctor
 from auction_lens.matching.evaluate import estimate_total_cost, evaluate
 from auction_lens.providers.registry import resolve_provider
 from auction_lens.providers.vine import read as vine
+from auction_lens.providers.vine.pattern import readings
 from auction_lens.providers.vine.rota import next_window, resume_after
 from auction_lens.providers.vine.swept import (
     MAIL_WINDOW_HOURS,
     describe_age,
     is_recent,
-    last_sweep_date,
     moment_from,
     newest_moment,
-    sweep_is_due,
+    slot_named,
+    slot_owed,
 )
 from support import (
     EXAMPLE_CONFIG,
@@ -488,34 +489,140 @@ class SweepRotaTests(unittest.TestCase):
         )
 
 
-class SweptTodayTests(unittest.TestCase):
-    """The gate that decides whether the morning mail has anything to say.
+class SweepSlotTests(unittest.TestCase):
+    """When the companion is told a sweep is owed.
 
-    It has to fail closed. The first version compared two captured strings in
-    a .cmd file, both came out empty, empty equalled empty, and a run went out
-    on the one morning the gate existed to stop.
+    It has to fail toward sweeping. An unreadable note costs one extra sweep;
+    a note read as "already swept" when it was not costs the morning's mail.
     """
 
-    TODAY = "2026-10-06"
+    @staticmethod
+    def evening_day(offset=0):
+        """A date the every-third-day evening slot runs on, and its neighbours."""
+        day = date(2026, 10, 20)
+        while day.toordinal() % 3:
+            day += timedelta(days=1)
+        return day + timedelta(days=offset)
 
-    def test_a_note_from_today_settles_it(self):
-        self.assertFalse(sweep_is_due({"date": self.TODAY}, self.TODAY))
+    def at(self, day, hour, minute=0):
+        return datetime.combine(day, time(hour, minute))
 
-    def test_a_note_from_yesterday_owes_a_sweep(self):
-        self.assertTrue(sweep_is_due({"date": "2026-10-05"}, self.TODAY))
+    def test_the_morning_slot_is_owed_from_twenty_past_four(self):
+        day = self.evening_day(1)
+        self.assertIsNone(slot_owed(self.at(day, 4, 19), {}))
+        self.assertEqual(slot_owed(self.at(day, 4, 20), {}).name, "morning")
 
-    def test_nothing_recorded_owes_a_sweep(self):
-        self.assertTrue(sweep_is_due(None, self.TODAY))
+    def test_a_finished_morning_is_not_owed_again_that_day(self):
+        day = self.evening_day(1)
+        note = {"slots": {"morning": day.isoformat()}}
+        self.assertIsNone(slot_owed(self.at(day, 5, 0), note))
+        self.assertEqual(
+            slot_owed(self.at(day + timedelta(days=1), 4, 30), note).name, "morning"
+        )
 
-    def test_an_unreadable_note_owes_a_sweep_rather_than_raising(self):
-        for junk in ("not json at all", [], 7, {"date": 20261006}, {}):
+    def test_a_morning_missed_until_eight_is_let_go(self):
+        """A digest at noon is not the early mail, and the slot does not pretend."""
+        self.assertIsNone(slot_owed(self.at(self.evening_day(1), 8, 0), {}))
+
+    def test_the_evening_slot_runs_one_evening_in_three(self):
+        owed = [
+            slot_owed(self.at(self.evening_day(offset), 21, 30), {})
+            for offset in range(6)
+        ]
+        self.assertEqual(
+            [slot.name if slot else None for slot in owed],
+            ["evening", None, None, "evening", None, None],
+        )
+
+    def test_only_the_morning_mails(self):
+        self.assertTrue(slot_named("morning").mails)
+        self.assertFalse(slot_named("evening").mails)
+        self.assertIsNone(slot_named("hand"))
+
+    def test_an_unreadable_note_owes_the_slot_rather_than_raising(self):
+        day = self.evening_day(1)
+        for junk in ("not json", [], 7, {"slots": 7}, {"slots": {"morning": 7}}, {}):
             with self.subTest(junk=junk):
-                self.assertEqual(last_sweep_date(junk), "")
-                self.assertTrue(sweep_is_due(junk, self.TODAY))
+                self.assertEqual(slot_owed(self.at(day, 5, 0), junk).name, "morning")
 
-    def test_a_date_from_the_future_asks_for_one_more_sweep(self):
-        """A clock that moved should not silence the mail for ever."""
-        self.assertTrue(sweep_is_due({"date": "2027-01-01"}, self.TODAY))
+    def test_the_old_one_date_note_owes_a_sweep(self):
+        """A note written before slots existed names no slot, so none is settled."""
+        day = self.evening_day(1)
+        self.assertEqual(
+            slot_owed(self.at(day, 5, 0), {"date": day.isoformat()}).name, "morning"
+        )
+
+
+class SweepPatternTests(unittest.TestCase):
+    """New and gone between sweeps, measured only where the measure is fair."""
+
+    START = datetime(2026, 10, 22, 11, 20, tzinfo=UTC)
+
+    def sweep(self, name, hours, terms):
+        return {
+            "sweep": name,
+            "slot": "morning",
+            "started_at": (self.START + timedelta(hours=hours)).isoformat(),
+            "searched_terms": terms,
+        }
+
+    def row(self, sweep, hours, asin, term, pages=1):
+        return {
+            "asin": asin,
+            "search_term": term,
+            "pages_available": pages,
+            "sweep": sweep,
+            "received_at": (self.START + timedelta(hours=hours, minutes=1)).isoformat(),
+        }
+
+    def test_the_first_sweep_has_nothing_to_have_lost(self):
+        (only,) = readings(
+            [self.row("one", 0, "B0SYNTH001", "sundial")],
+            [self.sweep("one", 0, ["sundial"])],
+        )
+        self.assertEqual((only.seen, only.new, only.gone), (1, 1, None))
+
+    def test_an_item_seen_before_is_not_new_and_one_missing_is_gone(self):
+        rows = [
+            self.row("one", 0, "B0SYNTH001", "sundial"),
+            self.row("one", 0, "B0SYNTH002", "sundial"),
+            self.row("two", 24, "B0SYNTH002", "sundial"),
+            self.row("two", 24, "B0SYNTH003", "sundial"),
+        ]
+        sweeps = [self.sweep("one", 0, ["sundial"]), self.sweep("two", 24, ["sundial"])]
+        second = readings(rows, sweeps)[1]
+        self.assertEqual((second.seen, second.new, second.gone), (2, 1, 1))
+        self.assertEqual(second.comparable_terms, 1)
+
+    def test_a_term_searched_and_found_empty_counts_everything_gone(self):
+        """Its rows are absent, but the sweep log says it was searched."""
+        rows = [self.row("one", 0, "B0SYNTH001", "sundial")]
+        sweeps = [self.sweep("one", 0, ["sundial"]), self.sweep("two", 24, ["sundial"])]
+        self.assertEqual(readings(rows, sweeps)[1].gone, 1)
+
+    def test_a_term_deeper_than_one_page_is_not_compared(self):
+        """Dropping off a full first page is not leaving Vine."""
+        rows = [
+            self.row("one", 0, "B0SYNTH001", "sundial", pages=3),
+            self.row("two", 24, "B0SYNTH002", "sundial", pages=3),
+        ]
+        sweeps = [self.sweep("one", 0, ["sundial"]), self.sweep("two", 24, ["sundial"])]
+        second = readings(rows, sweeps)[1]
+        self.assertEqual((second.gone, second.comparable_terms), (0, 0))
+
+    def test_a_term_only_one_sweep_searched_is_not_compared(self):
+        rows = [self.row("one", 0, "B0SYNTH001", "sundial")]
+        sweeps = [self.sweep("one", 0, ["sundial"]), self.sweep("two", 24, ["trivet"])]
+        self.assertEqual(readings(rows, sweeps)[1].comparable_terms, 0)
+
+    def test_an_item_first_browsed_by_hand_is_not_new_to_the_sweep(self):
+        browsed = {
+            "asin": "B0SYNTH001",
+            "received_at": (self.START - timedelta(hours=2)).isoformat(),
+        }
+        rows = [browsed, self.row("one", 0, "B0SYNTH001", "sundial")]
+        (only,) = readings(rows, [self.sweep("one", 0, ["sundial"])])
+        self.assertEqual(only.new, 0)
 
 
 class MailFreshnessTests(unittest.TestCase):
@@ -560,7 +667,6 @@ class MailFreshnessTests(unittest.TestCase):
 
     def test_a_truncated_sweep_that_recorded_something_still_mails(self):
         """The second bug: no sweep ever finished, yet rows kept arriving."""
-        self.assertTrue(sweep_is_due({}, self.NOW.date().isoformat()))
         self.assertTrue(is_recent(self.freshest(1), self.NOW))
 
     def test_a_record_just_inside_the_window_still_counts(self):
@@ -605,10 +711,8 @@ class MailFreshnessTests(unittest.TestCase):
         self.assertTrue(is_recent(moment_from(naive.isoformat()), self.NOW))
 
     def test_the_two_questions_stay_separate(self):
-        """The companion sweeps once a local day; the mail reads the records."""
-        note = {"date": (self.NOW - timedelta(days=1)).date().isoformat()}
-        self.assertTrue(sweep_is_due(note, self.NOW.date().isoformat()))
-        self.assertEqual(last_sweep_date(note), "2026-10-07")
+        """The companion asks about slots; the mail reads the records."""
+        self.assertIsNone(slot_owed(datetime(2026, 10, 8, 12, 0), {}))
         self.assertTrue(is_recent(self.freshest(8), self.NOW))
 
     def test_the_age_is_reported_for_an_operator_to_read(self):

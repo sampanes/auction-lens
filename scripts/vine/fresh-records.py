@@ -35,6 +35,8 @@ from datetime import datetime
 from pathlib import Path
 
 from auction_lens.files import write_bytes_atomically
+from auction_lens.providers.vine.pattern import SWEEP_FIELD
+from auction_lens.providers.vine.pattern import record_rows as all_record_rows
 from auction_lens.providers.vine.swept import (
     CLOCK_TOLERANCE,
     MAIL_WINDOW_HOURS,
@@ -56,29 +58,10 @@ ARRIVAL_FIELD = "received_at"
 def record_rows(record_dir: Path | None = None) -> Iterator[dict[str, object]]:
     """Every readable object in the companion's record files.
 
-    One corrupt line or unreadable file cannot hide a day that otherwise
-    collected. Rows with unreadable arrival stamps remain visible to the
-    freshness decision, which declines them rather than guessing their age.
+    Rows with unreadable arrival stamps remain visible to the freshness
+    decision, which declines them rather than guessing their age.
     """
-    directory = record_dir if record_dir is not None else RECORD_DIR
-    try:
-        files = sorted(directory.glob("queue-*.ndjson"))
-    except OSError:
-        return
-    for path in files:
-        try:
-            text = path.read_text(encoding="utf-8")
-        except OSError:
-            continue
-        for line in text.splitlines():
-            if not line.strip():
-                continue
-            try:
-                row = json.loads(line)
-            except ValueError:
-                continue
-            if isinstance(row, dict):
-                yield row
+    return all_record_rows(record_dir if record_dir is not None else RECORD_DIR)
 
 
 def fresh_rows(
@@ -113,10 +96,19 @@ def stage_fresh_records(
     *,
     now: datetime | None = None,
     record_dir: Path | None = None,
+    sweep: str = "",
 ) -> tuple[int, datetime | None]:
-    """Atomically replace the stage with recent rows and return count/newest."""
+    """Atomically replace the stage with recent rows and return count/newest.
+
+    Given a sweep, only that sweep's rows are staged. The digest a sweep sends
+    is about what is there now; a row from an earlier sweep may list an item
+    that has since been claimed, and mailing it would send the reader to a
+    page that no longer offers it.
+    """
     measured_at = now if now is not None else now_utc()
     rows = list(record_rows(record_dir))
+    if sweep:
+        rows = [row for row in rows if row.get(SWEEP_FIELD) == sweep]
     fresh = fresh_rows(rows, measured_at)
     newest = _newest_usable(fresh if fresh else rows, measured_at)
     contents = "".join(
@@ -133,6 +125,7 @@ def _arguments(argv: Sequence[str] | None) -> argparse.Namespace:
         description="Stage only Vine companion records fresh enough to mail"
     )
     parser.add_argument("--output", required=True, help="fresh NDJSON staging file")
+    parser.add_argument("--sweep", default="", help="stage only the rows this sweep recorded")
     return parser.parse_args(argv)
 
 
@@ -140,7 +133,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     """Stage fresh records and report whether the stage contains anything."""
     args = _arguments(argv)
     now = now_utc()
-    count, newest = stage_fresh_records(Path(args.output), now=now)
+    count, newest = stage_fresh_records(Path(args.output), now=now, sweep=args.sweep)
     age = describe_age(newest, now)
     if count == 0:
         print(
