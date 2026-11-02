@@ -20,6 +20,7 @@ from ..listings.model import NEW_LISTING_PRIORITY_BONUS as _NEW_LISTING_PRIORITY
 from ..listings.model import PRICE_CHANGE_PRIORITY_BONUS as _PRICE_CHANGE_PRIORITY_BONUS
 from ..listings.model import Listing, ObservationChange
 from ..pricing.model import ValuationSummary
+from .hammer import HammerCeiling
 from .logistics import LogisticsAssessment
 
 # One score scale is shared by matching, configuration validation, and the
@@ -108,6 +109,9 @@ class Candidate:
     # score rather than inside it: the figures are about this lot, and a note
     # is about every example of the model, including the good ones.
     known: tuple[str, ...] = ()
+    # The most this lot is worth bidding, when its rule has a rubric. Shown
+    # beside the bid and nowhere else: it is the operator's price, not a score.
+    max_hammer: HammerCeiling | None = None
 
     @property
     def section(self) -> str:

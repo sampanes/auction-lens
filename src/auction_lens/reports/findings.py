@@ -18,6 +18,7 @@ from zoneinfo import ZoneInfo
 
 from ..listings.conditions import Tag
 from ..listings.model import Listing
+from ..matching.hammer import HammerCeiling
 from ..matching.logistics import LogisticsStatus
 from ..matching.model import Candidate, InterestHarvest, ReadingOrder, ranked
 from ..matching.progress import InterestProgress
@@ -327,6 +328,7 @@ def _listing_facts(candidate: Candidate, zone: ZoneInfo) -> ListingFacts:
         bid=f"${listing.current_bid}",
         total_cost=f"${candidate.total_cost}",
         likely_total=_likely_total(candidate),
+        max_hammer=_max_hammer(candidate.max_hammer, listing.current_bid),
         retail=f"${listing.estimated_retail}" if listing.estimated_retail else "",
         retail_ratio=(
             f"{candidate.retail_ratio:.0%}" if candidate.retail_ratio is not None else ""
@@ -378,6 +380,42 @@ def _likely_total(candidate: Candidate) -> str:
 
 def _dollars(amount: Decimal) -> str:
     return f"${amount:,.0f}"
+
+
+def _max_hammer(ceiling: HammerCeiling | None, bid: Decimal) -> str:
+    """The ceiling, the size it was read from, and whether the bid is past it.
+
+    The working is shown because this figure is only useful if it is believed
+    at the moment of bidding, and "$40 (12.4 ft, 280 lb; used -$10)" can be
+    checked against the listing where a bare "$30" cannot. A bid already past
+    the ceiling says so in the same line, since that is the one case where the
+    answer is to close the tab.
+    """
+    if ceiling is None:
+        return ""
+    if ceiling.hammer is None:
+        return f"walk ({ceiling.walk})"
+    working = "; ".join((_size_read(ceiling), *ceiling.adjustments))
+    line = f"{_dollars(ceiling.hammer)} ({working})"
+    if bid > ceiling.hammer:
+        line += " -- the bid is already past it; walk"
+    return line
+
+
+def _size_read(ceiling: HammerCeiling) -> str:
+    measured = ceiling.measured
+    if not measured.is_stated:
+        return "size not stated"
+    parts = []
+    if measured.feet is not None:
+        parts.append(f"{_tenths(measured.feet)} ft")
+    if measured.pounds is not None:
+        parts.append(f"{_tenths(measured.pounds)} lb")
+    return ", ".join(parts)
+
+
+def _tenths(value: Decimal) -> str:
+    return f"{value:.1f}".removesuffix(".0")
 
 
 def _conditions(listing: Listing) -> str:

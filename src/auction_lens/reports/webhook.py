@@ -23,6 +23,7 @@ from ..http_safety import public_https_opener, require_public_https
 from ..listings.conditions import Tag
 from .destinations import destination_fingerprint
 from .records import (
+    MAX_HAMMER_LABEL,
     TOTAL_NOW_LABEL,
     DeliverySummary,
     Finding,
@@ -197,6 +198,11 @@ def _card(finding: Finding) -> dict[str, Any]:
         if facts.likely_total
         else []
     )
+    ceiling = (
+        [{"name": MAX_HAMMER_LABEL, "value": facts.max_hammer, "inline": False}]
+        if facts.max_hammer
+        else []
+    )
     return {
         "title": finding.title[:HIGHEST_TITLE_LENGTH],
         "url": finding.url,
@@ -208,6 +214,7 @@ def _card(finding: Finding) -> dict[str, Any]:
                 "inline": True,
             },
             *likely,
+            *ceiling,
             {
                 "name": facts.retail_label,
                 "value": _retail(facts),

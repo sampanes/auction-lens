@@ -374,6 +374,7 @@ def build_context(
         ending_soon_bonus=ending_soon_bonus(listing, config.scoring.ending_soon_minutes, now),
         minutes_remaining=minutes_remaining(listing, now),
         days_until_close=days_until_close(listing, now, config.acquisition.zone),
+        is_far=config.locations.is_far(listing.location),
     )
 
 

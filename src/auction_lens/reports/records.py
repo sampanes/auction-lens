@@ -21,6 +21,8 @@ NAMED_UNCHANGED = 8
 # estimate let it pass for what the lot would cost. That figure is LIKELY_LABEL.
 TOTAL_NOW_LABEL = "Total now"
 LIKELY_LABEL = "Likely total"
+# The operator's own ceiling, in hammer dollars like the bid beside it.
+MAX_HAMMER_LABEL = "Max hammer"
 NO_LIKELY_TOTAL = "not enough closes recorded yet"
 
 
@@ -48,6 +50,8 @@ class ListingFacts:
     # Empty when the lot has no bid to finish at; NO_LIKELY_TOTAL when it has
     # one but the history cannot yet say where it will end.
     likely_total: str = ""
+    # Empty unless the matched rule carries a bid rubric.
+    max_hammer: str = ""
     bid_label: str = "Bid"
     total_cost_label: str = TOTAL_NOW_LABEL
     retail_label: str = "Retail"
@@ -58,6 +62,8 @@ class ListingFacts:
         facts = []
         if self.bid:
             facts.append(Fact(self.bid_label, self.bid))
+        if self.max_hammer:
+            facts.append(Fact(MAX_HAMMER_LABEL, self.max_hammer))
         facts.append(Fact(self.total_cost_label, self.total_cost))
         if self.likely_total:
             facts.append(Fact(LIKELY_LABEL, self.likely_total))

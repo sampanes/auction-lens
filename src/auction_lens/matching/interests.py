@@ -7,12 +7,13 @@ score and is reduced only by conditions that the stated purpose cares about.
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from decimal import Decimal
 
 from ..config.interests import ConditionPolicy, InterestRule, ScoringConfig
 from ..listings.model import Listing, ObservationChange
 from ..matching.text import first_mention, mentions, standalone_mentions
+from .hammer import ceiling_for
 from .logistics import LogisticsAssessment
 from .model import (
     BASE_INTEREST_SCORE,
@@ -40,6 +41,9 @@ class ScoringContext:
     # is a calendar question, so it needs a day rather than a duration; None
     # when the lot stated no closing time.
     days_until_close: int | None = None
+    # Whether the pickup is at a branch the operator calls far, which a bid
+    # rubric may treat as a reason not to bid at all.
+    is_far: bool = False
 
     @property
     def is_ending_soon(self) -> bool:
@@ -172,7 +176,7 @@ def _score_rule(
     reasons = [f"matches {rule.purpose} interest '{rule.name}'"]
     if context.is_ending_soon:
         reasons.append("ending soon")
-    return context.candidate(
+    candidate = context.candidate(
         category=CandidateCategory.WANTED,
         rule_id=rule.interest_id,
         rule_name=rule.name,
@@ -180,6 +184,12 @@ def _score_rule(
         reasons=reasons,
         weight=rule.weight,
     )
+    if rule.max_hammer is None or context.listing.value_is_taxable_income:
+        return candidate
+    ceiling = ceiling_for(
+        context.listing, context.conditions, rule.max_hammer, is_far=context.is_far
+    )
+    return replace(candidate, max_hammer=ceiling)
 
 
 def matches_terms(listing: Listing, total_cost: Decimal, rule: InterestRule) -> bool:

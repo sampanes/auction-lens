@@ -235,6 +235,22 @@ wanted = 1
 max_total_cost = 50
 minimum_score = 70
 
+# A rule may say what one of its lots is worth bidding, so the report prints a
+# "Max hammer" beside the bid. Hammer dollars, before premium and tax. `base` is
+# the figure for a lot no tier lifts, including a title that states no size;
+# a tier lifts it when the title states at least that many feet or pounds.
+# `less` takes dollars off for a condition label, `at_most` caps the figure for
+# one, and a `walk` phrase anywhere in the title, warehouse note or grade
+# withdraws it. It never changes a score.
+#
+#     [interests.max_hammer]
+#     base = 40
+#     tiers = [{ feet = 10, hammer = 55 }, { pounds = 200, hammer = 55 }]
+#     less = { "used" = 10 }
+#     at_most = { "untested" = 15 }
+#     walk = ["major damage", "not functional"]
+#     walk_if_far = true
+
 [[interests]]
 name = "monitor"
 purpose = "use"

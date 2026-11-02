@@ -9,11 +9,13 @@ an operator has to open, which a record cannot know.
 from __future__ import annotations
 
 import tomllib
+from decimal import Decimal
 from pathlib import Path
 
 from ..matching.model import Person, ReadingOrder
 from .app import AppConfig, JudgingConfig
 from .conditions import resolve_condition_policy
+from .hammer import HammerRubric, HammerTier
 from .interests import InterestDefaults, InterestRule, ScoringConfig
 from .logistics import (
     DEFAULT_FAR_MINIMUM_SCORE,
@@ -273,7 +275,39 @@ def _interest(
             condition_profile=item.text("condition_profile"),
             condition=resolve_condition_policy(item, profiles),
             fits=resolve_person(item, people),
+            max_hammer=_max_hammer(item),
         )
+
+
+def _max_hammer(item: Section) -> HammerRubric | None:
+    """Read a rule's bid rubric; `base` and each tier's `hammer` are required."""
+    if not item.contains("max_hammer"):
+        return None
+    section = item.table("max_hammer")
+    with in_section(section):
+        return HammerRubric(
+            base=section.decimal("base", None),
+            tiers=tuple(_hammer_tier(tier) for tier in section.tables("tiers")),
+            less=_dollar_map(section, "less"),
+            at_most=_dollar_map(section, "at_most"),
+            walk=section.lowercase_texts("walk"),
+            walk_if_far=section.flag("walk_if_far", False),
+        )
+
+
+def _hammer_tier(tier: Section) -> HammerTier:
+    with in_section(tier):
+        return HammerTier(
+            hammer=tier.decimal("hammer", None),
+            feet=tier.optional_decimal("feet"),
+            pounds=tier.optional_decimal("pounds"),
+        )
+
+
+def _dollar_map(section: Section, key: str) -> dict[str, Decimal]:
+    """Condition labels to dollars, keyed lowercase like condition penalties."""
+    table = section.table(key)
+    return {str(label).lower(): table.decimal(label, 0) for label in table.data}
 
 
 def _valuation(section: Section) -> ValuationConfig:

@@ -19,6 +19,7 @@ from ..matching.model import (
     Person,
 )
 from .app import AppConfig
+from .hammer import HammerRubric
 from .interests import ConditionPolicy, InterestRule, ScoringConfig
 from .logistics import LargeItemPolicy
 
@@ -128,6 +129,7 @@ def _interest(number: int, rule: InterestRule, global_minimum_score: int) -> lis
             f"   Has to fit: {_fits(rule.fits)}",
             f"   Minimum score: {_minimum_score(threshold)}",
             f"   Relative importance: {_number(rule.weight)}",
+            f"   Max hammer: {_hammer_rubric(rule.max_hammer)}",
             f"   Conditions{policy_name}: {_condition(rule.condition)}",
         ]
     )
@@ -264,6 +266,26 @@ def _terms(values: Iterable[str], *, empty: str) -> str:
 def _quoted(value: str) -> str:
     escaped = value.replace("\\", "\\\\").replace('"', '\\"')
     return f'"{escaped}"'
+
+
+def _hammer_rubric(rubric: HammerRubric | None) -> str:
+    """The bid rubric in one line, in the order it is applied."""
+    if rubric is None:
+        return "not set"
+    parts = [f"{_money(rubric.base)} unless a tier applies"]
+    parts.extend(
+        f"{_money(tier.hammer)} at {_number(tier.feet)} ft"
+        if tier.feet is not None
+        else f"{_money(tier.hammer)} at {_number(tier.pounds)} lb"
+        for tier in rubric.tiers
+    )
+    parts.extend(f"{label} less {_money(cut)}" for label, cut in rubric.less.items())
+    parts.extend(f"{label} at most {_money(cap)}" for label, cap in rubric.at_most.items())
+    if rubric.walk:
+        parts.append("walk on " + ", ".join(rubric.walk))
+    if rubric.walk_if_far:
+        parts.append("walk if far")
+    return "; ".join(parts)
 
 
 def _optional_money(value: Decimal | None, *, empty: str) -> str:

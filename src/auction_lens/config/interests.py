@@ -14,6 +14,7 @@ from ..values import (
     require_rate,
     require_within,
 )
+from .hammer import HammerRubric
 
 
 @dataclass(frozen=True)
@@ -67,6 +68,8 @@ class InterestRule:
     weight: Decimal = Decimal("1")
     condition_profile: str = ""
     condition: ConditionPolicy = field(default_factory=ConditionPolicy)
+    # The most a lot of this kind is worth bidding; printed, never scored.
+    max_hammer: HammerRubric | None = None
 
     def __post_init__(self) -> None:
         if self.wanted is not None:
