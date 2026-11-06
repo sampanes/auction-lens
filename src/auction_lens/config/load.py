@@ -15,7 +15,7 @@ from pathlib import Path
 from ..matching.model import Person, ReadingOrder
 from .app import AppConfig, JudgingConfig
 from .conditions import resolve_condition_policy
-from .hammer import HammerRubric, HammerTier
+from .hammer import HammerModel, HammerRubric, HammerTier
 from .interests import InterestDefaults, InterestRule, ScoringConfig
 from .logistics import (
     DEFAULT_FAR_MINIMUM_SCORE,
@@ -280,7 +280,7 @@ def _interest(
 
 
 def _max_hammer(item: Section) -> HammerRubric | None:
-    """Read a rule's bid rubric; `base` and each tier's `hammer` are required."""
+    """Read a rule's bid rubric; `base` and every tier's and model's `hammer` are required."""
     if not item.contains("max_hammer"):
         return None
     section = item.table("max_hammer")
@@ -292,6 +292,18 @@ def _max_hammer(item: Section) -> HammerRubric | None:
             at_most=_dollar_map(section, "at_most"),
             walk=section.lowercase_texts("walk"),
             walk_if_far=section.flag("walk_if_far", False),
+            models=tuple(_hammer_model(model) for model in section.tables("models")),
+            aim=section.optional_decimal("aim"),
+        )
+
+
+def _hammer_model(model: Section) -> HammerModel:
+    with in_section(model):
+        return HammerModel(
+            name=model.required_text("name"),
+            terms=model.lowercase_texts("terms"),
+            hammer=model.decimal("hammer", None),
+            aim=model.optional_decimal("aim"),
         )
 
 

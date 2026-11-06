@@ -272,7 +272,13 @@ def _hammer_rubric(rubric: HammerRubric | None) -> str:
     """The bid rubric in one line, in the order it is applied."""
     if rubric is None:
         return "not set"
-    parts = [f"{_money(rubric.base)} unless a tier applies"]
+    parts = [
+        f"{model.name} {_money(model.hammer)}"
+        + ("" if model.aim is None else f" (aim {_money(model.aim)})")
+        for model in rubric.models
+    ]
+    base = f"{_money(rubric.base)} unless a model or tier applies"
+    parts.append(base if rubric.aim is None else f"{base} (aim {_money(rubric.aim)})")
     parts.extend(
         f"{_money(tier.hammer)} at {_number(tier.feet)} ft"
         if tier.feet is not None

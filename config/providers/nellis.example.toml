@@ -239,6 +239,9 @@ minimum_score = 70
 # "Max hammer" beside the bid. Hammer dollars, before premium and tax. `base` is
 # the figure for a lot no tier lifts, including a title that states no size;
 # a tier lifts it when the title states at least that many feet or pounds.
+# A kind told apart by model rather than size lists `models` instead: the
+# first one whose term the title names sets the figure outright. `aim` is the
+# price hoped for, printed beside the ceiling, for the base or for a model.
 # `less` takes dollars off for a condition label, `at_most` caps the figure for
 # one, and a `walk` phrase anywhere in the title, warehouse note or grade
 # withdraws it. It never changes a score.
@@ -250,6 +253,14 @@ minimum_score = 70
 #     at_most = { "untested" = 15 }
 #     walk = ["major damage", "not functional"]
 #     walk_if_far = true
+#
+#     [interests.max_hammer]
+#     base = 25
+#     aim = 20
+#     models = [
+#         { name = "Acme ZX-50", terms = ["zx-50"], aim = 30, hammer = 40 },
+#         { name = "Acme ZX-5", terms = ["zx-5"], aim = 15, hammer = 20 },
+#     ]
 
 [[interests]]
 name = "monitor"

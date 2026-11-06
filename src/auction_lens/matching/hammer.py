@@ -10,6 +10,10 @@ Sizes are read only where a unit says what the number is. "12.4x11FT" and
 with no unit is left alone, which is the right way to be wrong here: a missed
 size leaves the starting figure and a card saying so, while an invented one
 raises a ceiling nobody chose.
+
+A model named in the title is looked for before any size, and when one is
+found the size does not count: the operator priced that product, not its
+dimensions.
 """
 
 from __future__ import annotations
@@ -18,7 +22,7 @@ import re
 from dataclasses import dataclass
 from decimal import Decimal
 
-from ..config.hammer import HammerRubric, HammerTier
+from ..config.hammer import HammerModel, HammerRubric, HammerTier
 from ..listings.model import Listing
 from .text import mentions
 
@@ -61,12 +65,16 @@ class HammerCeiling:
     `hammer` is None when the lot is not worth bidding at all; `walk` then
     says why. The steps are kept so a card can show its working: a figure
     nobody can check is a figure nobody trusts at the moment it matters.
+    `basis` is what the figure was read from -- a model, a size, or a size
+    the title did not state -- and is empty for a rubric that reads neither.
     """
 
     hammer: Decimal | None
     measured: Measured
     adjustments: tuple[str, ...] = ()
     walk: str = ""
+    basis: str = ""
+    aim: Decimal | None = None
 
 
 def measured_in(text: str) -> Measured:
@@ -87,15 +95,19 @@ def ceiling_for(
     *,
     is_far: bool,
 ) -> HammerCeiling:
-    """Apply one rubric to one lot: the size tier, then what is wrong with it."""
+    """Apply one rubric to one lot: the model or size, then what is wrong with it."""
     measured = measured_in(listing.title)
     walk = _walk_reason(listing, conditions, rubric, is_far=is_far)
     if walk:
         return HammerCeiling(hammer=None, measured=measured, walk=walk)
 
-    figure = max(
-        [rubric.base, *(tier.hammer for tier in rubric.tiers if _reaches(measured, tier))]
-    )
+    model = _named_model(listing.title, rubric.models)
+    if model is not None:
+        figure, aim, basis = model.hammer, model.aim, model.name
+    else:
+        reached = [tier.hammer for tier in rubric.tiers if _reaches(measured, tier)]
+        figure, aim = max([rubric.base, *reached]), rubric.aim
+        basis = _size_read(measured) if rubric.tiers else ""
     adjustments = []
     for label in sorted(conditions & rubric.less.keys()):
         amount = rubric.less[label]
@@ -106,10 +118,24 @@ def ceiling_for(
         if cap < figure:
             figure = cap
             adjustments.append(f"{label}: at most ${cap:,.0f}")
+    figure = max(figure, Decimal(0))
     return HammerCeiling(
-        hammer=max(figure, Decimal(0)),
+        hammer=figure,
         measured=measured,
         adjustments=tuple(adjustments),
+        basis=basis,
+        # An aim at or past what this copy may fetch says nothing the
+        # ceiling does not already say.
+        aim=aim if aim is not None and aim < figure else None,
+    )
+
+
+def _named_model(title: str, models: tuple[HammerModel, ...]) -> HammerModel | None:
+    """The first model, in the order written, that the title names."""
+    lowered = title.lower()
+    return next(
+        (model for model in models if any(mentions(lowered, term) for term in model.terms)),
+        None,
     )
 
 
@@ -142,6 +168,21 @@ def _sides(text: str) -> list[tuple[str, str]]:
         found.extend((number, unit) for number in re.findall(NUMBER, group))
     found.extend(ONE_SIDE.findall(text))
     return found
+
+
+def _size_read(measured: Measured) -> str:
+    if not measured.is_stated:
+        return "size not stated"
+    parts = []
+    if measured.feet is not None:
+        parts.append(f"{_tenths(measured.feet)} ft")
+    if measured.pounds is not None:
+        parts.append(f"{_tenths(measured.pounds)} lb")
+    return ", ".join(parts)
+
+
+def _tenths(value: Decimal) -> str:
+    return f"{value:.1f}".removesuffix(".0")
 
 
 def _in_feet(number: str, unit: str) -> Decimal:

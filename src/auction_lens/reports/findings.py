@@ -383,39 +383,24 @@ def _dollars(amount: Decimal) -> str:
 
 
 def _max_hammer(ceiling: HammerCeiling | None, bid: Decimal) -> str:
-    """The ceiling, the size it was read from, and whether the bid is past it.
+    """The ceiling, what it was read from, and whether the bid is past it.
 
     The working is shown because this figure is only useful if it is believed
-    at the moment of bidding, and "$40 (12.4 ft, 280 lb; used -$10)" can be
-    checked against the listing where a bare "$30" cannot. A bid already past
-    the ceiling says so in the same line, since that is the one case where the
-    answer is to close the tab.
+    at the moment of bidding, and "$40 (12.4 ft, 280 lb; used -$10)" or
+    "$40 (Model X; aim $30)" can be checked against the listing where a bare
+    "$30" cannot. A bid already past the ceiling says so in the same line,
+    since that is the one case where the answer is to close the tab.
     """
     if ceiling is None:
         return ""
     if ceiling.hammer is None:
         return f"walk ({ceiling.walk})"
-    working = "; ".join((_size_read(ceiling), *ceiling.adjustments))
-    line = f"{_dollars(ceiling.hammer)} ({working})"
+    aim = () if ceiling.aim is None else (f"aim {_dollars(ceiling.aim)}",)
+    working = "; ".join(part for part in (ceiling.basis, *aim, *ceiling.adjustments) if part)
+    line = _dollars(ceiling.hammer) + (f" ({working})" if working else "")
     if bid > ceiling.hammer:
         line += " -- the bid is already past it; walk"
     return line
-
-
-def _size_read(ceiling: HammerCeiling) -> str:
-    measured = ceiling.measured
-    if not measured.is_stated:
-        return "size not stated"
-    parts = []
-    if measured.feet is not None:
-        parts.append(f"{_tenths(measured.feet)} ft")
-    if measured.pounds is not None:
-        parts.append(f"{_tenths(measured.pounds)} lb")
-    return ", ".join(parts)
-
-
-def _tenths(value: Decimal) -> str:
-    return f"{value:.1f}".removesuffix(".0")
 
 
 def _conditions(listing: Listing) -> str:

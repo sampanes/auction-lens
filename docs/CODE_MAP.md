@@ -83,8 +83,9 @@ listing is desirable.
   knowledge the program cannot gather, written in advance, carried onto every
   card for that product and never into a score.
 - [`matching/hammer.py`](../src/auction_lens/matching/hammer.py) reads the
-  longest side and the weight a title states, only where a unit says what the
-  number is, and applies a rule's bid rubric to one lot. The rubric itself is
+  model a title names, or else the longest side and the weight it states,
+  only where a unit says what the number is, and applies a rule's bid rubric
+  to one lot. The rubric itself is
   [`config/hammer.py`](../src/auction_lens/config/hammer.py): the operator's
   own most-to-bid, decided once so it cannot drift upward card by card, and
   printed beside the bid as "Max hammer" without moving any score.

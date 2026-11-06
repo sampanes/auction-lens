@@ -12,7 +12,7 @@ import unittest
 from dataclasses import replace
 from decimal import Decimal
 
-from auction_lens.config.hammer import HammerRubric, HammerTier
+from auction_lens.config.hammer import HammerModel, HammerRubric, HammerTier
 from auction_lens.config.load import parse_config
 from auction_lens.matching.evaluate import evaluate
 from auction_lens.matching.hammer import ceiling_for, measured_in
@@ -141,6 +141,76 @@ class CeilingTests(unittest.TestCase):
         )
 
 
+# A kind priced by model: two systems of one size are worth different amounts.
+MODELS = HammerRubric(
+    base=Decimal("25"),
+    aim=Decimal("20"),
+    models=(
+        HammerModel(name="ZX-50", terms=("zx-50",), hammer=Decimal("40"), aim=Decimal("30")),
+        HammerModel(name="ZX-5", terms=("zx-5",), hammer=Decimal("22")),
+    ),
+    less={"used": Decimal("5")},
+    at_most={"untested": Decimal("10")},
+)
+
+
+# The same first model, as a rule's TOML would write it.
+_ZX_50 = 'models = [{ name = "ZX-50", terms = ["zx-50"], hammer = 40, aim = 30 }]\n'
+
+
+def _modelled(title, conditions=()):
+    return ceiling_for(_listing(title), frozenset(conditions), MODELS, is_far=False)
+
+
+class ModelTests(unittest.TestCase):
+    """A model the title names sets the figure; everything else gets the base."""
+
+    def test_a_named_model_sets_the_figure_and_says_which(self):
+        ceiling = _modelled("Acme ZX-50 Widget Set")
+
+        self.assertEqual((ceiling.hammer, ceiling.basis), (Decimal("40"), "ZX-50"))
+        self.assertEqual(ceiling.aim, Decimal("30"))
+
+    def test_a_model_is_a_whole_word_so_a_longer_number_is_not_it(self):
+        self.assertEqual(_modelled("Acme ZX-500 Widget Set").hammer, Decimal("25"))
+        self.assertEqual(_modelled("Acme ZX-5-2H Widget Set").basis, "ZX-5")
+
+    def test_a_model_may_sit_below_the_base(self):
+        self.assertEqual(_modelled("Acme ZX-5 Widget").hammer, Decimal("22"))
+
+    def test_an_unnamed_lot_gets_the_base_and_its_aim_without_a_size_note(self):
+        ceiling = _modelled("Generic 8 Piece Widget Set")
+
+        self.assertEqual(ceiling.hammer, Decimal("25"))
+        self.assertEqual((ceiling.aim, ceiling.basis), (Decimal("20"), ""))
+
+    def test_the_first_model_named_wins(self):
+        ceiling = _modelled("Acme ZX-50 kit, also fits ZX-5")
+
+        self.assertEqual(ceiling.basis, "ZX-50")
+
+    def test_a_named_model_ignores_any_size_in_the_title(self):
+        sized = replace(MODELS, tiers=(HammerTier(hammer=Decimal("90"), feet=Decimal("1")),))
+        listing = _listing("Acme ZX-50 Widget, 19 in Wide")
+
+        ceiling = ceiling_for(listing, frozenset(), sized, is_far=False)
+
+        self.assertEqual(ceiling.hammer, Decimal("40"))
+
+    def test_conditions_still_apply_and_drop_an_aim_the_figure_no_longer_clears(self):
+        used = _modelled("Acme ZX-50 Widget Set", ("used",))
+        untested = _modelled("Acme ZX-50 Widget Set", ("untested",))
+
+        self.assertEqual((used.hammer, used.aim), (Decimal("35"), Decimal("30")))
+        self.assertEqual((untested.hammer, untested.aim), (Decimal("10"), None))
+
+    def test_an_aim_above_its_ceiling_is_refused(self):
+        with self.assertRaises(ValueError):
+            HammerModel(name="ZX-5", terms=("zx-5",), hammer=Decimal("20"), aim=Decimal("30"))
+        with self.assertRaises(ValueError):
+            HammerRubric(base=Decimal("20"), aim=Decimal("25"))
+
+
 class ConfiguredRubricTests(unittest.TestCase):
     def test_the_table_is_read_onto_its_rule(self):
         (rule,) = parse_config(_CONFIG).interests
@@ -158,6 +228,29 @@ class ConfiguredRubricTests(unittest.TestCase):
         with self.assertRaises(ValueError) as caught:
             parse_config(broken)
         self.assertIn("max_hammer.tiers[0]", str(caught.exception))
+
+    def test_models_and_aims_are_read_onto_the_rubric(self):
+        modelled = _CONFIG.replace(
+            "walk_if_far = true\n",
+            "walk_if_far = true\naim = 15\n"
+            + _ZX_50.replace('"zx-50"', '"ZX-50"'),
+        )
+        (rule,) = parse_config(modelled).interests
+
+        self.assertEqual(rule.max_hammer.aim, Decimal("15"))
+        self.assertEqual(
+            rule.max_hammer.models,
+            (MODELS.models[0],),
+        )
+
+    def test_a_model_with_no_hammer_is_refused(self):
+        broken = _CONFIG.replace(
+            "walk_if_far = true\n",
+            'walk_if_far = true\nmodels = [{ name = "ZX-50", terms = ["zx-50"] }]\n',
+        )
+        with self.assertRaises(ValueError) as caught:
+            parse_config(broken)
+        self.assertIn("max_hammer.models[0].hammer", str(caught.exception))
 
     def test_a_rubric_with_no_base_is_refused(self):
         with self.assertRaises(ValueError) as caught:
@@ -190,6 +283,21 @@ class ReportedCeilingTests(unittest.TestCase):
 
         rendered = render_html(build_report([candidate], REPORT_ZONE))
         self.assertIn("$30 (16 ft) -- the bid is already past it; walk", rendered)
+
+    def test_a_named_model_shows_its_name_and_aim(self):
+        modelled = _CONFIG.replace(
+            "walk_if_far = true\n",
+            "walk_if_far = true\n" + _ZX_50,
+        )
+        listing = _listing("Acme ZX-50 Water Slide", current_bid=Decimal("12"))
+        (candidate,) = [
+            found
+            for found in evaluate(listing, parse_config(modelled), now=shortly_before_close())
+            if found.rule_name == "water slide"
+        ]
+
+        rendered = render_text(build_report([candidate], REPORT_ZONE))
+        self.assertIn("Max hammer: $40 (ZX-50; aim $30)", rendered)
 
     def test_a_far_lot_is_told_to_walk(self):
         candidate = self._candidate("Acme Water Slide", "5", location="Far Town")
