@@ -50,6 +50,8 @@ class LocationPolicy:
     far: tuple[str, ...] = ()
     far_minimum_score: int = DEFAULT_FAR_MINIMUM_SCORE
     far_minimum_retail: Decimal = Decimal("0")
+    # The most a far lot may currently be bid to, or None for no cap.
+    far_maximum_bid: Decimal | None = None
 
     def __post_init__(self) -> None:
         require_within(
@@ -61,6 +63,8 @@ class LocationPolicy:
         require_not_negative(
             self.far_minimum_retail, field_name="far_minimum_retail"
         )
+        if self.far_maximum_bid is not None:
+            require_not_negative(self.far_maximum_bid, field_name="far_maximum_bid")
 
     def permits(self, location: str) -> bool:
         """An empty allow-list means every pickup location is acceptable."""
@@ -80,7 +84,7 @@ class LocationPolicy:
         return replace(self, far=staying_far)
 
     def worth_collecting(
-        self, location: str, score: int, retail: Decimal | None
+        self, location: str, score: int, retail: Decimal | None, bid: Decimal
     ) -> bool:
         """Whether this lot justifies going to this branch.
 
@@ -95,7 +99,12 @@ class LocationPolicy:
         nothing and therefore scores almost 100.
 
         The retail floor asks what the score cannot: is the thing big enough
-        to be worth the drive at all. A far lot has to pass both.
+        to be worth the drive at all.
+
+        The bid cap asks the third question, what it costs, for an operator
+        who will make the drive only for something close to free. Neither
+        other bar can say that: a large thing at a fair price clears both.
+        A far lot has to pass every bar that is set.
 
         A lot with no stated retail cannot answer the second question, so it
         fails it whenever a floor is set. That is deliberate -- the floor is
@@ -105,6 +114,8 @@ class LocationPolicy:
         if not self.is_far(location):
             return True
         if score < self.far_minimum_score:
+            return False
+        if self.far_maximum_bid is not None and bid > self.far_maximum_bid:
             return False
         if not self.far_minimum_retail:
             return True

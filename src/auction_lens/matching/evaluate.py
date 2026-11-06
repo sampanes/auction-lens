@@ -391,5 +391,6 @@ def _worth_collecting(candidates: list[Candidate], config: AppConfig) -> list[Ca
             candidate.listing.location,
             candidate.score,
             candidate.listing.estimated_retail,
+            candidate.listing.current_bid,
         )
     ]

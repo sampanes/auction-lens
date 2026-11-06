@@ -78,6 +78,11 @@ processing_fee = 0.0
 # A far lot must clear both. A far lot that states no retail cannot clear the
 # floor at all, which is deliberate: an unstated size is not evidence of a
 # large one. Leave it at 0 to judge far lots on score alone.
+#
+# far_maximum_bid is the third bar, for a drive made only for something close
+# to free: a far lot whose current bid is past it is dropped however large or
+# good it is. Leave it out for no cap.
+#   far_maximum_bid = 10.0
 # Empty means any location. Values are case-insensitive substrings.
 allowed = []
 

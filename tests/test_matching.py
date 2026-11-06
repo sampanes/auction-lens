@@ -218,6 +218,27 @@ class InterestScoringTests(unittest.TestCase):
         unpriced = replace(self.listings[SOUNDBAR], estimated_retail=None)
         self.assertTrue(evaluate(unpriced, config, now=READING))
 
+    def test_a_far_lot_bid_past_the_cap_is_not_worth_the_drive(self):
+        """Large and good is not enough when the drive is only for near-free."""
+        capped = LocationPolicy(
+            far=("example warehouse",), far_minimum_score=1, far_maximum_bid=Decimal("5")
+        )
+        listing = self.listings[SOUNDBAR]
+        config = replace(self.config, locations=capped)
+
+        self.assertEqual(
+            evaluate(replace(listing, current_bid=Decimal("6")), config, now=READING), []
+        )
+        self.assertTrue(
+            evaluate(replace(listing, current_bid=Decimal("5")), config, now=READING)
+        )
+
+    def test_a_near_branch_is_never_held_to_the_bid_cap(self):
+        capped = LocationPolicy(far=("somewhere else",), far_maximum_bid=Decimal("0"))
+        config = replace(self.config, locations=capped)
+
+        self.assertTrue(evaluate(self.listings[SOUNDBAR], config, now=READING))
+
     def test_a_near_branch_is_never_held_to_the_retail_floor(self):
         config = replace(
             self.config,
